@@ -188,14 +188,14 @@ async def upload_excel(file: UploadFile = File(...)):
         contents = await file.read()
         wb = openpyxl.load_workbook(filename=io.BytesIO(contents), data_only=True)
         
-        # 尋找指定的工作表
+        # 尋找上傳 Excel 內的指定工作表 (包容名稱前後有空白的狀況)
         sheet_name = None
         for name in wb.sheetnames:
             if "車源證件資料" in name:
                 sheet_name = name
                 break
         if not sheet_name:
-            sheet_name = wb.sheetnames[0] # 如果真的找不到，拿第一頁
+            sheet_name = wb.sheetnames[0] 
         
         ws = wb[sheet_name]
         headers = [cell.value if cell.value is not None else "" for cell in ws[1]]
@@ -209,7 +209,6 @@ async def upload_excel(file: UploadFile = File(...)):
         
         data_to_upload = [headers]
         
-        # 逐行判斷底色與抽取資料
         for row in ws.iter_rows(min_row=2):
             row_values = [cell.value if cell.value is not None else "" for cell in row]
             
@@ -237,24 +236,37 @@ async def upload_excel(file: UploadFile = File(...)):
             row_values[status_idx] = "已收訂" if is_reserved else ""
             data_to_upload.append(row_values)
         
-        # 尋找金鑰檔案 (優先找 Render 的秘密文件區)
+        # 尋找金鑰檔案
         key_path = "/etc/secrets/google_key.json"
         if not os.path.exists(key_path):
-            return {"status": "error", "message": "尚未設定 Google API 憑證！請通知管理員。"}
+            return {"status": "error", "message": "尚未設定 Google API 憑證！"}
 
         scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
         creds = Credentials.from_service_account_file(key_path, scopes=scopes)
         client = gspread.authorize(creds)
         
-        # 開啟並覆蓋 Google Sheet
-        gsheet = client.open_by_key(SHEET_ID).sheet1
-        gsheet.clear()
+        # 開啟 Google Sheet 檔案
+        doc = client.open_by_key(SHEET_ID)
+        
+        # 【關鍵修正】：精準尋找線上 Google Sheet 內名為「車源證件資料表」的分頁
+        target_gsheet = None
+        for sheet in doc.worksheets():
+            if "車源證件資料" in sheet.title:
+                target_gsheet = sheet
+                break
+        
+        if not target_gsheet:
+            target_gsheet = doc.get_worksheet(0) # 如果真的找不到，才抓最左邊第一頁
+            
+        target_gsheet.clear()
         
         # 將所有資料轉換為字串避免 Google API 報錯
-        stringified_data = [[str(cell) for cell in row] for row in data_to_upload]
-        gsheet.update(values=stringified_data, range_name='A1')
+        stringified_data = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload]
         
-        # 同步更新本地資料
+        # 將資料覆蓋進去
+        target_gsheet.update(values=stringified_data, range_name='A1')
+        
+        # 同步更新網頁緩存
         load_and_clean_data()
         return {"status": "success", "message": f"成功同步 {len(data_to_upload)-1} 筆車源！包含底色標記。"}
         

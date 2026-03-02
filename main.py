@@ -169,3 +169,34 @@ def get_cars(
 @app.get("/")
 def serve_html():
     return FileResponse("index.html")
+@app.get("/deal")
+def serve_deal():
+    return FileResponse("deal.html")
+
+
+# ================= 新增：給「恭喜成交系統」專用的 API =================
+@app.get("/api/search_plate")
+def search_plate(plate: str):
+    """透過車牌精準搜尋單一車輛資料 (用於成交系統)"""
+    if cached_df is None: load_and_clean_data()
+    res = cached_df.copy()
+    
+    # 搜尋車牌 (不分大小寫)
+    if '車牌' in res.columns:
+        # 去除空白並轉大寫比對
+        target_plate = plate.strip().upper()
+        res['clean_plate'] = res['車牌'].astype(str).str.replace(" ", "").str.upper()
+        matches = res[res['clean_plate'].str.contains(target_plate, na=False)]
+        
+        if len(matches) > 0:
+            # 找到資料，回傳第一筆
+            car_data = matches.iloc[0].to_dict()
+            # 處理年份 (只取數字)
+            year_val = str(car_data.get('年份', ''))
+            match = re.search(r'\d{4}', year_val)
+            car_data['clean_year'] = match.group(0) if match else year_val.replace('.0', '')
+            
+            return {"status": "success", "data": car_data}
+            
+    return {"status": "error", "message": "查無此車"}
+# ====================================================================

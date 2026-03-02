@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤝 恭喜成交系統 - 杰運汽車</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
+        /* 終極防禦：在 Vue 還沒載入完成前，隱藏所有帶有 v-cloak 的元素 */
+        [v-cloak] { display: none !important; }
+    </style>
+</head>
+<body>
+    <div id="app" class="h-screen flex flex-col" v-cloak>
+        <header class="bg-indigo-700 text-white p-4 shadow-md flex justify-between items-center">
+            <h1 class="text-xl font-bold">🤝 杰運汽車 - 恭喜成交文案產生器</h1>
+            <span class="text-sm px-3 py-1 bg-indigo-800 rounded-full" :class="statusColor">{{ statusMessage }}</span>
+        </header>
+
+        <div class="flex-1 overflow-hidden flex flex-col md:flex-row p-4 gap-4">
+            
+            <aside class="w-full md:w-1/3 bg-white rounded-lg shadow-sm border p-4 overflow-y-auto">
+                
+                <div class="border-b pb-4 mb-4">
+                    <h2 class="font-bold text-gray-700 mb-2">1. 搜尋車輛 (連接 Google Sheet)</h2>
+                    <div class="flex gap-2">
+                        <input v-model="searchQuery" @keyup.enter="searchCar" type="text" placeholder="輸入車牌" class="flex-1 border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-400 focus:outline-none uppercase">
+                        <button @click="searchCar" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition">搜尋</button>
+                    </div>
+                </div>
+
+                <div class="border-b pb-4 mb-4">
+                    <h2 class="font-bold text-gray-700 mb-2">2. 參數設定</h2>
+                    
+                    <div class="mb-3">
+                        <label class="block text-sm font-semibold text-red-600 mb-1">公司別:</label>
+                        <div class="flex gap-4">
+                            <label><input type="radio" v-model="settings.company" value="杰運"> 杰運</label>
+                            <label><input type="radio" v-model="settings.company" value="展帆"> 展帆</label>
+                            <label><input type="radio" v-model="settings.company" value="禾迪"> 禾迪</label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="block text-sm font-semibold text-purple-600 mb-1">折扣設定:</label>
+                        <div class="flex gap-4">
+                            <label><input type="radio" v-model="settings.discount" value="折1.1萬"> 折1.1萬</label>
+                            <label><input type="radio" v-model="settings.discount" value="不能折"> 不折</label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="block text-sm font-semibold text-orange-500 mb-1">貸款補貼息:</label>
+                        <div class="flex gap-4">
+                            <label><input type="radio" v-model="settings.subsidy" value="折3264"> 折3264</label>
+                            <label><input type="radio" v-model="settings.subsidy" value="不折"> 不折</label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="block text-sm font-semibold text-teal-700 mb-1">訂金金額 (萬):</label>
+                        <input v-model="settings.deposit" type="number" step="0.1" class="w-full border p-2 rounded">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-sm font-semibold text-blue-600 mb-1">施工地:</label>
+                            <select v-model="settings.site" class="w-full border p-2 rounded">
+                                <option v-for="s in sites" :key="s.name" :value="s.name">{{ s.label }}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-green-700 mb-1">過戶點:</label>
+                            <select v-model="settings.trans_store" class="w-full border p-2 rounded">
+                                <option v-for="s in sites" :key="s.name" :value="s.name">{{ s.label }}</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h2 class="font-bold text-gray-700 mb-2">3. 確認車輛資料</h2>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div class="flex flex-col"><label class="text-xs text-gray-500">車牌</label><input v-model="car.plate" type="text" class="border p-1 rounded bg-gray-50"></div>
+                        <div class="flex flex-col"><label class="text-xs text-gray-500">廠牌</label><input v-model="car.brand" type="text" class="border p-1 rounded bg-gray-50"></div>
+                        <div class="flex flex-col"><label class="text-xs text-gray-500">車型</label><input v-model="car.model" type="text" class="border p-1 rounded bg-gray-50"></div>
+                        <div class="flex flex-col"><label class="text-xs text-gray-500">年份</label><input v-model="car.year" type="text" class="border p-1 rounded bg-gray-50"></div>
+                        <div class="flex flex-col"><label class="text-xs text-gray-500">顏色</label><input v-model="car.color" type="text" class="border p-1 rounded bg-gray-50"></div>
+                        <div class="flex flex-col"><label class="text-xs text-gray-500">里程</label><input v-model="car.mileage" type="text" class="border p-1 rounded bg-gray-50"></div>
+                        <div class="flex flex-col"><label class="text-xs text-gray-500">編號</label><input v-model="car.stock_id" type="text" class="border p-1 rounded bg-gray-50"></div>
+                        <div class="flex flex-col"><label class="text-xs text-gray-500">車身</label><input v-model="car.vin" type="text" class="border p-1 rounded bg-gray-50"></div>
+                        
+                        <div class="flex flex-col">
+                            <label class="text-xs text-gray-500">網路價</label>
+                            <input v-model="car.list_price" type="text" class="border p-1 rounded bg-gray-50 border-red-400 text-red-600 font-bold">
+                        </div>
+                        <div class="flex flex-col">
+                            <label class="text-xs text-gray-500">合約售價</label>
+                            <input v-model="car.deal_price" type="text" class="border p-1 rounded bg-gray-50 border-red-400 text-red-600 font-bold">
+                        </div>
+                    </div>
+                </div>
+
+                <button @click="generateText" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 px-4 rounded mt-6 shadow-md transition">
+                    ⚡ 生成文案 (三區) ⚡
+                </button>
+
+            </aside>
+
+            <main class="flex-1 flex flex-col gap-4 overflow-hidden">
+                
+                <div class="flex-1 bg-white border rounded-lg shadow-sm flex flex-col">
+                    <div class="bg-gray-100 p-2 border-b flex justify-between items-center rounded-t-lg">
+                        <span class="font-bold text-gray-700">1. 成交資料</span>
+                        <button @click="copyText('deal')" class="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm transition">📋 複製</button>
+                    </div>
+                    <textarea v-model="output.deal" class="flex-1 w-full p-3 resize-none focus:outline-none text-sm leading-relaxed" readonly></textarea>
+                </div>
+
+                <div class="flex-1 flex flex-col md:flex-row gap-4">
+                    <div class="flex-1 bg-white border rounded-lg shadow-sm flex flex-col">
+                        <div class="bg-gray-100 p-2 border-b flex justify-between items-center rounded-t-lg">
+                            <span class="font-bold text-gray-700">2. 給技師</span>
+                            <button @click="copyText('tech')" class="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm transition">📋 複製</button>
+                        </div>
+                        <textarea v-model="output.tech" class="flex-1 w-full p-3 resize-none focus:outline-none text-sm" readonly></textarea>
+                    </div>
+
+                    <div class="flex-1 bg-white border rounded-lg shadow-sm flex flex-col">
+                        <div class="bg-gray-100 p-2 border-b flex justify-between items-center rounded-t-lg">
+                            <span class="font-bold text-gray-700">3. 給行政</span>
+                            <button @click="copyText('admin')" class="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm transition">📋 複製</button>
+                        </div>
+                        <textarea v-model="output.admin" class="flex-1 w-full p-3 resize-none focus:outline-none text-sm" readonly></textarea>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <div v-if="showModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full">
+                <h3 class="text-lg font-bold mb-2 flex items-center gap-2">⚠️ 提醒</h3>
+                <p class="text-gray-700 whitespace-pre-line">{{ modalMessage }}</p>
+                <div class="mt-4 flex justify-end">
+                    <button @click="showModal = false" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition">確定</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, reactive, watch } = Vue;
+        const API_URL = "http://localhost:8000/api"; 
+
+        createApp({
+            setup() {
+                const statusMessage = ref("系統準備就緒");
+                const statusColor = ref("text-green-300");
+                const searchQuery = ref("");
+                const showModal = ref(false);
+                const modalMessage = ref("");
+
+                const sites = [
+                    { name: '北投店', label: '北投' }, { name: '桃園店', label: '桃園' },
+                    { name: '新竹店', label: '新竹' }, { name: '台中店', label: '台中' },
+                    { name: '高雄店', label: '高雄' }
+                ];
+
+                const settings = reactive({
+                    company: "杰運", discount: "折1.1萬", subsidy: "不折",
+                    deposit: "2.9", site: "北投店", trans_store: "北投店"
+                });
+
+                const car = reactive({
+                    plate: '', brand: '', model: '', year: '', 
+                    color: '', mileage: '', stock_id: '', vin: '', 
+                    list_price: '0', deal_price: '0'
+                });
+
+                const output = reactive({ deal: "", tech: "", admin: "" });
+
+                const updateStatus = (msg, colorClass) => {
+                    statusMessage.value = msg;
+                    statusColor.value = colorClass;
+                };
+
+                const showAlert = (msg) => {
+                    modalMessage.value = msg;
+                    showModal.value = true;
+                };
+
+                const searchCar = async () => {
+                    if (!searchQuery.value) return;
+                    updateStatus("搜尋中...", "text-yellow-300");
+                    
+                    try {
+                        const res = await fetch(`${API_URL}/search_plate?plate=${encodeURIComponent(searchQuery.value)}`);
+                        const result = await res.json();
+                        
+                        if (result.status === "success") {
+                            const d = result.data;
+                            car.plate = d['車牌'] || '';
+                            car.brand = d['廠牌'] || '';
+                            car.model = d['車型'] || '';
+                            car.year = d['clean_year'] || '';
+                            car.color = d['顏色'] || '';
+                            car.mileage = d['里程'] || '';
+                            car.stock_id = d['編號'] || '';
+                            car.vin = d['車身'] || '';
+                            car.list_price = String(d['顯示價格'] || '0');
+                            
+                            updateStatus(`✅ 找到車輛：${car.model}`, "text-green-300");
+                            calcPrice();
+                        } else {
+                            updateStatus("❌ 查無此車牌", "text-red-300");
+                            showAlert("資料庫中找不到這個車牌，請確認 Google Sheet 資料是否已更新。");
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        updateStatus("❌ 網路連線錯誤", "text-red-300");
+                    }
+                };
+
+                const calcPrice = () => {
+                    let list_price_wan = parseFloat(car.list_price) || 0;
+                    let current_price_yuan = list_price_wan * 10000;
+
+                    if (settings.discount === "折1.1萬") current_price_yuan -= 11000;
+                    if (settings.subsidy === "折3264") current_price_yuan -= 3264;
+
+                    if (settings.subsidy === "折3264") {
+                        car.deal_price = Math.round(current_price_yuan).toString();
+                    } else {
+                        car.deal_price = (current_price_yuan / 10000).toFixed(2).replace(/\.00$/, '');
+                    }
+                };
+
+                watch([() => car.list_price, () => settings.discount, () => settings.subsidy], calcPrice);
+
+                const generateText = () => {
+                    calcPrice(); 
+                    
+                    let deposit_wan = parseFloat(settings.deposit) || 0;
+                    let deposit_yuan = deposit_wan * 10000;
+                    let list_price_wan = parseFloat(car.list_price) || 0;
+                    let list_price_yuan = list_price_wan * 10000;
+
+                    let price_after_11k = list_price_yuan;
+                    if (settings.discount === "折1.1萬") price_after_11k -= 11000;
+
+                    let has_subsidy = (settings.subsidy === "折3264");
+                    let price_after_subsidy = price_after_11k;
+                    if (has_subsidy) price_after_subsidy -= 3264;
+
+                    let final_balance = price_after_subsidy - deposit_yuan;
+
+                    let bank_info = {
+                        "杰運": { h: "杰運車源", b: "玉山銀行 石牌分行", n: "杰運汽車股份有限公司", a: "0864940036786" },
+                        "展帆": { h: "展帆車源", b: "中國信託 萬華分行", n: "展帆汽車有限公司", a: "668545685788" },
+                        "禾迪": { h: "禾迪車源", b: "中國信託 板和分行", n: "禾迪汽車有限公司", a: "186540179959" }
+                    }[settings.company];
+
+                    let dealLines = [
+                        bank_info.h,
+                        "先生小姐",
+                        "銷售業務:",
+                        "合約編號：",
+                        `車號: ${car.plate}`,
+                        `車身碼: ${car.vin}`,
+                        `廠牌：${car.brand}`,
+                        `年分: ${car.year}`,
+                        `車型: ${car.model}`,
+                        `顏色: ${car.color}色`,
+                        `里程: ${car.mileage}萬`,
+                        `售價：${car.list_price}萬`,
+                        (settings.discount === "折1.1萬" ? "線上折1.1萬" : ""),
+                        (has_subsidy ? "貸款補貼息3264元" : ""),
+                        "合約車主:",
+                        `合約售價：${car.deal_price}${has_subsidy ? '元' : '萬'}`,
+                        "付款方式:匯款/貸款",
+                        "匯款人：",
+                        "金額： 萬",
+                        "匯款帳號末五碼:",
+                        `匯款帳號:${bank_info.b}`,
+                        `戶名:${bank_info.n}`,
+                        `帳號:${bank_info.a}`,
+                        "未匯款金額: 萬",
+                        "———————————",
+                        "",
+                        "———————————",
+                        (has_subsidy ? "贈交美、好禮二選一補貼息3264元" : "贈交美、好禮二選一")
+                    ].filter(line => line !== "").join("\n");
+
+                    let calcStr = `\n\n\n\n【金額試算明細】
+1. 售價 (網路)： ${list_price_wan} 萬
+2. 折1.1萬後 ： ${settings.discount === "折1.1萬" ? (price_after_11k/10000) + '萬' : '未選擇'}
+3. 貸款補貼息： ${has_subsidy ? '有 (折3264)' : '無'}
+4. 合約總價  ： ${has_subsidy ? Math.round(price_after_subsidy) + '元' : (price_after_subsidy/10000) + '萬'}
+5. 訂金 (${deposit_wan}萬) 後尾款： ${Math.round(final_balance)} 元`;
+
+                    output.deal = dealLines + calcStr;
+
+                    output.tech = `${car.year} ${car.brand} ${car.model}
+車號：${car.plate}
+施工地：${settings.site}
+車主資料已建立`;
+
+                    let trans_note = settings.trans_store === "北投店" ? "" : `(${settings.trans_store.replace('店','')}過戶)`;
+                    output.admin = `${car.year} ${car.brand} ${car.model}
+編號：${car.stock_id}
+車號：${car.plate}
+
+${trans_note}`;
+                    
+                    updateStatus(`⚡ 文案已生成 (公司: ${settings.company})！`, "text-blue-300");
+                };
+
+                const copyText = (type) => {
+                    let textToCopy = output[type];
+                    if (!textToCopy) return;
+
+                    navigator.clipboard.writeText(textToCopy).then(() => {
+                        updateStatus(`✅ 已複製 (${type})`, "text-green-300");
+                        if (type === 'deal') showAlert("記得輸入合約編號喔！");
+                        if (type === 'admin') showAlert("記得填寫取證表唷！");
+                    });
+                };
+
+                return {
+                    statusMessage, statusColor, searchQuery, showModal, modalMessage,
+                    sites, settings, car, output,
+                    searchCar, generateText, copyText
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

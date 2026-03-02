@@ -14,9 +14,14 @@
 </head>
 <body>
     <div id="app" class="h-screen flex flex-col" v-cloak>
-        <header class="bg-indigo-700 text-white p-4 shadow-md flex justify-between items-center">
+<header class="bg-indigo-700 text-white p-4 shadow-md flex justify-between items-center">
             <h1 class="text-xl font-bold">🤝 杰運汽車 - 恭喜成交文案產生器</h1>
-            <span class="text-sm px-3 py-1 bg-indigo-800 rounded-full" :class="statusColor">{{ statusMessage }}</span>
+            <div class="flex items-center gap-4">
+                <a href="/" class="bg-yellow-500 hover:bg-yellow-600 text-indigo-900 font-bold px-4 py-2 rounded text-sm transition shadow-sm">
+                    ⬅ 🚗 查車源
+                </a>
+                <span class="text-sm px-3 py-1 bg-indigo-800 rounded-full" :class="statusColor">{{ statusMessage }}</span>
+            </div>
         </header>
 
         <div class="flex-1 overflow-hidden flex flex-col md:flex-row p-4 gap-4">

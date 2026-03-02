@@ -17,9 +17,12 @@
 </head>
 <body>
     <div id="app" class="flex h-screen flex-col">
-        <header class="bg-slate-800 text-white p-4 shadow-md flex justify-between items-center">
+<header class="bg-slate-800 text-white p-4 shadow-md flex justify-between items-center">
             <h1 class="text-xl font-bold">🚗 杰運汽車新竹店 - E車源分析系統</h1>
             <div class="flex items-center gap-4">
+                <a href="/deal" class="bg-yellow-500 hover:bg-yellow-600 text-slate-900 font-bold px-4 py-2 rounded text-sm transition shadow-sm">
+                    🤝 寫合約 (恭喜成交) ➔
+                </a>
                 <span class="text-sm text-green-400">{{ statusMessage }}</span>
                 <button @click="refreshData" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm transition shadow-sm">
                     🔄 從 Google Sheet 更新資料
@@ -161,7 +164,7 @@
 
     <script>
         const { createApp, ref, reactive, onMounted } = Vue;
-        const API_URL = "/api";
+        const API_URL = "http://localhost:8000/api";
 
         createApp({
             setup() {

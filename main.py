@@ -166,12 +166,18 @@ def get_cars(
 
 
 # === 讓後端直接提供前端網頁 ===
+# === 讓後端提供前端網頁 ===
 @app.get("/")
-def serve_html():
-    return FileResponse("index.html")
+def serve_home():
+    return FileResponse("index.html")  # 這是新的首頁大廳
+
+@app.get("/cars")
+def serve_cars():
+    return FileResponse("cars.html")   # 這是查車源系統
+
 @app.get("/deal")
 def serve_deal():
-    return FileResponse("deal.html")
+    return FileResponse("deal.html")   # 這是成交系統
 
 
 # ================= 新增：給「恭喜成交系統」專用的 API =================

@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚗 杰運汽車新竹店 - E車源系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
+        .flash-text { animation: flash 1.5s infinite alternate; }
+        @keyframes flash {
+            0% { background-color: transparent; }
+            100% { background-color: #FFE066; color: #C62828; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app" class="flex h-screen flex-col">
+<header class="bg-slate-800 text-white p-4 shadow-md flex justify-between items-center">
+            <h1 class="text-xl font-bold">🚗 杰運汽車新竹店 - E車源分析系統</h1>
+            <div class="flex items-center gap-4">
+                <a href="/deal" class="bg-yellow-500 hover:bg-yellow-600 text-slate-900 font-bold px-4 py-2 rounded text-sm transition shadow-sm">
+                    🤝 寫合約 (恭喜成交) ➔
+                </a>
+                <span class="text-sm text-green-400">{{ statusMessage }}</span>
+                <button @click="refreshData" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm transition shadow-sm">
+                    🔄 從 Google Sheet 更新資料
+                </button>
+            </div>
+        </header>
+
+        <div class="flex flex-1 overflow-hidden">
+            <aside class="w-72 bg-white border-r p-5 overflow-y-auto shadow-sm">
+                <h2 class="font-bold text-lg mb-4 text-gray-700 border-b pb-2">🔍 條件篩選</h2>
+                
+                <div class="space-y-4 text-sm">
+                    <div>
+                        <label class="block text-gray-600 mb-1">廠牌</label>
+                        <select v-model="filters.brand" class="w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                            <option v-for="opt in options.brands" :value="opt">{{ opt }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-gray-600 mb-1">產權</label>
+                        <select v-model="filters.prop" class="w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                            <option v-for="opt in options.properties" :value="opt">{{ opt }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-gray-600 mb-1">車型 (關鍵字)</label>
+                        <input v-model="filters.model" type="text" class="w-full border rounded p-2" placeholder="如: C300">
+                    </div>
+                    <div>
+                        <label class="block text-gray-600 mb-1">地點</label>
+                        <select v-model="filters.location" class="w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                            <option v-for="opt in options.locations" :value="opt">{{ opt }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-gray-600 mb-1">車牌</label>
+                        <input v-model="filters.plate" type="text" class="w-full border rounded p-2">
+                    </div>
+                    <div>
+                        <label class="block text-gray-600 mb-1">價格區間 (萬)</label>
+                        <div class="flex items-center gap-2">
+                            <input v-model="filters.min_price" type="number" class="w-1/2 border rounded p-2" placeholder="Min">
+                            <span>-</span>
+                            <input v-model="filters.max_price" type="number" class="w-1/2 border rounded p-2" placeholder="Max">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-600 mb-1">排序方式</label>
+                        <select v-model="filters.sort_by" class="w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-blue-400">
+                            <option value="預設">預設 (年份新 → 舊)</option>
+                            <option value="年份新到舊">年份: 新 → 舊</option>
+                            <option value="年份舊到新">年份: 舊 → 新</option>
+                            <option value="價格高到低">價格: 高 → 低</option>
+                            <option value="價格低到高">價格: 低 → 高</option>
+                            <option value="入庫日新到舊">入庫日: 新 → 舊</option>
+                            <option value="入庫日舊到新">入庫日: 舊 → 新</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mt-8 space-y-2">
+                    <button @click="searchCars" class="w-full bg-slate-800 text-white py-2 rounded hover:bg-slate-700 transition shadow-sm">
+                        🔍 搜尋車輛
+                    </button>
+                    <button @click="resetFilters" class="w-full bg-gray-200 text-gray-700 py-2 rounded hover:bg-gray-300 transition shadow-sm">
+                        重置條件
+                    </button>
+                </div>
+            </aside>
+
+            <main class="flex-1 overflow-y-auto p-6 bg-gray-100 relative">
+                <div v-if="loading" class="absolute inset-0 flex items-center justify-center bg-white/50 z-10">
+                    <span class="text-xl font-bold text-gray-600">載入中...</span>
+                </div>
+
+                <div v-else class="space-y-4">
+                    <p class="text-gray-500 mb-4">共找到 {{ cars.length }} 筆資料</p>
+                    
+                    <div v-for="(car, index) in cars" :key="index" 
+                         class="bg-white p-5 rounded-lg shadow border transition"
+                         :class="car.is_reserved ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:shadow-md'">
+                         
+                        <div class="flex justify-between items-start">
+                            <div class="space-y-2">
+                                <div v-if="car.is_reserved" class="bg-yellow-200 text-red-700 font-bold px-2 py-1 rounded shadow-sm inline-block mb-1 text-sm border border-red-300">
+                                    ⛔ 注意：此車可能已收訂 (依底色標記)
+                                </div>
+
+                                <h3 class="text-xl font-bold text-slate-800">
+                                    【{{ String(car.年份).replace('.0', '') }}】 {{ car.廠牌 }} {{ car.車型 }} {{ car.版本 }}
+                                </h3>
+                                
+                                <div class="flex items-center gap-2 text-sm font-bold">
+                                    <span v-if="car.filter_property" :class="{'flash-text px-1 rounded': ['展帆', '禾迪'].includes(car.filter_property), 'text-green-700': true}">
+                                        產權: {{ car.filter_property }}
+                                    </span>
+                                    <span v-else class="text-green-700">公司: {{ car.公司 }}</span>
+                                    <span class="text-green-700">| KEY: {{ car.KEY }}</span>
+                                    <span class="text-green-700">| 出廠: {{ String(car.出廠).split(' ')[0] }}</span>
+                                </div>
+
+                                <div class="text-sm text-gray-700">
+                                    編號: {{ car.編號 }} &nbsp;|&nbsp; 
+                                    車牌: <span class="font-bold text-blue-600">{{ car.車牌 }}</span> &nbsp;|&nbsp; 
+                                    地點: {{ car.車輛位置 }} &nbsp;|&nbsp; 
+                                    入庫: <span class="text-orange-600">{{ String(car.入庫日期).split(' ')[0] }}</span> &nbsp;|&nbsp; 
+                                    負責: {{ car.負責人 }}
+                                </div>
+                                <div class="text-xs text-gray-500">
+                                    里程: {{ car.里程 }}萬 &nbsp;|&nbsp; 顏色: {{ car.顏色 }} &nbsp;|&nbsp; 車身: {{ car.車身 }}
+                                </div>
+                                <div v-if="car.車況 && car.車況 !== 'nan'" class="text-sm text-red-600 mt-1 font-bold">
+                                    ⚠️ 車況: {{ car.車況 }}
+                                </div>
+                            </div>
+                            
+                            <div class="text-right flex flex-col items-end">
+                                <div class="text-2xl font-bold text-red-600 mb-2">
+                                    {{ car.顯示價格 > 0 ? '$' + car.顯示價格 + ' 萬' : '電洽/未標' }}
+                                </div>
+                                <button @click="copyPlate(car.車牌, car.車型)" class="text-sm bg-white hover:bg-gray-100 border border-gray-300 px-3 py-1 rounded shadow-sm text-gray-700 transition">
+                                    📋 複製車牌
+                                </button>
+                                <div class="text-xs text-gray-400 mt-2">
+                                    代碼: {{ Math.abs((car.calc_net - car.calc_start) - 1.9) < 0.001 ? '3.1' : '2' }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div v-if="cars.length === 0" class="text-center py-10 text-gray-500 text-lg border-2 border-dashed border-gray-300 rounded-lg">
+                        ❌ 找不到符合條件的車輛
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, reactive, onMounted } = Vue;
+        const API_URL = "http://localhost:8000/api";
+
+        createApp({
+            setup() {
+                const cars = ref([]);
+                const options = reactive({ brands: [], locations: [], properties: [] });
+                const loading = ref(false);
+                const statusMessage = ref("系統準備就緒");
+
+                const filters = reactive({
+                    brand: "全部", location: "全部", prop: "全部",
+                    model: "", plate: "", min_price: "", max_price: "",
+                    sort_by: "預設"
+                });
+
+                const fetchOptions = async () => {
+                    try {
+                        const res = await fetch(`${API_URL}/options`);
+                        const data = await res.json();
+                        Object.assign(options, data);
+                    } catch (e) { console.error("無法取得選項清單", e); }
+                };
+
+                const searchCars = async () => {
+                    loading.value = true;
+                    try {
+                        const params = new URLSearchParams();
+                        for (let key in filters) {
+                            if (filters[key] !== "") params.append(key, filters[key]);
+                        }
+                        if (!filters.max_price) params.set('max_price', 99999);
+
+                        const res = await fetch(`${API_URL}/cars?${params.toString()}`);
+                        const data = await res.json();
+                        cars.value = data.data;
+                        statusMessage.value = `查詢成功，共 ${data.total} 筆`;
+                    } catch (e) {
+                        statusMessage.value = "連線失敗";
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                const refreshData = async () => {
+                    statusMessage.value = "正在從 Google Sheet 同步最新資料...";
+                    loading.value = true;
+                    try {
+                        await fetch(`${API_URL}/refresh`);
+                        await fetchOptions();
+                        await searchCars();
+                        statusMessage.value = "✅ 資料同步完成！";
+                    } catch (e) { statusMessage.value = "同步失敗"; }
+                };
+
+                const resetFilters = () => {
+                    Object.assign(filters, {
+                        brand: "全部", location: "全部", prop: "全部",
+                        model: "", plate: "", min_price: "", max_price: "", sort_by: "預設"
+                    });
+                    searchCars();
+                };
+
+                const copyPlate = (plate, model) => {
+                    if (plate && plate !== 'nan') {
+                        navigator.clipboard.writeText(plate).then(() => {
+                            statusMessage.value = `📋 已複製 ${model} 車牌：[${plate}]`;
+                            setTimeout(() => statusMessage.value = "系統準備就緒", 3000);
+                        });
+                    } else { alert("此車輛沒有車牌資料！"); }
+                };
+
+                onMounted(() => {
+                    fetchOptions().then(searchCars);
+                });
+
+                return { cars, options, filters, loading, statusMessage, searchCars, resetFilters, refreshData, copyPlate };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

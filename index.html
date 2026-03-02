@@ -7,24 +7,32 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>body { font-family: 'Microsoft JhengHei', sans-serif; }</style>
 </head>
-<body class="bg-slate-100 h-screen flex items-center justify-center">
-    <div class="max-w-3xl w-full px-4">
+<body class="bg-slate-100 h-screen flex items-center justify-center p-4">
+    <div class="max-w-3xl w-full">
         <div class="text-center mb-10">
-            <h1 class="text-4xl font-bold text-slate-800 mb-2">杰運汽車新竹店 - 內部系統</h1>
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-800 mb-2">杰運汽車新竹店 - 內部系統</h1>
             <p class="text-slate-500 font-bold">請選擇您要使用的工具</p>
         </div>
         
         <div class="grid md:grid-cols-2 gap-6">
-            <a href="/cars" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1">
+            <a href="/cars" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col items-center justify-center">
                 <div class="text-7xl mb-4 group-hover:scale-110 transition-transform">🔍</div>
                 <h2 class="text-2xl font-bold text-slate-800 mb-2">E車源分析系統</h2>
                 <p class="text-gray-500 text-sm">查詢車輛庫存、價格篩選<br>產權標記與自動連線 Google Sheet</p>
             </a>
             
-            <a href="/deal" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1">
+            <a href="/deal" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col items-center justify-center">
                 <div class="text-7xl mb-4 group-hover:scale-110 transition-transform">🤝</div>
                 <h2 class="text-2xl font-bold text-slate-800 mb-2">恭喜成交系統</h2>
                 <p class="text-gray-500 text-sm">車牌快速帶入資料、自動計算尾款<br>一鍵生成三區合約文字模板</p>
+            </a>
+            
+            <a href="/loan" class="md:col-span-2 max-w-lg mx-auto w-full bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-6 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6">
+                <div class="text-6xl sm:text-5xl group-hover:scale-110 transition-transform">📈</div>
+                <div class="text-center sm:text-left">
+                    <h2 class="text-xl font-bold text-slate-800 mb-1">分期試算工具</h2>
+                    <p class="text-gray-500 text-xs sm:text-sm">輸入三碼車價自動判斷期數<br>計算月付、總利息與年份加價表</p>
+                </div>
             </a>
         </div>
     </div>

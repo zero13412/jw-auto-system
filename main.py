@@ -1,12 +1,17 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, UploadFile, File
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
+import openpyxl
+import gspread
+from google.oauth2.service_account import Credentials
 import re
+import os
+import io
 
 app = FastAPI(title="🚗 杰運汽車新竹店 - 內部系統 API")
 
-# 允許前端跨域請求 (CORS)
+# 允許前端跨域請求
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -75,13 +80,11 @@ def load_and_clean_data():
     
     df['filter_property'] = df.apply(normalize_property, axis=1)
     
-    # 讀取 Google Sheet 的收訂狀態
     if '收訂狀態' in df.columns:
         df['is_reserved'] = df['收訂狀態'].apply(lambda x: True if str(x).strip() == "已收訂" else False)
     else:
         df['is_reserved'] = False 
     
-    # 日期排序用隱藏欄位
     if '入庫日期' in df.columns:
         df['入庫_dt'] = df['入庫日期'].apply(parse_roc_date)
         
@@ -164,38 +167,106 @@ def get_cars(
 
 @app.get("/api/search_plate")
 def search_plate(plate: str):
-    """透過車牌精準搜尋單一車輛資料 (用於成交系統)"""
     if cached_df is None: load_and_clean_data()
     res = cached_df.copy()
-    
     if '車牌' in res.columns:
         target_plate = plate.strip().upper()
         res['clean_plate'] = res['車牌'].astype(str).str.replace(" ", "").str.upper()
         matches = res[res['clean_plate'].str.contains(target_plate, na=False)]
-        
         if len(matches) > 0:
             car_data = matches.iloc[0].to_dict()
             year_val = str(car_data.get('年份', ''))
             match = re.search(r'\d{4}', year_val)
             car_data['clean_year'] = match.group(0) if match else year_val.replace('.0', '')
             return {"status": "success", "data": car_data}
-            
     return {"status": "error", "message": "查無此車"}
 
-# ================= 網頁路由區塊 (首頁、車源、成交、分期) =================
+# ================= 自動處理 Excel 與上傳 API =================
+@app.post("/api/upload_excel")
+async def upload_excel(file: UploadFile = File(...)):
+    try:
+        contents = await file.read()
+        wb = openpyxl.load_workbook(filename=io.BytesIO(contents), data_only=True)
+        
+        # 尋找指定的工作表
+        sheet_name = None
+        for name in wb.sheetnames:
+            if "車源證件資料" in name:
+                sheet_name = name
+                break
+        if not sheet_name:
+            sheet_name = wb.sheetnames[0] # 如果真的找不到，拿第一頁
+        
+        ws = wb[sheet_name]
+        headers = [cell.value if cell.value is not None else "" for cell in ws[1]]
+        
+        col_model = headers.index("車型") if "車型" in headers else -1
+        col_version = headers.index("版本") if "版本" in headers else -1
+        
+        if "收訂狀態" not in headers:
+            headers.append("收訂狀態")
+        status_idx = headers.index("收訂狀態")
+        
+        data_to_upload = [headers]
+        
+        # 逐行判斷底色與抽取資料
+        for row in ws.iter_rows(min_row=2):
+            row_values = [cell.value if cell.value is not None else "" for cell in row]
+            
+            # 判斷是否為全空行，全空行就跳過
+            if not any(str(v).strip() for v in row_values):
+                continue
+                
+            while len(row_values) < len(headers):
+                row_values.append("")
+            
+            is_reserved = False
+            
+            # 判斷車型底色
+            if col_model != -1 and row_values[col_model] != "":
+                fill = row[col_model].fill
+                if fill and fill.patternType and fill.start_color.rgb not in ['00000000', 'FFFFFFFF', None]:
+                    is_reserved = True
+            
+            # 判斷版本底色
+            if not is_reserved and col_version != -1 and row_values[col_version] != "":
+                fill = row[col_version].fill
+                if fill and fill.patternType and fill.start_color.rgb not in ['00000000', 'FFFFFFFF', None]:
+                    is_reserved = True
+                    
+            row_values[status_idx] = "已收訂" if is_reserved else ""
+            data_to_upload.append(row_values)
+        
+        # 尋找金鑰檔案 (優先找 Render 的秘密文件區)
+        key_path = "/etc/secrets/google_key.json"
+        if not os.path.exists(key_path):
+            return {"status": "error", "message": "尚未設定 Google API 憑證！請通知管理員。"}
 
+        scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+        creds = Credentials.from_service_account_file(key_path, scopes=scopes)
+        client = gspread.authorize(creds)
+        
+        # 開啟並覆蓋 Google Sheet
+        gsheet = client.open_by_key(SHEET_ID).sheet1
+        gsheet.clear()
+        
+        # 將所有資料轉換為字串避免 Google API 報錯
+        stringified_data = [[str(cell) for cell in row] for row in data_to_upload]
+        gsheet.update(values=stringified_data, range_name='A1')
+        
+        # 同步更新本地資料
+        load_and_clean_data()
+        return {"status": "success", "message": f"成功同步 {len(data_to_upload)-1} 筆車源！包含底色標記。"}
+        
+    except Exception as e:
+        return {"status": "error", "message": f"處理失敗：{str(e)}"}
+
+# ================= 網頁路由區塊 =================
 @app.get("/")
-def serve_home():
-    return FileResponse("index.html")
-
+def serve_home(): return FileResponse("index.html")
 @app.get("/cars")
-def serve_cars():
-    return FileResponse("cars.html")
-
+def serve_cars(): return FileResponse("cars.html")
 @app.get("/deal")
-def serve_deal():
-    return FileResponse("deal.html")
-
+def serve_deal(): return FileResponse("deal.html")
 @app.get("/loan")
-def serve_loan():
-    return FileResponse("loan.html")
+def serve_loan(): return FileResponse("loan.html")

@@ -7,9 +7,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>body { font-family: 'Microsoft JhengHei', sans-serif; }</style>
 </head>
-<body class="bg-slate-100 h-screen flex items-center justify-center p-4">
-    <div class="max-w-3xl w-full">
-        <div class="text-center mb-10">
+<body class="bg-slate-100 min-h-screen flex items-center justify-center p-4">
+    <div class="max-w-4xl w-full">
+        <div class="text-center mb-8">
             <h1 class="text-3xl md:text-4xl font-bold text-slate-800 mb-2">杰運汽車新竹店 - 內部系統</h1>
             <p class="text-slate-500 font-bold">請選擇您要使用的工具</p>
         </div>
@@ -18,23 +18,89 @@
             <a href="/cars" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col items-center justify-center">
                 <div class="text-7xl mb-4 group-hover:scale-110 transition-transform">🔍</div>
                 <h2 class="text-2xl font-bold text-slate-800 mb-2">E車源分析系統</h2>
-                <p class="text-gray-500 text-sm">查詢車輛庫存、價格篩選<br>產權標記與自動連線 Google Sheet</p>
+                <p class="text-gray-500 text-sm">查詢車輛庫存、價格篩選</p>
             </a>
             
             <a href="/deal" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col items-center justify-center">
                 <div class="text-7xl mb-4 group-hover:scale-110 transition-transform">🤝</div>
                 <h2 class="text-2xl font-bold text-slate-800 mb-2">恭喜成交系統</h2>
-                <p class="text-gray-500 text-sm">車牌快速帶入資料、自動計算尾款<br>一鍵生成三區合約文字模板</p>
+                <p class="text-gray-500 text-sm">一鍵生成三區合約文字模板</p>
             </a>
             
-            <a href="/loan" class="md:col-span-2 max-w-lg mx-auto w-full bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-6 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6">
+            <a href="/loan" class="md:col-span-2 bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-6 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6">
                 <div class="text-6xl sm:text-5xl group-hover:scale-110 transition-transform">📈</div>
                 <div class="text-center sm:text-left">
                     <h2 class="text-xl font-bold text-slate-800 mb-1">分期試算工具</h2>
-                    <p class="text-gray-500 text-xs sm:text-sm">輸入三碼車價自動判斷期數<br>計算月付、總利息與年份加價表</p>
+                    <p class="text-gray-500 text-xs sm:text-sm">計算月付、總利息與年份加價表</p>
                 </div>
             </a>
+            
+            <div class="md:col-span-2 mt-2 bg-white rounded-xl shadow-lg border-2 border-indigo-100 p-6 sm:p-8">
+                <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div class="text-center md:text-left flex-1">
+                        <h2 class="text-2xl font-bold text-indigo-700 mb-2">📥 總表自動同步 (取代手動貼上)</h2>
+                        <p class="text-gray-600 text-sm leading-relaxed">
+                            只需在此處上傳最新的 <span class="font-bold text-red-500">E車源證件資料總表.xlsx</span>。<br>
+                            系統會自動提取資料表、<span class="font-bold text-red-500">掃描車輛底色轉為「已收訂」</span>，並在 15 秒內為您覆蓋 Google Sheet！
+                        </p>
+                    </div>
+                    <div class="w-full md:w-auto flex flex-col items-center gap-3">
+                        <label class="block w-full text-center bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg py-3 px-4 cursor-pointer hover:bg-indigo-100 transition font-bold">
+                            📂 選擇 Excel 檔案
+                            <input type="file" id="excelFile" accept=".xlsx" class="hidden" onchange="document.getElementById('fileName').textContent = this.files[0]?.name || '未選擇檔案'">
+                        </label>
+                        <div id="fileName" class="text-xs text-gray-500 truncate w-48 text-center">未選擇檔案</div>
+                        <button onclick="uploadExcel()" id="uploadBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition w-full shadow-indigo-200">
+                            🚀 上傳並同步資料
+                        </button>
+                    </div>
+                </div>
+                <div id="uploadStatus" class="mt-4 text-center font-bold text-sm hidden p-3 rounded-lg"></div>
+            </div>
         </div>
     </div>
+
+    <script>
+    async function uploadExcel() {
+        const fileInput = document.getElementById('excelFile');
+        const statusDiv = document.getElementById('uploadStatus');
+        const btn = document.getElementById('uploadBtn');
+        
+        if (!fileInput.files[0]) {
+            statusDiv.textContent = "❌ 請先點擊上方選擇 Excel 檔案！";
+            statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append("file", fileInput.files[0]);
+
+        statusDiv.textContent = "⏳ 資料處理中...正在判斷底色並覆蓋 Google Sheet，請稍候約 10-20 秒";
+        statusDiv.className = "mt-4 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block";
+        btn.disabled = true;
+        btn.classList.add("opacity-50", "cursor-not-allowed");
+
+        try {
+            const response = await fetch('/api/upload_excel', { method: 'POST', body: formData });
+            const result = await response.json();
+            
+            if (result.status === "success") {
+                statusDiv.textContent = "✅ " + result.message;
+                statusDiv.className = "mt-4 text-center font-bold text-sm bg-green-50 text-green-700 p-3 rounded-lg block";
+                fileInput.value = ""; // 清空
+                document.getElementById('fileName').textContent = '未選擇檔案';
+            } else {
+                statusDiv.textContent = "❌ " + result.message;
+                statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
+            }
+        } catch (error) {
+            statusDiv.textContent = "❌ 網路連線失敗或處理逾時。";
+            statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
+        } finally {
+            btn.disabled = false;
+            btn.classList.remove("opacity-50", "cursor-not-allowed");
+        }
+    }
+    </script>
 </body>
 </html>

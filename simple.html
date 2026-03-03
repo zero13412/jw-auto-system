@@ -10,19 +10,17 @@
         body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
         [v-cloak] { display: none !important; }
         
-        /* 讓表格在任何設備上都能無限制往右滑動 */
         .table-container {
             width: 100%;
-            height: calc(100vh - 120px); /* 扣掉頂部和底部的空間 */
-            overflow: auto; /* 允許上下左右滑動 */
-            -webkit-overflow-scrolling: touch; /* 讓手機滑動更順暢 */
+            height: calc(100vh - 120px);
+            overflow: auto; 
+            -webkit-overflow-scrolling: touch; 
         }
 
-        /* 凍結表頭 */
         th {
             position: sticky;
             top: 0;
-            background-color: #f3f4f6; /* Tailwind 的 gray-100 */
+            background-color: #f3f4f6; 
             z-index: 10;
             box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         }
@@ -66,15 +64,15 @@
                         <thead>
                             <tr>
                                 <th v-for="header in headers" :key="header" class="px-4 py-3 font-bold border border-gray-300 text-gray-700">
-                                    {{ header }}
+                                    {{ header.trim() === '' ? '代碼' : header }}
                                 </th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200 bg-white">
                             <tr v-for="(row, index) in dataList" :key="index" class="hover:bg-emerald-50 transition duration-150">
-                                <td v-for="header in headers" :key="header" class="px-4 py-2 border border-gray-200">
-                                    <span v-if="row[header] == '3.1'" class="text-red-600 font-bold bg-red-100 px-2 py-0.5 rounded shadow-sm">{{ row[header] }}</span>
-                                    <span v-else-if="row[header] == '2'" class="text-blue-600 font-bold bg-blue-100 px-2 py-0.5 rounded shadow-sm">{{ row[header] }}</span>
+                                <td v-for="header in headers" :key="header" class="px-4 py-2 border border-gray-200 text-center sm:text-left">
+                                    <span v-if="String(row[header]).trim() === '3.1'" class="text-red-600 font-bold bg-red-100 px-3 py-1 rounded shadow-sm text-base">3.1</span>
+                                    <span v-else-if="String(row[header]).trim() === '2'" class="text-blue-600 font-bold bg-blue-100 px-3 py-1 rounded shadow-sm text-base">2</span>
                                     <span v-else class="text-gray-800">{{ row[header] }}</span>
                                 </td>
                             </tr>
@@ -101,6 +99,33 @@
                 const dataList = ref([]);
                 const headers = ref([]);
 
+                // 智慧排序與隱藏邏輯
+                const processHeaders = (data) => {
+                    if (!data || data.length === 0) return [];
+                    let rawCols = Object.keys(data[0]);
+                    
+                    // 1. 隱藏包含「起算」的欄位 (例如 起算I)
+                    let cols = rawCols.filter(c => !c.includes('起算'));
+                    
+                    // 2. 尋找「價格」和「代碼(3.1/2)」的欄位
+                    let priceCol = cols.find(c => c.includes('網路') || c.includes('售價') || c.includes('價'));
+                    let codeCol = cols.find(c => {
+                        if (c.includes('代碼')) return true;
+                        // 如果欄位沒有名稱，我們檢查前幾筆資料看看有沒有 3.1 或 2
+                        let hasCodeValue = data.slice(0, 10).some(r => String(r[c]).trim() === '3.1' || String(r[c]).trim() === '2');
+                        return hasCodeValue;
+                    });
+
+                    // 3. 把代碼強制搬移到價格的右邊
+                    if (priceCol && codeCol && priceCol !== codeCol) {
+                        cols = cols.filter(c => c !== codeCol); // 先抽出來
+                        let insertIdx = cols.indexOf(priceCol) + 1; // 找到價格的下一個位置
+                        cols.splice(insertIdx, 0, codeCol); // 插進去
+                    }
+                    
+                    return cols;
+                };
+
                 const fetchData = async () => {
                     loading.value = true;
                     statusMessage.value = "🔄 正在從 Google Sheet 同步最新資料...";
@@ -112,12 +137,8 @@
                         
                         if (result.status === "success") {
                             dataList.value = result.data;
-                            if (result.data.length > 0) {
-                                // 動態抓取所有欄位名稱
-                                headers.value = Object.keys(result.data[0]);
-                            } else {
-                                headers.value = [];
-                            }
+                            headers.value = processHeaders(result.data);
+                            
                             statusMessage.value = `✅ 資料同步完成 (共 ${result.data.length} 筆)`;
                             statusColor.value = "text-emerald-300";
                         } else {

@@ -176,17 +176,16 @@ def search_plate(plate: str):
     return {"status": "error", "message": "查無此車"}
 
 # ================= 新增：抓取「簡單抓資料」分頁 =================
-# ================= 新增：抓取「簡單抓資料」分頁 =================
 @app.get("/api/simple_data")
 def get_simple_data():
     try:
-        # 直接抓取 gid 為 852175657 的分頁資料
-        df_simple = pd.read_csv(SIMPLE_CSV_URL)
+        # 【關鍵修改】：header=3 代表略過前3列，直接把「第4列」當作標題！第5列開始當作資料。
+        df_simple = pd.read_csv(SIMPLE_CSV_URL, header=3)
         
         # 1. 移除「整列都是空白」的資料
         df_simple = df_simple.dropna(how='all')
         
-        # 2. 【關鍵修改】：不要刪除欄位！只要把它們的名稱清空就好
+        # 2. 保留欄位，替換 Unnamed
         new_columns = []
         for c in df_simple.columns:
             if "Unnamed" in str(c):
@@ -195,7 +194,7 @@ def get_simple_data():
                 new_columns.append(str(c).strip())
         df_simple.columns = new_columns
         
-        # 3. 移除「整欄都是空白」的欄位 (避免畫面過寬)
+        # 3. 移除「整欄都是空白」的欄位
         df_simple = df_simple.dropna(axis=1, how='all')
         
         df_simple = df_simple.fillna("")
@@ -203,9 +202,9 @@ def get_simple_data():
         
     except Exception as e:
         import traceback
-        traceback.print_exc() # 在 Render 後台印出詳細錯誤，方便除錯
+        traceback.print_exc()
         return {"status": "error", "message": f"讀取失敗：{str(e)}"}
-# ================= 自動處理 Excel 與上傳 API =================
+    # ================= 自動處理 Excel 與上傳 API =================
 @app.post("/api/upload_excel")
 async def upload_excel(file: UploadFile = File(...)):
     try:

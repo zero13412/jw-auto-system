@@ -104,26 +104,43 @@
                     if (!data || data.length === 0) return [];
                     let rawCols = Object.keys(data[0]);
                     
-                    // 1. 隱藏包含「起算」的欄位 (例如 起算I)
+                    // 1. 隱藏包含「起算」的欄位
                     let cols = rawCols.filter(c => !c.includes('起算'));
                     
-                    // 2. 尋找「價格」和「代碼(3.1/2)」的欄位
+                    // 2. 找出關鍵欄位：「項次」、「價格」、「代碼」
+                    let itemCol = cols.find(c => c.includes('項次') || c.includes('序號'));
                     let priceCol = cols.find(c => c.includes('網路') || c.includes('售價') || c.includes('價'));
                     let codeCol = cols.find(c => {
                         if (c.includes('代碼')) return true;
-                        // 如果欄位沒有名稱，我們檢查前幾筆資料看看有沒有 3.1 或 2
-                        let hasCodeValue = data.slice(0, 10).some(r => String(r[c]).trim() === '3.1' || String(r[c]).trim() === '2');
-                        return hasCodeValue;
+                        return data.slice(0, 10).some(r => String(r[c]).trim() === '3.1' || String(r[c]).trim() === '2');
                     });
 
-                    // 3. 把代碼強制搬移到價格的右邊
-                    if (priceCol && codeCol && priceCol !== codeCol) {
-                        cols = cols.filter(c => c !== codeCol); // 先抽出來
-                        let insertIdx = cols.indexOf(priceCol) + 1; // 找到價格的下一個位置
-                        cols.splice(insertIdx, 0, codeCol); // 插進去
+                    // 3. 開始強制重建排列順序
+                    let finalCols = [];
+
+                    // [步驟A] 強制把「項次」塞在第一格
+                    if (itemCol) {
+                        finalCols.push(itemCol);
+                    }
+
+                    // [步驟B] 把其他欄位依序塞入 (排除已經處理的「項次」跟準備處理的「代碼」)
+                    for (let c of cols) {
+                        if (c !== itemCol && c !== codeCol) {
+                            finalCols.push(c);
+                        }
+                    }
+
+                    // [步驟C] 強制把「代碼」安插在「價格」的後面一格
+                    if (codeCol) {
+                        if (priceCol) {
+                            let insertIdx = finalCols.indexOf(priceCol) + 1;
+                            finalCols.splice(insertIdx, 0, codeCol);
+                        } else {
+                            finalCols.push(codeCol);
+                        }
                     }
                     
-                    return cols;
+                    return finalCols;
                 };
 
                 const fetchData = async () => {

@@ -22,7 +22,6 @@ app.add_middleware(
 # Google Sheet 設定
 SHEET_ID = "1HWb5u6EGYSHVJHFhmhmsVv4xDgHlQEkdicfXBuFp86w"
 CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
-# 新增：簡單抓資料的特定 GID 網址
 SIMPLE_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=852175657"
 
 cached_df = None
@@ -175,28 +174,22 @@ def search_plate(plate: str):
             return {"status": "success", "data": car_data}
     return {"status": "error", "message": "查無此車"}
 
-# ================= 新增：抓取「簡單抓資料」分頁 =================
 @app.get("/api/simple_data")
 def get_simple_data():
     try:
-        # 【關鍵修改】：header=3 代表略過前3列，直接把「第4列」當作標題！第5列開始當作資料。
+        # header=3 代表略過前3列，將第4列當作標題
         df_simple = pd.read_csv(SIMPLE_CSV_URL, header=3)
-        
-        # 1. 移除「整列都是空白」的資料
         df_simple = df_simple.dropna(how='all')
         
-        # 2. 保留欄位，替換 Unnamed
         new_columns = []
         for c in df_simple.columns:
             if "Unnamed" in str(c):
-                new_columns.append(" ") # 給個空白當標題，保留資料
+                new_columns.append(" ")
             else:
                 new_columns.append(str(c).strip())
         df_simple.columns = new_columns
         
-        # 3. 移除「整欄都是空白」的欄位
         df_simple = df_simple.dropna(axis=1, how='all')
-        
         df_simple = df_simple.fillna("")
         return {"status": "success", "data": df_simple.to_dict(orient="records")}
         
@@ -204,43 +197,46 @@ def get_simple_data():
         import traceback
         traceback.print_exc()
         return {"status": "error", "message": f"讀取失敗：{str(e)}"}
-    # ================= 自動處理 Excel 與上傳 API =================
+
+# ================= 自動處理 Excel 與上傳 API =================
 @app.post("/api/upload_excel")
 async def upload_excel(file: UploadFile = File(...)):
     try:
         filename = file.filename
-        # 【關鍵判斷】：檔名有「新竹」就存新竹，否則存 E車源
         target_tab_name = "新竹車源" if "新竹" in filename else "E車源"
 
         contents = await file.read()
         wb = openpyxl.load_workbook(filename=io.BytesIO(contents), data_only=True)
         
-        sheet_name = None
+        # ---------------------------------------------------------
+        # 第一部分：處理【在庫車源】 (車源證件資料表)
+        # ---------------------------------------------------------
+        sheet_name_main = None
         for name in wb.sheetnames:
             if "車源證件資料" in name:
-                sheet_name = name
+                sheet_name_main = name
                 break
-        if not sheet_name:
-            sheet_name = wb.sheetnames[0] 
+        if not sheet_name_main:
+            sheet_name_main = wb.sheetnames[0] 
         
-        ws = wb[sheet_name]
-        headers = [str(cell.value).strip() if cell.value is not None else "" for cell in ws[1]]
+        ws_main = wb[sheet_name_main]
+        headers_main = [str(cell.value).strip() if cell.value is not None else "" for cell in ws_main[1]]
         
-        col_model = headers.index("車型") if "車型" in headers else -1
-        col_version = headers.index("版本") if "版本" in headers else -1
+        col_model = headers_main.index("車型") if "車型" in headers_main else -1
+        col_version = headers_main.index("版本") if "版本" in headers_main else -1
         
-        if "收訂狀態" not in headers:
-            headers.append("收訂狀態")
-        status_idx = headers.index("收訂狀態")
+        if "收訂狀態" not in headers_main:
+            headers_main.append("收訂狀態")
+        status_idx = headers_main.index("收訂狀態")
         
-        data_to_upload = [headers]
+        data_to_upload_main = [headers_main]
         
-        for row in ws.iter_rows(min_row=2):
+        for row in ws_main.iter_rows(min_row=2):
             row_values = [cell.value if cell.value is not None else "" for cell in row]
             if not any(str(v).strip() for v in row_values):
                 continue
                 
-            while len(row_values) < len(headers):
+            while len(row_values) < len(headers_main):
                 row_values.append("")
             
             is_reserved = False
@@ -254,8 +250,32 @@ async def upload_excel(file: UploadFile = File(...)):
                     is_reserved = True
                     
             row_values[status_idx] = "已收訂" if is_reserved else ""
-            data_to_upload.append(row_values)
+            data_to_upload_main.append(row_values)
+
+        # ---------------------------------------------------------
+        # 第二部分：處理【已售車源】 (已售表)
+        # ---------------------------------------------------------
+        data_to_upload_sold = []
+        sheet_name_sold = None
+        for name in wb.sheetnames:
+            if "已售" in name:
+                sheet_name_sold = name
+                break
         
+        if sheet_name_sold:
+            ws_sold = wb[sheet_name_sold]
+            headers_sold = [str(cell.value).strip() if cell.value is not None else "" for cell in ws_sold[1]]
+            data_to_upload_sold = [headers_sold]
+            
+            for row in ws_sold.iter_rows(min_row=2):
+                row_values = [cell.value if cell.value is not None else "" for cell in row]
+                if not any(str(v).strip() for v in row_values):
+                    continue
+                data_to_upload_sold.append(row_values)
+
+        # ---------------------------------------------------------
+        # 第三部分：將資料寫入 Google Sheet
+        # ---------------------------------------------------------
         key_path = "/etc/secrets/google_key.json"
         if not os.path.exists(key_path):
             return {"status": "error", "message": "尚未設定 Google API 憑證！"}
@@ -263,31 +283,50 @@ async def upload_excel(file: UploadFile = File(...)):
         scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
         creds = Credentials.from_service_account_file(key_path, scopes=scopes)
         client = gspread.authorize(creds)
-        
         doc = client.open_by_key(SHEET_ID)
         
-        # 【強制寫入】：依據剛剛判斷的名稱尋找分頁
+        messages = []
+
+        # 1. 寫入主表 (E車源 或是 新竹車源)
         try:
-            target_gsheet = doc.worksheet(target_tab_name)
+            target_gsheet_main = doc.worksheet(target_tab_name)
+            target_gsheet_main.clear()
+            stringified_main = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload_main]
+            try:
+                target_gsheet_main.update(values=stringified_main, range_name='A1')
+            except TypeError:
+                target_gsheet_main.update('A1', stringified_main)
+            messages.append(f"「{target_tab_name}」成功({len(data_to_upload_main)-1}筆)")
         except gspread.exceptions.WorksheetNotFound:
             return {"status": "error", "message": f"Google Sheet 內找不到名稱為「{target_tab_name}」的分頁！"}
             
-        target_gsheet.clear()
-        
-        stringified_data = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload]
-        
-        try:
-            target_gsheet.update(values=stringified_data, range_name='A1')
-        except TypeError:
-            target_gsheet.update('A1', stringified_data)
-        
+        # 2. 寫入已售表 (【安全鎖】：只有上傳 E車源 且有已售分頁時，才更新 Google 的 E車源售出)
+        if data_to_upload_sold and target_tab_name == "E車源":
+            try:
+                target_gsheet_sold = doc.worksheet("E車源售出")
+                target_gsheet_sold.clear()
+                stringified_sold = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload_sold]
+                try:
+                    target_gsheet_sold.update(values=stringified_sold, range_name='A1')
+                except TypeError:
+                    target_gsheet_sold.update('A1', stringified_sold)
+                messages.append(f"「E車源售出」成功({len(data_to_upload_sold)-1}筆)")
+            except gspread.exceptions.WorksheetNotFound:
+                messages.append("「E車源售出」寫入失敗 (請確認GoogleSheet有無此分頁)")
+        elif data_to_upload_sold and target_tab_name == "新竹車源":
+            # 如果是新竹車源表裡面有已售，我們選擇忽略它，不覆蓋總已售表
+            messages.append("已略過新竹已售(不影響總表)")
+
         # 如果是 E車源才需要刷新前端的主要快取
         if target_tab_name == "E車源":
             load_and_clean_data()
             
-        return {"status": "success", "message": f"成功同步至「{target_tab_name}」分頁！"}
+        final_msg = " ＆ ".join(messages)
+        return {"status": "success", "message": final_msg}
         
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {"status": "error", "message": f"處理失敗：{str(e)}"}
 
 # ================= 網頁路由區塊 =================

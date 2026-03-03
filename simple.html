@@ -10,20 +10,30 @@
         body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
         [v-cloak] { display: none !important; }
         
-        /* 讓表格在手機上可以左右滑動 */
+        /* 讓表格在任何設備上都能無限制往右滑動 */
         .table-container {
             width: 100%;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
+            height: calc(100vh - 120px); /* 扣掉頂部和底部的空間 */
+            overflow: auto; /* 允許上下左右滑動 */
+            -webkit-overflow-scrolling: touch; /* 讓手機滑動更順暢 */
+        }
+
+        /* 凍結表頭 */
+        th {
+            position: sticky;
+            top: 0;
+            background-color: #f3f4f6; /* Tailwind 的 gray-100 */
+            z-index: 10;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         }
     </style>
 </head>
-<body class="bg-gray-100 flex flex-col h-screen">
+<body class="bg-gray-100 flex flex-col h-screen overflow-hidden">
     <div id="app" class="flex flex-col h-full" v-cloak>
         
-        <header class="bg-emerald-700 text-white p-3 sm:p-4 shadow-md flex justify-between items-center z-10 shrink-0">
+        <header class="bg-emerald-700 text-white p-3 sm:p-4 shadow-md flex justify-between items-center z-20 shrink-0">
             <h1 class="text-base sm:text-xl font-bold">📊 簡單抓資料 (即時看板)</h1>
-            <div class="flex gap-3">
+            <div class="flex gap-2 sm:gap-3">
                 <button @click="fetchData" class="bg-emerald-600 hover:bg-emerald-500 font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm">
                     🔄 重新整理
                 </button>
@@ -33,42 +43,46 @@
             </div>
         </header>
 
-        <div class="bg-emerald-800 text-white text-xs py-1 px-4 text-center sm:text-right shrink-0" :class="statusColor">
+        <div class="bg-emerald-800 text-white text-xs py-1 px-4 text-center sm:text-right shrink-0 shadow-inner" :class="statusColor">
             {{ statusMessage }}
         </div>
 
-        <main class="flex-1 p-2 sm:p-4 overflow-hidden flex flex-col">
-            <div class="bg-white rounded-lg shadow-sm border flex-1 flex flex-col overflow-hidden">
+        <main class="flex-1 p-2 sm:p-4 bg-gray-100">
+            <div class="bg-white rounded-lg shadow-md border border-gray-200 h-full flex flex-col">
                 
-                <div v-if="loading" class="flex-1 flex items-center justify-center">
-                    <span class="text-xl font-bold text-gray-500 animate-pulse">資料讀取中...</span>
+                <div v-if="loading" class="flex-1 flex flex-col items-center justify-center">
+                    <div class="text-4xl mb-4 animate-spin">⏳</div>
+                    <span class="text-lg font-bold text-gray-500 animate-pulse">資料讀取中...</span>
                 </div>
                 
-                <div v-else-if="headers.length === 0" class="flex-1 flex items-center justify-center">
-                    <span class="text-lg text-gray-400">目前沒有資料，或 Google Sheet 格式錯誤。</span>
+                <div v-else-if="headers.length === 0" class="flex-1 flex flex-col items-center justify-center text-center p-6">
+                    <div class="text-5xl mb-4">📭</div>
+                    <span class="text-xl text-gray-500 font-bold mb-2">目前沒有資料</span>
+                    <span class="text-sm text-gray-400">請確認 Google Sheet 的「簡單抓資料」分頁是否有內容，<br>且標題列設定在第 4 列。</span>
                 </div>
 
-                <div v-else class="table-container flex-1 overflow-y-auto">
-                    <table class="w-full text-sm text-left whitespace-nowrap">
-                        <thead class="bg-gray-100 text-gray-700 sticky top-0 z-10 shadow-sm">
+                <div v-else class="table-container">
+                    <table class="w-full text-sm text-left whitespace-nowrap table-auto border-collapse">
+                        <thead>
                             <tr>
-                                <th v-for="header in headers" :key="header" class="px-4 py-3 font-bold border-b">
+                                <th v-for="header in headers" :key="header" class="px-4 py-3 font-bold border border-gray-300 text-gray-700">
                                     {{ header }}
                                 </th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-gray-200">
-                            <tr v-for="(row, index) in dataList" :key="index" class="hover:bg-emerald-50 transition">
-                                <td v-for="header in headers" :key="header" class="px-4 py-3">
-                                    <span v-if="row[header] == '3.1'" class="text-red-600 font-bold bg-red-100 px-2 py-0.5 rounded">{{ row[header] }}</span>
-                                    <span v-else-if="row[header] == '2'" class="text-blue-600 font-bold bg-blue-100 px-2 py-0.5 rounded">{{ row[header] }}</span>
+                        <tbody class="divide-y divide-gray-200 bg-white">
+                            <tr v-for="(row, index) in dataList" :key="index" class="hover:bg-emerald-50 transition duration-150">
+                                <td v-for="header in headers" :key="header" class="px-4 py-2 border border-gray-200">
+                                    <span v-if="row[header] == '3.1'" class="text-red-600 font-bold bg-red-100 px-2 py-0.5 rounded shadow-sm">{{ row[header] }}</span>
+                                    <span v-else-if="row[header] == '2'" class="text-blue-600 font-bold bg-blue-100 px-2 py-0.5 rounded shadow-sm">{{ row[header] }}</span>
                                     <span v-else class="text-gray-800">{{ row[header] }}</span>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
-                <div class="bg-gray-50 p-2 text-xs text-gray-500 text-center border-t shrink-0">
+                
+                <div v-if="!loading && headers.length > 0" class="bg-gray-50 p-2 text-xs font-bold text-gray-500 text-center border-t border-gray-200 shrink-0">
                     共載入 {{ dataList.length }} 筆資料
                 </div>
             </div>
@@ -99,7 +113,10 @@
                         if (result.status === "success") {
                             dataList.value = result.data;
                             if (result.data.length > 0) {
+                                // 動態抓取所有欄位名稱
                                 headers.value = Object.keys(result.data[0]);
+                            } else {
+                                headers.value = [];
                             }
                             statusMessage.value = `✅ 資料同步完成 (共 ${result.data.length} 筆)`;
                             statusColor.value = "text-emerald-300";

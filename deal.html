@@ -32,7 +32,7 @@
             <aside class="w-full md:w-80 lg:w-96 bg-white rounded-lg shadow-sm border p-4 flex-shrink-0 md:overflow-y-auto h-auto md:h-full">
                 
                 <div class="border-b pb-4 mb-4">
-                    <h2 class="font-bold text-gray-700 mb-2">1. 搜尋車輛</h2>
+                    <h2 class="font-bold text-gray-700 mb-2">1. 搜尋車輛 (連接資料庫)</h2>
                     <div class="flex gap-2">
                         <input v-model="searchQuery" @keyup.enter="searchCar" type="text" placeholder="輸入車牌" class="flex-1 border border-gray-300 rounded p-2 focus:ring-2 focus:ring-indigo-400 focus:outline-none uppercase text-lg font-bold">
                         <button @click="searchCar" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition font-bold">搜尋</button>
@@ -42,15 +42,6 @@
                 <div class="border-b pb-4 mb-4 space-y-3">
                     <h2 class="font-bold text-gray-700 mb-2">2. 參數設定</h2>
                     
-                    <div>
-                        <label class="block text-xs font-semibold text-red-600 mb-1">公司別:</label>
-                        <div class="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-                            <label class="flex items-center gap-1"><input type="radio" v-model="settings.company" value="杰運"> 杰運</label>
-                            <label class="flex items-center gap-1"><input type="radio" v-model="settings.company" value="展帆"> 展帆</label>
-                            <label class="flex items-center gap-1"><input type="radio" v-model="settings.company" value="禾迪"> 禾迪</label>
-                        </div>
-                    </div>
-
                     <div>
                         <label class="block text-xs font-semibold text-purple-600 mb-1">折扣設定:</label>
                         <div class="flex gap-4 text-sm">
@@ -89,16 +80,21 @@
                 </div>
 
                 <div>
-                    <h2 class="font-bold text-gray-700 mb-2">3. 資料確認 (可修改)</h2>
+                    <h2 class="font-bold text-gray-700 mb-2">3. 資料確認 (系統自動帶入)</h2>
                     <div class="grid grid-cols-2 gap-2 text-xs sm:text-sm">
                         <div class="flex flex-col"><label class="text-gray-500 mb-1">車牌</label><input v-model="car.plate" type="text" class="border p-1.5 rounded bg-gray-50"></div>
                         <div class="flex flex-col"><label class="text-gray-500 mb-1">廠牌</label><input v-model="car.brand" type="text" class="border p-1.5 rounded bg-gray-50"></div>
+                        
                         <div class="flex flex-col"><label class="text-gray-500 mb-1">車型</label><input v-model="car.model" type="text" class="border p-1.5 rounded bg-gray-50"></div>
                         <div class="flex flex-col"><label class="text-gray-500 mb-1">年份</label><input v-model="car.year" type="text" class="border p-1.5 rounded bg-gray-50"></div>
+                        
                         <div class="flex flex-col"><label class="text-gray-500 mb-1">顏色</label><input v-model="car.color" type="text" class="border p-1.5 rounded bg-gray-50"></div>
                         <div class="flex flex-col"><label class="text-gray-500 mb-1">里程</label><input v-model="car.mileage" type="text" class="border p-1.5 rounded bg-gray-50"></div>
+                        
+                        <div class="flex flex-col"><label class="text-red-600 font-bold mb-1">產權公司</label><input v-model="car.company" type="text" class="border p-1.5 rounded bg-yellow-50 text-red-700 font-bold"></div>
                         <div class="flex flex-col"><label class="text-gray-500 mb-1">編號</label><input v-model="car.stock_id" type="text" class="border p-1.5 rounded bg-gray-50"></div>
-                        <div class="flex flex-col"><label class="text-gray-500 mb-1">車身</label><input v-model="car.vin" type="text" class="border p-1.5 rounded bg-gray-50"></div>
+                        
+                        <div class="flex flex-col col-span-2"><label class="text-gray-500 mb-1">車身</label><input v-model="car.vin" type="text" class="border p-1.5 rounded bg-gray-50"></div>
                         
                         <div class="flex flex-col">
                             <label class="text-gray-500 mb-1 font-bold text-red-500">網路價(萬)</label>
@@ -175,14 +171,15 @@
                     { name: '高雄店', label: '高雄' }
                 ];
 
+                // 移除 company 設定，改由 car.company 全權負責
                 const settings = reactive({
-                    company: "杰運", discount: "折1.1萬", subsidy: "不折",
+                    discount: "折1.1萬", subsidy: "不折",
                     deposit: "2.9", site: "北投店", trans_store: "北投店"
                 });
 
                 const car = reactive({
                     plate: '', brand: '', model: '', year: '', 
-                    color: '', mileage: '', stock_id: '', vin: '', 
+                    color: '', mileage: '', company: '', stock_id: '', vin: '', 
                     list_price: '0', deal_price: '0'
                 });
 
@@ -214,11 +211,15 @@
                             car.year = d['clean_year'] || '';
                             car.color = d['顏色'] || '';
                             car.mileage = d['里程'] || '';
-                            car.stock_id = d['編號'] || '';
+                            car.stock_id = d['編號'] || ''; // 這裡的編號已經是後端合併過的格式了！
                             car.vin = d['車身'] || '';
                             car.list_price = String(d['顯示價格'] || '0');
                             
-                            updateStatus(`✅ 找到車輛：${car.model}`, "text-green-300");
+                            // 自動抓取產權公司 (優先抓「產權」，沒有就抓「公司」)
+                            car.company = (d['產權'] && d['產權'] !== 'nan') ? d['產權'] : 
+                                          ((d['公司'] && d['公司'] !== 'nan') ? d['公司'] : '');
+                            
+                            updateStatus(`✅ 找到車輛：${car.model} (產權：${car.company || '無'})`, "text-green-300");
                             calcPrice();
                         } else {
                             updateStatus("❌ 查無此車牌", "text-red-300");
@@ -262,14 +263,30 @@
 
                     let final_balance = price_after_subsidy - deposit_yuan;
 
-                    let bank_info = {
-                        "杰運": { h: "杰運車源", b: "玉山銀行 石牌分行", n: "杰運汽車股份有限公司", a: "0864940036786" },
-                        "展帆": { h: "展帆車源", b: "中國信託 萬華分行", n: "展帆汽車有限公司", a: "668545685788" },
-                        "禾迪": { h: "禾迪車源", b: "中國信託 板和分行", n: "禾迪汽車有限公司", a: "186540179959" }
-                    }[settings.company];
+                    // 智慧判斷產權與匯款帳號
+                    let company_str = car.company || "";
+                    let source_header = "";
+                    let bank_name = "玉山銀行 石牌分行";
+                    let account_name = "杰運汽車股份有限公司";
+                    let account_number = "0864940036786";
+
+                    if (company_str.includes("展帆")) {
+                        source_header = "展帆車源";
+                        bank_name = "中國信託 萬華分行";
+                        account_name = "展帆汽車有限公司";
+                        account_number = "668545685788";
+                    } else if (company_str.includes("禾迪")) {
+                        source_header = "禾迪車源";
+                        bank_name = "中國信託 板和分行";
+                        account_name = "禾迪汽車有限公司";
+                        account_number = "186540179959";
+                    } else if (company_str.includes("杰租")) {
+                        source_header = "租車車源";
+                        // 杰租使用預設的杰運銀行帳戶
+                    }
 
                     let dealLines = [
-                        bank_info.h,
+                        source_header,
                         "先生小姐",
                         "銷售業務:",
                         "合約編號：",
@@ -289,9 +306,9 @@
                         "匯款人：",
                         "金額： 萬",
                         "匯款帳號末五碼:",
-                        `匯款帳號:${bank_info.b}`,
-                        `戶名:${bank_info.n}`,
-                        `帳號:${bank_info.a}`,
+                        `匯款帳號:${bank_name} `,
+                        `戶名:${account_name} `,
+                        `帳號:${account_number}`,
                         "未匯款金額: 萬",
                         "———————————",
                         "",
@@ -320,12 +337,12 @@
 
 ${trans_note}`;
                     
-                    // 手機版生成完畢後自動滾動到下方結果區
                     if (window.innerWidth < 768) {
                         setTimeout(() => { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }, 100);
                     }
                     
-                    updateStatus(`⚡ 文案已生成！`, "text-blue-300");
+                    let display_company = car.company || "杰運預設";
+                    updateStatus(`⚡ 文案已生成 (系統判斷產權: ${display_company})！`, "text-blue-300");
                 };
 
                 const copyText = (type) => {

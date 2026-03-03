@@ -52,8 +52,25 @@ def parse_roc_date(date_val):
 def load_and_clean_data():
     global cached_df
     df = pd.read_csv(CSV_URL)
+    # 清理標題列的空白
     df.columns = [str(c).strip() for c in df.columns]
     
+    # ==============================================================
+    # 【新增：合併新舊編號邏輯】 (從你的 Tkinter 程式碼完美移植)
+    # ==============================================================
+    if '新編號' in df.columns or '舊編號' in df.columns:
+        def merge_ids(r):
+            n = r.get('新編號', '')
+            o = r.get('舊編號', '')
+            n_str = str(n).replace('.0', '').strip() if pd.notna(n) else ""
+            o_str = str(o).replace('.0', '').strip() if pd.notna(o) else ""
+            
+            if n_str and o_str:
+                return f"{o_str} ({n_str})" # 改為 舊編號 (新編號)
+            return o_str or n_str
+        df['編號'] = df.apply(merge_ids, axis=1)
+    # ==============================================================
+
     if '網路' in df.columns:
         df['顯示價格'] = df['網路'].apply(clean_money)
         df['calc_net'] = df['網路'].apply(clean_money)
@@ -188,7 +205,6 @@ async def upload_excel(file: UploadFile = File(...)):
         contents = await file.read()
         wb = openpyxl.load_workbook(filename=io.BytesIO(contents), data_only=True)
         
-        # 尋找上傳 Excel 內的指定工作表 (包容名稱前後有空白的狀況)
         sheet_name = None
         for name in wb.sheetnames:
             if "車源證件資料" in name:
@@ -198,7 +214,7 @@ async def upload_excel(file: UploadFile = File(...)):
             sheet_name = wb.sheetnames[0] 
         
         ws = wb[sheet_name]
-        headers = [cell.value if cell.value is not None else "" for cell in ws[1]]
+        headers = [str(cell.value).strip() if cell.value is not None else "" for cell in ws[1]]
         
         col_model = headers.index("車型") if "車型" in headers else -1
         col_version = headers.index("版本") if "版本" in headers else -1
@@ -212,7 +228,6 @@ async def upload_excel(file: UploadFile = File(...)):
         for row in ws.iter_rows(min_row=2):
             row_values = [cell.value if cell.value is not None else "" for cell in row]
             
-            # 判斷是否為全空行，全空行就跳過
             if not any(str(v).strip() for v in row_values):
                 continue
                 
@@ -221,13 +236,11 @@ async def upload_excel(file: UploadFile = File(...)):
             
             is_reserved = False
             
-            # 判斷車型底色
             if col_model != -1 and row_values[col_model] != "":
                 fill = row[col_model].fill
                 if fill and fill.patternType and fill.start_color.rgb not in ['00000000', 'FFFFFFFF', None]:
                     is_reserved = True
             
-            # 判斷版本底色
             if not is_reserved and col_version != -1 and row_values[col_version] != "":
                 fill = row[col_version].fill
                 if fill and fill.patternType and fill.start_color.rgb not in ['00000000', 'FFFFFFFF', None]:
@@ -236,7 +249,6 @@ async def upload_excel(file: UploadFile = File(...)):
             row_values[status_idx] = "已收訂" if is_reserved else ""
             data_to_upload.append(row_values)
         
-        # 尋找金鑰檔案
         key_path = "/etc/secrets/google_key.json"
         if not os.path.exists(key_path):
             return {"status": "error", "message": "尚未設定 Google API 憑證！"}
@@ -245,28 +257,17 @@ async def upload_excel(file: UploadFile = File(...)):
         creds = Credentials.from_service_account_file(key_path, scopes=scopes)
         client = gspread.authorize(creds)
         
-        # 開啟 Google Sheet 檔案
         doc = client.open_by_key(SHEET_ID)
-        
-        # 【關鍵修正】：精準尋找線上 Google Sheet 內名為「車源證件資料表」的分頁
-        target_gsheet = None
-        for sheet in doc.worksheets():
-            if "車源證件資料" in sheet.title:
-                target_gsheet = sheet
-                break
-        
-        if not target_gsheet:
-            target_gsheet = doc.get_worksheet(0) # 如果真的找不到，才抓最左邊第一頁
-            
+        target_gsheet = doc.get_worksheet(0)
         target_gsheet.clear()
         
-        # 將所有資料轉換為字串避免 Google API 報錯
         stringified_data = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload]
         
-        # 將資料覆蓋進去
-        target_gsheet.update(values=stringified_data, range_name='A1')
+        try:
+            target_gsheet.update(values=stringified_data, range_name='A1')
+        except TypeError:
+            target_gsheet.update('A1', stringified_data)
         
-        # 同步更新網頁緩存
         load_and_clean_data()
         return {"status": "success", "message": f"成功同步 {len(data_to_upload)-1} 筆車源！包含底色標記。"}
         

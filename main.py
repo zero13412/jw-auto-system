@@ -11,7 +11,6 @@ import io
 
 app = FastAPI(title="🚗 杰運汽車新竹店 - 內部系統 API")
 
-# 允許前端跨域請求
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -23,6 +22,8 @@ app.add_middleware(
 # Google Sheet 設定
 SHEET_ID = "1HWb5u6EGYSHVJHFhmhmsVv4xDgHlQEkdicfXBuFp86w"
 CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
+# 新增：簡單抓資料的特定 GID 網址
+SIMPLE_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=852175657"
 
 cached_df = None
 
@@ -52,24 +53,18 @@ def parse_roc_date(date_val):
 def load_and_clean_data():
     global cached_df
     df = pd.read_csv(CSV_URL)
-    # 清理標題列的空白
     df.columns = [str(c).strip() for c in df.columns]
     
-    # ==============================================================
-    # 【新增：合併新舊編號邏輯】 (從你的 Tkinter 程式碼完美移植)
-    # ==============================================================
     if '新編號' in df.columns or '舊編號' in df.columns:
         def merge_ids(r):
             n = r.get('新編號', '')
             o = r.get('舊編號', '')
             n_str = str(n).replace('.0', '').strip() if pd.notna(n) else ""
             o_str = str(o).replace('.0', '').strip() if pd.notna(o) else ""
-            
             if n_str and o_str:
-                return f"{o_str} ({n_str})" # 改為 舊編號 (新編號)
+                return f"{o_str} ({n_str})" 
             return o_str or n_str
         df['編號'] = df.apply(merge_ids, axis=1)
-    # ==============================================================
 
     if '網路' in df.columns:
         df['顯示價格'] = df['網路'].apply(clean_money)
@@ -151,26 +146,8 @@ def get_cars(
 
     res = res[(res['顯示價格'] >= min_price) & (res['顯示價格'] <= max_price)]
 
-    if sort_by == "價格低到高": 
-        res = res.sort_values(by='顯示價格', ascending=True)
-    elif sort_by == "價格高到低": 
-        res = res.sort_values(by='顯示價格', ascending=False)
-    elif sort_by == "年份舊到新":
-        if '年份' in res.columns: 
-            res['年份_num'] = pd.to_numeric(res['年份'], errors='coerce').fillna(0)
-            res = res.sort_values(by='年份_num', ascending=True)
-            res = res.drop(columns=['年份_num'])
-    elif sort_by == "年份新到舊":
-        if '年份' in res.columns: 
-            res['年份_num'] = pd.to_numeric(res['年份'], errors='coerce').fillna(0)
-            res = res.sort_values(by='年份_num', ascending=False)
-            res = res.drop(columns=['年份_num'])
-    elif sort_by == "入庫日新到舊":
-        if '入庫_dt' in res.columns:
-            res = res.sort_values(by='入庫_dt', ascending=False, na_position='last')
-    elif sort_by == "入庫日舊到新":
-        if '入庫_dt' in res.columns:
-            res = res.sort_values(by='入庫_dt', ascending=True, na_position='last')
+    if sort_by == "價格低到高": res = res.sort_values(by='顯示價格', ascending=True)
+    elif sort_by == "價格高到低": res = res.sort_values(by='顯示價格', ascending=False)
     else:
         if '年份' in res.columns: 
             res['年份_num'] = pd.to_numeric(res['年份'], errors='coerce').fillna(0)
@@ -198,10 +175,30 @@ def search_plate(plate: str):
             return {"status": "success", "data": car_data}
     return {"status": "error", "message": "查無此車"}
 
+# ================= 新增：抓取「簡單抓資料」分頁 =================
+@app.get("/api/simple_data")
+def get_simple_data():
+    try:
+        # 直接抓取 gid 為 852175657 的分頁資料
+        df_simple = pd.read_csv(SIMPLE_CSV_URL)
+        # 移除完全空白的列
+        df_simple = df_simple.dropna(how='all')
+        # 移除未命名的標題列
+        df_simple = df_simple.loc[:, ~df_simple.columns.str.contains('^Unnamed')]
+        df_simple = df_simple.fillna("")
+        return {"status": "success", "data": df_simple.to_dict(orient="records")}
+    except Exception as e:
+        return {"status": "error", "message": f"讀取失敗：{str(e)}"}
+
+
 # ================= 自動處理 Excel 與上傳 API =================
 @app.post("/api/upload_excel")
 async def upload_excel(file: UploadFile = File(...)):
     try:
+        filename = file.filename
+        # 【關鍵判斷】：檔名有「新竹」就存新竹，否則存 E車源
+        target_tab_name = "新竹車源" if "新竹" in filename else "E車源"
+
         contents = await file.read()
         wb = openpyxl.load_workbook(filename=io.BytesIO(contents), data_only=True)
         
@@ -227,7 +224,6 @@ async def upload_excel(file: UploadFile = File(...)):
         
         for row in ws.iter_rows(min_row=2):
             row_values = [cell.value if cell.value is not None else "" for cell in row]
-            
             if not any(str(v).strip() for v in row_values):
                 continue
                 
@@ -235,12 +231,10 @@ async def upload_excel(file: UploadFile = File(...)):
                 row_values.append("")
             
             is_reserved = False
-            
             if col_model != -1 and row_values[col_model] != "":
                 fill = row[col_model].fill
                 if fill and fill.patternType and fill.start_color.rgb not in ['00000000', 'FFFFFFFF', None]:
                     is_reserved = True
-            
             if not is_reserved and col_version != -1 and row_values[col_version] != "":
                 fill = row[col_version].fill
                 if fill and fill.patternType and fill.start_color.rgb not in ['00000000', 'FFFFFFFF', None]:
@@ -258,7 +252,13 @@ async def upload_excel(file: UploadFile = File(...)):
         client = gspread.authorize(creds)
         
         doc = client.open_by_key(SHEET_ID)
-        target_gsheet = doc.get_worksheet(0)
+        
+        # 【強制寫入】：依據剛剛判斷的名稱尋找分頁
+        try:
+            target_gsheet = doc.worksheet(target_tab_name)
+        except gspread.exceptions.WorksheetNotFound:
+            return {"status": "error", "message": f"Google Sheet 內找不到名稱為「{target_tab_name}」的分頁！"}
+            
         target_gsheet.clear()
         
         stringified_data = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload]
@@ -268,8 +268,11 @@ async def upload_excel(file: UploadFile = File(...)):
         except TypeError:
             target_gsheet.update('A1', stringified_data)
         
-        load_and_clean_data()
-        return {"status": "success", "message": f"成功同步 {len(data_to_upload)-1} 筆車源！包含底色標記。"}
+        # 如果是 E車源才需要刷新前端的主要快取
+        if target_tab_name == "E車源":
+            load_and_clean_data()
+            
+        return {"status": "success", "message": f"成功同步至「{target_tab_name}」分頁！"}
         
     except Exception as e:
         return {"status": "error", "message": f"處理失敗：{str(e)}"}
@@ -285,3 +288,5 @@ def serve_deal(): return FileResponse("deal.html")
 def serve_loan(): return FileResponse("loan.html")
 @app.get("/dispatch")
 def serve_dispatch(): return FileResponse("dispatch.html")
+@app.get("/simple")
+def serve_simple(): return FileResponse("simple.html")

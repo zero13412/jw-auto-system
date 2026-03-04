@@ -10,21 +10,14 @@
         body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
         [v-cloak] { display: none !important; }
         
-        /* 電腦版表格的凍結表頭 */
         th {
             position: sticky;
             top: 0;
             z-index: 10;
         }
         
-        /* 隱藏捲動條但保留功能 (針對手機版卡片區) */
-        .no-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .no-scrollbar {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body class="bg-gray-100 flex flex-col h-screen overflow-hidden">
@@ -138,6 +131,7 @@
                     </table>
                 </div>
             </div>
+
         </main>
     </div>
 
@@ -202,7 +196,6 @@
                     return map[cat] || map['default'];
                 }
 
-                // 判斷是否為 3.1
                 const isCode3 = (code) => {
                     return code === '3.1' || code === '3' || String(code).startsWith('3');
                 };
@@ -222,32 +215,29 @@
                     colMap.color = findCol(['色', '顏']); 
                     colMap.price = findCol(['價', '網', '售']);
                     colMap.mileage = findCol(['里程']);
-                    colMap.condition = findCol(['況', '備註', '狀況']);
                     
-                    // 為了絕對精準，找出「起算」讓網頁直接減去來判斷 3.1 或 2
+                    // 【精準修復】：只抓取「車況」或「狀況」，避免抓到其他備註
+                    colMap.condition = findCol(['車況', '狀況']); 
+                    
                     colMap.start = findCol(['起算']); 
 
                     return rawData.map((row, i) => {
                         let priceVal = String(row[colMap.price] || '').trim();
                         let startVal = String(row[colMap.start] || '').trim();
                         
-                        // 提取純數字進行計算
                         let pNum = parseFloat(priceVal.replace(/[^\d.-]/g, ''));
                         let sNum = parseFloat(startVal.replace(/[^\d.-]/g, ''));
                         
                         let finalCode = "";
 
-                        // 【絕對防呆】：只要 網路價 和 起算價 是數字，網頁直接幫你算！
                         if (!isNaN(pNum) && !isNaN(sNum) && sNum > 0) {
                             let diff = pNum - sNum;
-                            // 只要差額是 1.9 (容許浮點誤差)，就是 3.1，其他都是 2
                             if (Math.abs(diff - 1.9) < 0.05) {
                                 finalCode = "3.1";
                             } else {
                                 finalCode = "2";
                             }
                         } 
-                        // 萬一 Google Sheet 沒有起算，則自動搜尋該列有沒有 '3.1' 或是 '2'
                         else {
                             let possibleCodeCol = rawCols.find(c => {
                                 if (Object.values(colMap).includes(c)) return false;
@@ -266,7 +256,7 @@
                             color: row[colMap.color] || '',
                             price: priceVal,
                             mileage: row[colMap.mileage] || '',
-                            condition: row[colMap.condition] || '',
+                            condition: row[colMap.condition] || '', // 這裡現在會精準顯示「原鈑件」等車況了
                             code: finalCode
                         };
                     });

@@ -181,10 +181,13 @@ def get_simple_data():
         df_simple = pd.read_csv(SIMPLE_CSV_URL, header=3)
         df_simple = df_simple.dropna(how='all')
         
+        # 【關鍵修復】：確保每個無標題欄位都有唯一名稱，才不會互相覆蓋！
         new_columns = []
+        empty_count = 0
         for c in df_simple.columns:
-            if "Unnamed" in str(c):
-                new_columns.append(" ")
+            if "Unnamed" in str(c) or str(c).strip() == "":
+                empty_count += 1
+                new_columns.append(f"__未命名_{empty_count}__")
             else:
                 new_columns.append(str(c).strip())
         df_simple.columns = new_columns
@@ -208,9 +211,6 @@ async def upload_excel(file: UploadFile = File(...)):
         contents = await file.read()
         wb = openpyxl.load_workbook(filename=io.BytesIO(contents), data_only=True)
         
-        # ---------------------------------------------------------
-        # 第一部分：處理【在庫車源】 (車源證件資料表)
-        # ---------------------------------------------------------
         sheet_name_main = None
         for name in wb.sheetnames:
             if "車源證件資料" in name:
@@ -252,9 +252,6 @@ async def upload_excel(file: UploadFile = File(...)):
             row_values[status_idx] = "已收訂" if is_reserved else ""
             data_to_upload_main.append(row_values)
 
-        # ---------------------------------------------------------
-        # 第二部分：處理【已售車源】 (已售表)
-        # ---------------------------------------------------------
         data_to_upload_sold = []
         sheet_name_sold = None
         for name in wb.sheetnames:
@@ -273,9 +270,6 @@ async def upload_excel(file: UploadFile = File(...)):
                     continue
                 data_to_upload_sold.append(row_values)
 
-        # ---------------------------------------------------------
-        # 第三部分：將資料寫入 Google Sheet
-        # ---------------------------------------------------------
         key_path = "/etc/secrets/google_key.json"
         if not os.path.exists(key_path):
             return {"status": "error", "message": "尚未設定 Google API 憑證！"}
@@ -287,7 +281,6 @@ async def upload_excel(file: UploadFile = File(...)):
         
         messages = []
 
-        # 1. 寫入主表 (E車源 或是 新竹車源)
         try:
             target_gsheet_main = doc.worksheet(target_tab_name)
             target_gsheet_main.clear()
@@ -300,7 +293,6 @@ async def upload_excel(file: UploadFile = File(...)):
         except gspread.exceptions.WorksheetNotFound:
             return {"status": "error", "message": f"Google Sheet 內找不到名稱為「{target_tab_name}」的分頁！"}
             
-        # 2. 寫入已售表 (【安全鎖】：只有上傳 E車源 且有已售分頁時，才更新 Google 的 E車源售出)
         if data_to_upload_sold and target_tab_name == "E車源":
             try:
                 target_gsheet_sold = doc.worksheet("E車源售出")
@@ -314,10 +306,8 @@ async def upload_excel(file: UploadFile = File(...)):
             except gspread.exceptions.WorksheetNotFound:
                 messages.append("「E車源售出」寫入失敗 (請確認GoogleSheet有無此分頁)")
         elif data_to_upload_sold and target_tab_name == "新竹車源":
-            # 如果是新竹車源表裡面有已售，我們選擇忽略它，不覆蓋總已售表
             messages.append("已略過新竹已售(不影響總表)")
 
-        # 如果是 E車源才需要刷新前端的主要快取
         if target_tab_name == "E車源":
             load_and_clean_data()
             

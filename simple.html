@@ -10,19 +10,20 @@
         body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
         [v-cloak] { display: none !important; }
         
-        .table-container {
-            width: 100%;
-            height: calc(100vh - 120px);
-            overflow: auto; 
-            -webkit-overflow-scrolling: touch; 
-        }
-
+        /* 電腦版表格的凍結表頭 */
         th {
             position: sticky;
             top: 0;
-            background-color: #f3f4f6; 
             z-index: 10;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        
+        /* 隱藏捲動條但保留功能 (針對手機版卡片區) */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
         }
     </style>
 </head>
@@ -30,7 +31,7 @@
     <div id="app" class="flex flex-col h-full" v-cloak>
         
         <header class="bg-emerald-700 text-white p-3 sm:p-4 shadow-md flex justify-between items-center z-20 shrink-0">
-            <h1 class="text-base sm:text-xl font-bold">📊 簡單抓資料 (即時看板)</h1>
+            <h1 class="text-base sm:text-xl font-bold">📊 新竹車源即時看板</h1>
             <div class="flex gap-2 sm:gap-3">
                 <button @click="fetchData" class="bg-emerald-600 hover:bg-emerald-500 font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm">
                     🔄 重新整理
@@ -45,45 +46,108 @@
             {{ statusMessage }}
         </div>
 
-        <main class="flex-1 p-2 sm:p-4 bg-gray-100">
-            <div class="bg-white rounded-lg shadow-md border border-gray-200 h-full flex flex-col">
-                
-                <div v-if="loading" class="flex-1 flex flex-col items-center justify-center">
-                    <div class="text-4xl mb-4 animate-spin">⏳</div>
-                    <span class="text-lg font-bold text-gray-500 animate-pulse">資料讀取中...</span>
-                </div>
-                
-                <div v-else-if="headers.length === 0" class="flex-1 flex flex-col items-center justify-center text-center p-6">
-                    <div class="text-5xl mb-4">📭</div>
-                    <span class="text-xl text-gray-500 font-bold mb-2">目前沒有資料</span>
-                    <span class="text-sm text-gray-400">請確認 Google Sheet 的「簡單抓資料」分頁是否有內容，<br>且標題列設定在第 4 列。</span>
-                </div>
+        <main class="flex-1 overflow-hidden flex flex-col relative">
+            
+            <div v-if="loading" class="absolute inset-0 bg-gray-100 flex flex-col items-center justify-center z-50">
+                <div class="text-5xl mb-4 animate-spin">⏳</div>
+                <span class="text-xl font-bold text-gray-500 animate-pulse">資料同步中，請稍候...</span>
+            </div>
+            
+            <div v-else-if="dataList.length === 0" class="flex-1 flex flex-col items-center justify-center text-center p-6">
+                <div class="text-6xl mb-4">📭</div>
+                <span class="text-2xl text-gray-500 font-bold mb-2">目前沒有資料</span>
+            </div>
 
-                <div v-else class="table-container">
-                    <table class="w-full text-sm text-left whitespace-nowrap table-auto border-collapse">
-                        <thead>
-                            <tr>
-                                <th v-for="header in headers" :key="header" class="px-4 py-3 font-bold border border-gray-300 text-gray-700">
-                                    {{ header.includes('__未命名_') ? '代碼' : header }}
-                                </th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-200 bg-white">
-                            <tr v-for="(row, index) in dataList" :key="index" class="hover:bg-emerald-50 transition duration-150">
-                                <td v-for="header in headers" :key="header" class="px-4 py-2 border border-gray-200 text-center sm:text-left">
-                                    <span v-if="String(row[header]).trim() === '3.1'" class="text-red-600 font-bold bg-red-100 px-3 py-1 rounded shadow-sm text-base">3.1</span>
-                                    <span v-else-if="String(row[header]).trim() === '2'" class="text-blue-600 font-bold bg-blue-100 px-3 py-1 rounded shadow-sm text-base">2</span>
-                                    <span v-else class="text-gray-800">{{ row[header] }}</span>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                
-                <div v-if="!loading && headers.length > 0" class="bg-gray-50 p-2 text-xs font-bold text-gray-500 text-center border-t border-gray-200 shrink-0">
-                    共載入 {{ dataList.length }} 筆資料
+            <div v-else class="md:hidden flex-1 overflow-y-auto p-3 space-y-4 bg-gray-100 no-scrollbar">
+                <div v-for="(row, index) in dataList" :key="'m-'+index" 
+                     class="bg-white rounded-xl shadow-md overflow-hidden border"
+                     :class="getCardBorderColor(row.location)">
+                     
+                    <div class="flex justify-between items-center px-4 py-2 border-b" :class="getRowBg(row.location)">
+                        <div class="flex items-center gap-2">
+                            <span class="text-gray-400 font-bold text-sm">#{{ row.item }}</span>
+                            <span class="px-2 py-0.5 rounded text-xs font-bold border shadow-sm bg-white" 
+                                  :class="getLocationColor(row.location)">{{ row.location }}</span>
+                        </div>
+                        <span class="font-bold uppercase tracking-wider bg-white px-2 py-1 rounded border shadow-sm text-gray-700">
+                            {{ row.plate }}
+                        </span>
+                    </div>
+                    
+                    <div class="p-4 space-y-3">
+                        <div class="font-bold text-lg leading-tight text-gray-800">
+                            {{ row.year }} {{ row.brand }} {{ row.model }}
+                        </div>
+                        
+                        <div class="flex flex-wrap gap-2 text-sm">
+                            <div class="bg-gray-50 px-2 py-1 rounded border text-gray-600">顏色: <span class="font-bold text-gray-800">{{ row.color }}</span></div>
+                            <div class="bg-gray-50 px-2 py-1 rounded border text-gray-600">里程: <span class="font-bold text-gray-800">{{ row.mileage }}</span></div>
+                        </div>
+
+                        <div v-if="row.condition" class="bg-red-50 text-red-700 p-2 rounded text-xs border border-red-100 leading-relaxed">
+                            <span class="font-bold">狀況:</span> {{ row.condition }}
+                        </div>
+
+                        <div class="flex justify-between items-end border-t pt-3 mt-2">
+                            <div class="flex flex-col">
+                                <span class="text-xs text-gray-400 font-bold">網路價</span>
+                                <span class="text-2xl font-extrabold text-red-600">${{ row.price }}</span>
+                            </div>
+                            <div>
+                                <span v-if="isCode3(row.code)" class="text-red-600 font-extrabold bg-red-100 px-3 py-1 rounded shadow-sm text-lg border border-red-200">
+                                    {{ row.code }}
+                                </span>
+                                <span v-else-if="row.code" class="text-gray-400 font-bold px-2 text-lg">
+                                    {{ row.code }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
+
+            <div v-else class="hidden md:block flex-1 overflow-auto bg-white m-4 rounded-lg shadow-md border border-gray-200">
+                <table class="w-full text-sm text-left whitespace-nowrap border-collapse">
+                    <thead class="bg-gray-200 text-gray-700 shadow-sm">
+                        <tr>
+                            <th class="px-3 py-3 font-bold border border-gray-300 w-12 text-center">項次</th>
+                            <th class="px-3 py-3 font-bold border border-gray-300 w-24">停放</th>
+                            <th class="px-3 py-3 font-bold border border-gray-300">年份</th>
+                            <th class="px-3 py-3 font-bold border border-gray-300">品牌</th>
+                            <th class="px-3 py-3 font-bold border border-gray-300">車型</th>
+                            <th class="px-3 py-3 font-bold border border-gray-300 w-16">顏色</th>
+                            <th class="px-3 py-3 font-bold border border-gray-300">車牌</th>
+                            <th class="px-3 py-3 font-bold border border-red-300 bg-yellow-50 text-red-800 text-right">網路價格</th>
+                            <th class="px-3 py-3 font-bold border border-red-300 bg-yellow-50 text-red-800 text-center w-16">代碼</th>
+                            <th class="px-3 py-3 font-bold border border-gray-300">里程</th>
+                            <th class="px-3 py-3 font-bold border border-gray-300">狀況</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-200">
+                        <tr v-for="(row, index) in dataList" :key="'d-'+index" class="transition duration-150" :class="getRowBg(row.location)">
+                            <td class="px-3 py-2 border border-gray-200 text-center font-bold text-gray-400">{{ row.item }}</td>
+                            <td class="px-3 py-2 border border-gray-200">
+                                <span class="px-2 py-1 rounded text-xs font-bold border shadow-sm bg-white" :class="getLocationColor(row.location)">
+                                    {{ row.location }}
+                                </span>
+                            </td>
+                            <td class="px-3 py-2 border border-gray-200 text-gray-700">{{ row.year }}</td>
+                            <td class="px-3 py-2 border border-gray-200 text-gray-700">{{ row.brand }}</td>
+                            <td class="px-3 py-2 border border-gray-200 font-bold text-gray-800 whitespace-normal min-w-[150px]">{{ row.model }}</td>
+                            <td class="px-3 py-2 border border-gray-200 text-gray-700">{{ row.color }}</td>
+                            <td class="px-3 py-2 border border-gray-200 font-bold uppercase text-gray-800">{{ row.plate }}</td>
+                            <td class="px-3 py-2 border border-gray-200 font-extrabold text-red-600 text-lg text-right">${{ row.price }}</td>
+                            <td class="px-3 py-2 border border-gray-200 text-center">
+                                <span v-if="isCode3(row.code)" class="text-red-600 font-bold bg-red-100 px-2 py-1 rounded shadow-sm text-base border border-red-200">{{ row.code }}</span>
+                                <span v-else class="text-gray-400 font-bold">{{ row.code }}</span>
+                            </td>
+                            <td class="px-3 py-2 border border-gray-200 text-gray-700">{{ row.mileage }}</td>
+                            <td class="px-3 py-2 border border-gray-200 whitespace-normal min-w-[150px] text-red-700 text-xs">{{ row.condition }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
         </main>
     </div>
 
@@ -97,48 +161,95 @@
                 const statusMessage = ref("準備就緒");
                 const statusColor = ref("text-emerald-200");
                 const dataList = ref([]);
-                const headers = ref([]);
 
-                const processHeaders = (data) => {
-                    if (!data || data.length === 0) return [];
-                    let cols = Object.keys(data[0]);
+                // 判斷地點顏色 (背景微調)
+                const getRowBg = (loc) => {
+                    if (!loc) return 'hover:bg-gray-50';
+                    if (loc.includes('北投') || loc.includes('台北')) return 'bg-blue-50/50 hover:bg-blue-100';
+                    if (loc.includes('桃園')) return 'bg-orange-50/50 hover:bg-orange-100';
+                    if (loc.includes('新竹')) return 'bg-emerald-50/50 hover:bg-emerald-100';
+                    if (loc.includes('台中')) return 'bg-purple-50/50 hover:bg-purple-100';
+                    if (loc.includes('高雄')) return 'bg-yellow-50/50 hover:bg-yellow-100';
+                    return 'hover:bg-gray-50';
+                };
+
+                // 判斷地點標籤顏色
+                const getLocationColor = (loc) => {
+                    if (!loc) return 'text-gray-600 border-gray-300';
+                    if (loc.includes('北投') || loc.includes('台北')) return 'text-blue-700 border-blue-400';
+                    if (loc.includes('桃園')) return 'text-orange-700 border-orange-400';
+                    if (loc.includes('新竹')) return 'text-emerald-700 border-emerald-400';
+                    if (loc.includes('台中')) return 'text-purple-700 border-purple-400';
+                    if (loc.includes('高雄')) return 'text-yellow-700 border-yellow-400';
+                    return 'text-gray-600 border-gray-300';
+                };
+
+                // 手機版卡片左邊框顏色
+                const getCardBorderColor = (loc) => {
+                    if (!loc) return 'border-l-4 border-l-gray-300';
+                    if (loc.includes('北投') || loc.includes('台北')) return 'border-l-4 border-l-blue-400';
+                    if (loc.includes('桃園')) return 'border-l-4 border-l-orange-400';
+                    if (loc.includes('新竹')) return 'border-l-4 border-l-emerald-400';
+                    if (loc.includes('台中')) return 'border-l-4 border-l-purple-400';
+                    if (loc.includes('高雄')) return 'border-l-4 border-l-yellow-400';
+                    return 'border-l-4 border-l-gray-300';
+                }
+
+                // 判斷代碼是否為 3 系列
+                const isCode3 = (code) => {
+                    return code === '3.1' || code === '3' || String(code).startsWith('3');
+                };
+
+                // 智慧資料清洗與簡化
+                const extractData = (rawData) => {
+                    if (!rawData || rawData.length === 0) return [];
+                    let rawCols = Object.keys(rawData[0]);
                     
-                    // 1. 隱藏包含「起算」的欄位
-                    cols = cols.filter(c => !String(c).includes('起算'));
+                    // 尋找目標欄位的實際名稱
+                    const findCol = (keywords, exclude = []) => {
+                        return rawCols.find(c => !exclude.includes(c) && keywords.some(kw => String(c).includes(kw)));
+                    };
+
+                    let colMap = {};
+                    colMap.plate = findCol(['車牌', '車號']);
+                    colMap.brand = findCol(['廠牌', '品牌'], [colMap.plate]); // 避免「車牌」對應到「牌」
+                    colMap.item = findCol(['項', '序', '編號']);
+                    colMap.location = findCol(['停放', '位置', '地點', '店']);
+                    colMap.year = findCol(['年']);
+                    colMap.model = findCol(['型', '版本']);
+                    colMap.color = findCol(['色', '顏']);
+                    colMap.price = findCol(['價', '網', '售']);
+                    colMap.mileage = findCol(['里程']);
+                    colMap.condition = findCol(['況', '備註', '狀況']);
                     
-                    // 2. 尋找三大關鍵欄位 (支援更多關鍵字包容)
-                    let itemCol = cols.find(c => String(c).includes('項') || String(c).includes('序') || String(c).includes('編號'));
-                    let priceCol = cols.find(c => String(c).includes('網') || String(c).includes('售') || String(c).includes('價'));
-                    let codeCol = cols.find(c => {
+                    // 尋找代碼欄位 (找沒有標題，或是標題有"代碼"，或是內容有 3.1 的欄位)
+                    colMap.code = rawCols.find(c => {
+                        if (Object.values(colMap).includes(c)) return false;
                         let colName = String(c);
                         if (colName.includes('__未命名_') || colName.includes('代碼')) return true;
-                        // 抽樣檢查內容是否包含 3.1 或 2
-                        return data.slice(0, 10).some(r => String(r[c]).trim() === '3.1' || String(r[c]).trim() === '2');
+                        // 抽樣檢查前 10 筆資料是否有 3.1 或 2
+                        return rawData.slice(0, 10).some(r => {
+                            let val = String(r[c]).trim();
+                            return val === '3.1' || val === '3' || val === '2';
+                        });
                     });
 
-                    let finalCols = [];
-
-                    // [步驟A] 強制把「項次」排在第一格
-                    if (itemCol) finalCols.push(itemCol);
-
-                    // [步驟B] 依序塞入其他欄位
-                    for (let c of cols) {
-                        if (c !== itemCol && c !== codeCol) {
-                            finalCols.push(c);
-                        }
-                    }
-
-                    // [步驟C] 強制把「代碼」安插在「價格」的後面一格
-                    if (codeCol) {
-                        if (priceCol) {
-                            let insertIdx = finalCols.indexOf(priceCol) + 1;
-                            finalCols.splice(insertIdx, 0, codeCol);
-                        } else {
-                            finalCols.push(codeCol);
-                        }
-                    }
-                    
-                    return finalCols;
+                    // 將原始資料轉換為乾淨的指定格式
+                    return rawData.map((row, i) => {
+                        return {
+                            item: row[colMap.item] || (i + 1),
+                            location: row[colMap.location] || '',
+                            year: row[colMap.year] || '',
+                            brand: row[colMap.brand] || '',
+                            model: row[colMap.model] || '',
+                            color: row[colMap.color] || '',
+                            plate: row[colMap.plate] || '',
+                            price: row[colMap.price] || '',
+                            mileage: row[colMap.mileage] || '',
+                            condition: row[colMap.condition] || '',
+                            code: String(row[colMap.code] || '').trim()
+                        };
+                    });
                 };
 
                 const fetchData = async () => {
@@ -151,10 +262,10 @@
                         const result = await res.json();
                         
                         if (result.status === "success") {
-                            dataList.value = result.data;
-                            headers.value = processHeaders(result.data);
+                            // 使用智慧提取，只留下我們要的 11 個欄位
+                            dataList.value = extractData(result.data);
                             
-                            statusMessage.value = `✅ 資料同步完成 (共 ${result.data.length} 筆)`;
+                            statusMessage.value = `✅ 資料同步完成 (共 ${dataList.value.length} 筆)`;
                             statusColor.value = "text-emerald-300";
                         } else {
                             throw new Error(result.message);
@@ -173,7 +284,8 @@
                 });
 
                 return {
-                    loading, statusMessage, statusColor, dataList, headers, fetchData
+                    loading, statusMessage, statusColor, dataList, 
+                    fetchData, getRowBg, getLocationColor, getCardBorderColor, isCode3
                 };
             }
         }).mount('#app');

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>💰 稅金計算小幫手 - 杰運汽車</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
+        [v-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col h-screen">
+    <div id="app" class="flex flex-col h-full" v-cloak>
+        
+        <header class="bg-rose-700 text-white p-3 sm:p-4 shadow-md flex justify-between items-center z-10 shrink-0">
+            <h1 class="text-base sm:text-xl font-bold truncate pr-2">💰 稅金計算小幫手</h1>
+            <a href="/" class="bg-yellow-500 hover:bg-yellow-600 text-rose-900 font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm">
+                🏠 首頁
+            </a>
+        </header>
+
+        <div class="bg-rose-800 text-white text-xs py-1 px-4 text-center sm:text-right shrink-0" :class="statusColor">
+            {{ statusMessage }}
+        </div>
+
+        <main class="flex-1 p-2 sm:p-4 overflow-y-auto flex flex-col md:flex-row gap-4">
+            
+            <div class="w-full md:w-1/2 lg:w-1/3 bg-white rounded-xl shadow-sm border p-4 sm:p-6 flex flex-col gap-5 h-fit">
+                <h2 class="text-xl font-bold text-gray-800 border-b pb-2">📋 車輛稅金試算</h2>
+                
+                <div>
+                    <label class="block text-sm font-bold text-gray-600 mb-2">選擇車種:</label>
+                    <div class="flex gap-4 bg-rose-50 p-2 rounded-lg border border-rose-100">
+                        <label class="flex items-center gap-2 cursor-pointer font-bold text-rose-800">
+                            <input type="radio" v-model="params.vehicleType" value="sedan" class="w-4 h-4 text-rose-600"> 自用小客車
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer font-bold text-rose-800">
+                            <input type="radio" v-model="params.vehicleType" value="truck" class="w-4 h-4 text-rose-600"> 自用貨車
+                        </label>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-bold text-gray-600 mb-1">過戶日期:</label>
+                    <input v-model="params.dateStr" @keyup.enter="calculateTax" type="text" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-rose-400 focus:outline-none font-bold text-lg" placeholder="例: 250109 或 1140109">
+                    <p class="text-xs text-gray-400 mt-1">※ 支援民國年 (1140109) 或 西元年 (20250109)</p>
+                </div>
+
+                <div class="flex gap-4">
+                    <div class="flex-1">
+                        <label class="block text-sm font-bold text-gray-600 mb-1">排氣量 (CC):</label>
+                        <input v-model="params.cc" @keyup.enter="calculateTax" type="number" class="w-full border border-gray-300 rounded p-2 focus:ring-2 focus:ring-rose-400 focus:outline-none font-bold text-lg">
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-sm font-bold text-gray-600 mb-1">燃料種類:</label>
+                        <div class="flex gap-3 bg-gray-50 border rounded p-2 h-[42px] items-center">
+                            <label class="flex items-center gap-1 cursor-pointer font-bold"><input type="radio" v-model="params.fuel" value="gas"> 汽油</label>
+                            <label class="flex items-center gap-1 cursor-pointer font-bold"><input type="radio" v-model="params.fuel" value="diesel"> 柴油</label>
+                        </div>
+                    </div>
+                </div>
+
+                <button @click="calculateTax" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-3 rounded-lg shadow-md transition text-lg mt-2">
+                    🧮 計算稅金
+                </button>
+
+                <div class="mt-4 bg-gray-50 border rounded-lg p-4 space-y-3">
+                    <div class="text-sm font-bold text-gray-500 mb-2 border-b pb-2">
+                        📅 {{ result.daysMessage }}
+                    </div>
+                    <div class="flex justify-between items-center text-gray-700">
+                        <span class="font-bold">牌照稅:</span>
+                        <div class="text-right">
+                            <span class="text-lg font-bold text-rose-600">${{ formatNum(result.proLic) }}</span>
+                            <span class="text-xs text-gray-400 ml-1">(全年: {{ formatNum(result.annualLic) }})</span>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center text-gray-700">
+                        <span class="font-bold">燃料稅:</span>
+                        <div class="text-right">
+                            <span class="text-lg font-bold text-rose-600">${{ formatNum(result.proFuel) }}</span>
+                            <span class="text-xs text-gray-400 ml-1">(全年: {{ formatNum(result.annualFuel) }})</span>
+                        </div>
+                    </div>
+                    <div class="border-t pt-3 mt-2 flex justify-between items-center">
+                        <span class="font-bold text-lg text-gray-800">應繳總額:</span>
+                        <span class="text-3xl font-extrabold text-green-600">${{ formatNum(result.total) }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex-1 bg-white rounded-xl shadow-sm border p-4 sm:p-6 flex flex-col h-fit md:h-full">
+                <h2 class="text-xl font-bold text-gray-800 border-b pb-2 mb-4">📑 年度稅額級距表 ({{ params.vehicleType === 'sedan' ? '自用小客車' : '自用貨車' }})</h2>
+                
+                <div class="overflow-x-auto flex-1">
+                    <table class="w-full text-sm text-center whitespace-nowrap border-collapse">
+                        <thead class="bg-rose-50 text-rose-800 sticky top-0 shadow-sm">
+                            <tr>
+                                <th class="px-4 py-3 font-bold border-b border-rose-200">CC數級距</th>
+                                <th class="px-4 py-3 font-bold border-b border-rose-200 text-right">牌照稅</th>
+                                <th class="px-4 py-3 font-bold border-b border-rose-200 text-right">汽油燃料</th>
+                                <th class="px-4 py-3 font-bold border-b border-rose-200 text-right">柴油燃料</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200 text-gray-700">
+                            <tr v-for="row in currentTaxTable" :key="row.label" class="hover:bg-gray-50 transition" :class="{'bg-yellow-50 font-bold': isHighlighted(row.threshold)}">
+                                <td class="px-4 py-2 border-r border-gray-100">{{ row.label }}</td>
+                                <td class="px-4 py-2 text-right">${{ formatNum(row.lic) }}</td>
+                                <td class="px-4 py-2 text-right">${{ formatNum(row.gas) }}</td>
+                                <td class="px-4 py-2 text-right">${{ formatNum(row.diesel) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        const { createApp, ref, reactive, computed, onMounted, watch } = Vue;
+
+        const TAX_DATA = {
+            sedan: [
+                { threshold: 6601, lic: 117000, gas: 12180, diesel: 7308, label: "6601以上" },
+                { threshold: 5401, lic: 69690, gas: 11220, diesel: 6732, label: "5401-6600" },
+                { threshold: 4201, lic: 46170, gas: 9840, diesel: 5904, label: "4201-5400" },
+                { threshold: 3001, lic: 28220, gas: 8640, diesel: 5184, label: "3001-4200" },
+                { threshold: 2401, lic: 15210, gas: 7200, diesel: 4320, label: "2401-3000" },
+                { threshold: 1801, lic: 11230, gas: 6180, diesel: 3636, label: "1801-2400" },
+                { threshold: 1201, lic: 7120, gas: 4800, diesel: 2880, label: "1201-1800" },
+                { threshold: 601, lic: 4320, gas: 4320, diesel: 2592, label: "601-1200" },
+                { threshold: 501, lic: 2160, gas: 2880, diesel: 1728, label: "501-600" },
+                { threshold: 0, lic: 1620, gas: 2160, diesel: 1296, label: "500以下" }
+            ].sort((a,b) => a.threshold - b.threshold),
+            
+            truck: [
+                { threshold: 6601, lic: 16200, gas: 12180, diesel: 7308, label: "6601以上" },
+                { threshold: 6001, lic: 14400, gas: 11220, diesel: 6732, label: "6001-6600" },
+                { threshold: 5401, lic: 13500, gas: 11220, diesel: 6732, label: "5401-6000" },
+                { threshold: 4801, lic: 12600, gas: 9840, diesel: 5904, label: "4801-5400" },
+                { threshold: 4201, lic: 11700, gas: 9840, diesel: 5904, label: "4201-4800" },
+                { threshold: 3601, lic: 10800, gas: 8820, diesel: 5292, label: "3601-4200" },
+                { threshold: 3001, lic: 9900, gas: 8100, diesel: 4860, label: "3001-3600" },
+                { threshold: 2401, lic: 9000, gas: 7200, diesel: 4320, label: "2401-3000" },
+                { threshold: 1801, lic: 7200, gas: 6210, diesel: 3726, label: "1801-2400" },
+                { threshold: 1201, lic: 4500, gas: 4800, diesel: 2880, label: "1201-1800" },
+                { threshold: 601, lic: 3600, gas: 3600, diesel: 2160, label: "601-1200" },
+                { threshold: 501, lic: 2160, gas: 2304, diesel: 1692, label: "501-600" },
+                { threshold: 0, lic: 1080, gas: 1728, diesel: 1296, label: "500以下" }
+            ].sort((a,b) => a.threshold - b.threshold)
+        };
+
+        createApp({
+            setup() {
+                const statusMessage = ref("準備就緒");
+                const statusColor = ref("text-rose-200");
+                
+                const getTodayStr = () => {
+                    let d = new Date();
+                    let yy = (d.getFullYear() - 1911).toString();
+                    let mm = (d.getMonth() + 1).toString().padStart(2, '0');
+                    let dd = d.getDate().toString().padStart(2, '0');
+                    return yy + mm + dd;
+                };
+
+                const params = reactive({
+                    vehicleType: 'sedan',
+                    dateStr: getTodayStr(),
+                    cc: '',
+                    fuel: 'gas'
+                });
+
+                const result = reactive({
+                    daysMessage: "距年底天數: --- 天",
+                    annualLic: 0, annualFuel: 0,
+                    proLic: 0, proFuel: 0, total: 0
+                });
+
+                const activeThreshold = ref(-1);
+
+                const currentTaxTable = computed(() => {
+                    return TAX_DATA[params.vehicleType];
+                });
+
+                const formatNum = (num) => {
+                    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+                };
+
+                const isHighlighted = (threshold) => {
+                    return threshold === activeThreshold.value;
+                };
+
+                watch(() => params.vehicleType, () => {
+                    if (params.cc) calculateTax();
+                });
+                watch(() => params.fuel, () => {
+                    if (params.cc) calculateTax();
+                });
+
+                const calculateTax = () => {
+                    try {
+                        let dStr = params.dateStr.trim();
+                        if (!/^\d+$/.test(dStr)) throw new Error("日期格式錯誤，請輸入純數字");
+
+                        let year = 0, month = 0, day = 0;
+                        if (dStr.length === 6) {
+                            let yy = parseInt(dStr.substring(0, 2));
+                            year = (yy < 80) ? 2000 + yy : 1911 + yy;
+                            month = parseInt(dStr.substring(2, 4));
+                            day = parseInt(dStr.substring(4, 6));
+                        } else if (dStr.length === 7) {
+                            year = 1911 + parseInt(dStr.substring(0, 3));
+                            month = parseInt(dStr.substring(3, 5));
+                            day = parseInt(dStr.substring(5, 7));
+                        } else if (dStr.length === 8) {
+                            year = parseInt(dStr.substring(0, 4));
+                            month = parseInt(dStr.substring(4, 6));
+                            day = parseInt(dStr.substring(6, 8));
+                        } else {
+                            throw new Error("日期長度錯誤 (應為6~8碼)");
+                        }
+
+                        let startDate = new Date(year, month - 1, day);
+                        if (isNaN(startDate.getTime()) || startDate.getMonth() !== month - 1) {
+                            throw new Error("這一天不存在 (例如2月沒有30號)");
+                        }
+
+                        let endDate = new Date(year, 11, 31); // 12月31日
+                        
+                        // 計算天數差 (+1 包含當天)
+                        let timeDiff = endDate.getTime() - startDate.getTime();
+                        let daysLeft = Math.floor(timeDiff / (1000 * 3600 * 24)) + 1;
+                        if (daysLeft < 0) daysLeft = 0;
+
+                        // 判斷閏年
+                        let fullYearDays = ((year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0)) ? 366 : 365;
+
+                        result.daysMessage = `距 ${year} 年底剩: ${daysLeft} 天 (含過戶當日)`;
+
+                        let ccInput = parseInt(params.cc);
+                        if (isNaN(ccInput) || ccInput <= 0) throw new Error("請輸入正確的排氣量(CC數)");
+
+                        let table = TAX_DATA[params.vehicleType];
+                        let foundRow = null;
+                        
+                        // 從大到小找，找到第一個小於等於輸入值的門檻
+                        let reversedTable = [...table].sort((a,b) => b.threshold - a.threshold);
+                        for (let row of reversedTable) {
+                            if (ccInput >= row.threshold) {
+                                foundRow = row;
+                                break;
+                            }
+                        }
+
+                        if (!foundRow) throw new Error("CC數異常");
+
+                        activeThreshold.value = foundRow.threshold; // 高亮顯示用
+
+                        result.annualLic = foundRow.lic;
+                        result.annualFuel = params.fuel === 'gas' ? foundRow.gas : foundRow.diesel;
+
+                        // 無條件捨去
+                        result.proLic = Math.floor((result.annualLic * daysLeft) / fullYearDays);
+                        result.proFuel = Math.floor((result.annualFuel * daysLeft) / fullYearDays);
+                        result.total = result.proLic + result.proFuel;
+
+                        statusMessage.value = `✅ 計算成功 (計 ${daysLeft} 天)`;
+                        statusColor.value = "text-green-300";
+
+                    } catch (e) {
+                        statusMessage.value = `❌ ${e.message}`;
+                        statusColor.value = "text-yellow-300";
+                        result.total = 0; result.proLic = 0; result.proFuel = 0;
+                        activeThreshold.value = -1;
+                    }
+                };
+
+                return {
+                    statusMessage, statusColor, params, result, currentTaxTable,
+                    calculateTax, formatNum, isHighlighted, activeThreshold
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

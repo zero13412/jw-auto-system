@@ -177,11 +177,9 @@ def search_plate(plate: str):
 @app.get("/api/simple_data")
 def get_simple_data():
     try:
-        # header=3 代表略過前3列，將第4列當作標題
         df_simple = pd.read_csv(SIMPLE_CSV_URL, header=3)
         df_simple = df_simple.dropna(how='all')
         
-        # 【關鍵修復】：確保每個無標題欄位都有唯一名稱，才不會互相覆蓋！
         new_columns = []
         empty_count = 0
         for c in df_simple.columns:
@@ -332,3 +330,5 @@ def serve_loan(): return FileResponse("loan.html")
 def serve_dispatch(): return FileResponse("dispatch.html")
 @app.get("/simple")
 def serve_simple(): return FileResponse("simple.html")
+@app.get("/tax")
+def serve_tax(): return FileResponse("tax.html")

@@ -9,6 +9,8 @@
     <style>
         body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
         [v-cloak] { display: none !important; }
+        /* 隱藏手動拉伸標記，由系統自動處理高度 */
+        textarea { overflow-y: hidden; } 
     </style>
 </head>
 <body class="bg-gray-100">
@@ -119,29 +121,29 @@
                 </button>
             </aside>
 
-            <main class="flex-1 flex flex-col gap-4 md:overflow-y-auto h-auto md:h-full pb-10 md:pb-0">
+            <main class="flex-1 flex flex-col gap-4 overflow-y-auto pb-10 md:pb-4 h-full relative p-1">
                 
-                <div class="flex flex-col bg-white border rounded-lg shadow-sm h-72 md:h-1/2">
-                    <div class="bg-gray-100 p-2 sm:p-3 border-b flex justify-between items-center rounded-t-lg">
+                <div class="flex flex-col bg-white border rounded-lg shadow-sm shrink-0">
+                    <div class="bg-gray-100 p-2 sm:p-3 border-b flex justify-between items-center rounded-t-lg sticky top-0 z-10">
                         <span class="font-bold text-gray-700 text-sm sm:text-base">🏢 公司內部回報</span>
                         <button @click="copyText('report')" class="bg-cyan-100 hover:bg-cyan-200 text-cyan-800 font-bold px-3 py-1 rounded text-sm transition">📋 複製回報</button>
                     </div>
-                    <textarea v-model="output.report" class="flex-1 w-full p-3 sm:p-4 resize-none focus:outline-none text-sm sm:text-base leading-relaxed font-mono" readonly></textarea>
+                    <textarea id="reportArea" v-model="output.report" class="w-full p-3 sm:p-4 resize-none focus:outline-none text-sm sm:text-base leading-relaxed font-mono bg-white min-h-[250px]" readonly :style="{ height: heights.report + 'px' }"></textarea>
                 </div>
 
-                <div class="flex flex-col bg-white border rounded-lg shadow-sm h-96 md:h-1/2">
-                    <div class="bg-gray-100 p-2 sm:p-3 border-b flex justify-between items-center rounded-t-lg">
+                <div class="flex flex-col bg-white border rounded-lg shadow-sm shrink-0">
+                    <div class="bg-gray-100 p-2 sm:p-3 border-b flex justify-between items-center rounded-t-lg sticky top-0 z-10">
                         <span class="font-bold text-gray-700 text-sm sm:text-base">💬 對客說明話術</span>
                         <button @click="copyText('pitch')" class="bg-green-100 hover:bg-green-200 text-green-800 font-bold px-3 py-1 rounded text-sm transition">📋 複製話術</button>
                     </div>
-                    <textarea v-model="output.pitch" class="flex-1 w-full p-3 sm:p-4 resize-none focus:outline-none text-sm sm:text-base leading-relaxed" readonly></textarea>
+                    <textarea id="pitchArea" v-model="output.pitch" class="w-full p-3 sm:p-4 resize-none focus:outline-none text-sm sm:text-base leading-relaxed bg-white min-h-[400px]" readonly :style="{ height: heights.pitch + 'px' }"></textarea>
                 </div>
             </main>
         </div>
     </div>
 
     <script>
-        const { createApp, ref, reactive, watch, computed } = Vue;
+        const { createApp, ref, reactive, watch, computed, nextTick } = Vue;
         const API_URL = "/api"; 
 
         createApp({
@@ -171,13 +173,29 @@
                 });
 
                 const output = reactive({ report: "", pitch: "" });
+                // 記錄高度
+                const heights = reactive({ report: 250, pitch: 400 });
+
+                // 自動調整高度函式
+                const autoResize = (type, areaId) => {
+                    nextTick(() => {
+                        let el = document.getElementById(areaId);
+                        if (el) {
+                            el.style.height = 'auto'; // 歸零
+                            let newHeight = el.scrollHeight;
+                            // 防呆最小高度
+                            if (type === 'report' && newHeight < 250) newHeight = 250;
+                            if (type === 'pitch' && newHeight < 400) newHeight = 400;
+                            heights[type] = newHeight;
+                        }
+                    });
+                };
 
                 const updateStatus = (msg, colorClass) => {
                     statusMessage.value = msg;
                     statusColor.value = colorClass;
                 };
 
-                // 自動計算費用提示
                 const amountHint = computed(() => {
                     if (settings.mode === 'order') return "";
                     if (settings.mode === 'reserve') return "(請自行輸入保留金)";
@@ -187,7 +205,6 @@
                     return `(自動查表: $${fee})`;
                 });
 
-                // 監聽地點和模式改變，自動更新金額
                 watch([() => settings.locFrom, () => settings.locTo, () => settings.mode], () => {
                     if (settings.mode === 'transfer') {
                         settings.amount = priceMatrix[settings.locFrom]?.[settings.locTo] || 0;
@@ -211,7 +228,6 @@
                             car.color = d['顏色'] || '';
                             car.mileage = d['里程'] || '';
                             
-                            // 智慧判斷起點
                             let dbLoc = (d['車輛位置'] || '').replace('店', '');
                             if (dbLoc.includes('北投') || dbLoc.includes('立賢')) dbLoc = '台北';
                             
@@ -281,11 +297,13 @@
                         text_out += check_receipt_msg;
                     }
                     output.report = text_out;
+                    autoResize('report', 'reportArea'); // 觸發自動長高
                 };
 
                 const generatePitch = () => {
                     if (settings.locFrom === settings.locTo) {
                         output.pitch = `車輛目前已在「${settings.locTo}」店，可以直接邀請客戶來店賞車！\n無需收取調度費。`;
+                        autoResize('pitch', 'pitchArea');
                         return;
                     }
 
@@ -335,6 +353,7 @@ ${fee} 是調度金 不是訂金
 而且您就是第一順位 如有其他人想買 您可考慮3小時
 
 因為我們常常發生 客人在路上 結果車被現場客人買走`;
+                    autoResize('pitch', 'pitchArea'); // 觸發自動長高
                 };
 
                 const copyText = (type) => {
@@ -348,7 +367,7 @@ ${fee} 是調度金 不是訂金
 
                 return {
                     statusMessage, statusColor, searchQuery,
-                    locations, settings, car, output, amountHint,
+                    locations, settings, car, output, amountHint, heights,
                     searchCar, generateTexts, copyText
                 };
             }

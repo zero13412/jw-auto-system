@@ -9,6 +9,8 @@
     <style>
         body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
         [v-cloak] { display: none !important; }
+        /* 隱藏手動拉伸標記，由系統自動處理高度 */
+        textarea { overflow-y: hidden; } 
     </style>
 </head>
 <body class="bg-gray-100">
@@ -112,31 +114,31 @@
                 </button>
             </aside>
 
-            <main class="flex-1 flex flex-col gap-4 md:overflow-y-auto h-auto md:h-full pb-10 md:pb-0">
+            <main class="flex-1 flex flex-col gap-4 overflow-y-auto pb-10 md:pb-4 h-full relative p-1">
                 
-                <div class="flex flex-col bg-white border rounded-lg shadow-sm h-96 md:h-3/5">
-                    <div class="bg-gray-100 p-2 sm:p-3 border-b flex justify-between items-center rounded-t-lg">
+                <div class="flex flex-col bg-white border rounded-lg shadow-sm shrink-0">
+                    <div class="bg-gray-100 p-2 sm:p-3 border-b flex justify-between items-center rounded-t-lg sticky top-0 z-10">
                         <span class="font-bold text-gray-700 text-sm sm:text-base">1. 成交資料</span>
                         <button @click="copyText('deal')" class="bg-blue-100 hover:bg-blue-200 text-blue-800 font-bold px-3 sm:px-4 py-1 rounded text-sm transition">📋 複製</button>
                     </div>
-                    <textarea v-model="output.deal" class="flex-1 w-full p-3 sm:p-4 resize-none focus:outline-none text-sm sm:text-base leading-relaxed" readonly></textarea>
+                    <textarea id="dealArea" v-model="output.deal" class="w-full p-3 sm:p-4 resize-none focus:outline-none text-sm sm:text-base leading-relaxed bg-white min-h-[300px]" readonly :style="{ height: heights.deal + 'px' }"></textarea>
                 </div>
 
-                <div class="flex flex-col sm:flex-row gap-4 md:h-2/5">
-                    <div class="flex-1 flex flex-col bg-white border rounded-lg shadow-sm h-48 sm:h-auto">
+                <div class="flex flex-col sm:flex-row gap-4 shrink-0">
+                    <div class="flex-1 flex flex-col bg-white border rounded-lg shadow-sm">
                         <div class="bg-gray-100 p-2 sm:p-3 border-b flex justify-between items-center rounded-t-lg">
                             <span class="font-bold text-gray-700 text-sm sm:text-base">2. 給技師</span>
                             <button @click="copyText('tech')" class="bg-blue-100 hover:bg-blue-200 text-blue-800 font-bold px-3 py-1 rounded text-sm transition">📋 複製</button>
                         </div>
-                        <textarea v-model="output.tech" class="flex-1 w-full p-3 resize-none focus:outline-none text-sm sm:text-base" readonly></textarea>
+                        <textarea id="techArea" v-model="output.tech" class="w-full p-3 resize-none focus:outline-none text-sm sm:text-base bg-white min-h-[150px]" readonly :style="{ height: heights.tech + 'px' }"></textarea>
                     </div>
 
-                    <div class="flex-1 flex flex-col bg-white border rounded-lg shadow-sm h-48 sm:h-auto">
+                    <div class="flex-1 flex flex-col bg-white border rounded-lg shadow-sm">
                         <div class="bg-gray-100 p-2 sm:p-3 border-b flex justify-between items-center rounded-t-lg">
                             <span class="font-bold text-gray-700 text-sm sm:text-base">3. 給行政</span>
                             <button @click="copyText('admin')" class="bg-blue-100 hover:bg-blue-200 text-blue-800 font-bold px-3 py-1 rounded text-sm transition">📋 複製</button>
                         </div>
-                        <textarea v-model="output.admin" class="flex-1 w-full p-3 resize-none focus:outline-none text-sm sm:text-base" readonly></textarea>
+                        <textarea id="adminArea" v-model="output.admin" class="w-full p-3 resize-none focus:outline-none text-sm sm:text-base bg-white min-h-[150px]" readonly :style="{ height: heights.admin + 'px' }"></textarea>
                     </div>
                 </div>
             </main>
@@ -154,7 +156,7 @@
     </div>
 
     <script>
-        const { createApp, ref, reactive, watch } = Vue;
+        const { createApp, ref, reactive, watch, nextTick } = Vue;
         const API_URL = "/api"; 
 
         createApp({
@@ -171,7 +173,6 @@
                     { name: '高雄店', label: '高雄' }
                 ];
 
-                // 移除 company 設定，改由 car.company 全權負責
                 const settings = reactive({
                     discount: "折1.1萬", subsidy: "不折",
                     deposit: "2.9", site: "北投店", trans_store: "北投店"
@@ -184,6 +185,23 @@
                 });
 
                 const output = reactive({ deal: "", tech: "", admin: "" });
+                // 用來記錄每個框的即時高度
+                const heights = reactive({ deal: 300, tech: 150, admin: 150 });
+
+                // 動態計算高度的核心函數
+                const autoResize = (type, areaId) => {
+                    nextTick(() => {
+                        let el = document.getElementById(areaId);
+                        if (el) {
+                            el.style.height = 'auto'; // 先歸零以取得真實高度
+                            let newHeight = el.scrollHeight;
+                            // 設定最小高度防呆
+                            if (type === 'deal' && newHeight < 300) newHeight = 300;
+                            if ((type === 'tech' || type === 'admin') && newHeight < 150) newHeight = 150;
+                            heights[type] = newHeight;
+                        }
+                    });
+                };
 
                 const updateStatus = (msg, colorClass) => {
                     statusMessage.value = msg;
@@ -211,11 +229,10 @@
                             car.year = d['clean_year'] || '';
                             car.color = d['顏色'] || '';
                             car.mileage = d['里程'] || '';
-                            car.stock_id = d['編號'] || ''; // 這裡的編號已經是後端合併過的格式了！
+                            car.stock_id = d['編號'] || ''; 
                             car.vin = d['車身'] || '';
                             car.list_price = String(d['顯示價格'] || '0');
                             
-                            // 自動抓取產權公司 (優先抓「產權」，沒有就抓「公司」)
                             car.company = (d['產權'] && d['產權'] !== 'nan') ? d['產權'] : 
                                           ((d['公司'] && d['公司'] !== 'nan') ? d['公司'] : '');
                             
@@ -263,7 +280,6 @@
 
                     let final_balance = price_after_subsidy - deposit_yuan;
 
-                    // 智慧判斷產權與匯款帳號
                     let company_str = car.company || "";
                     let source_header = "";
                     let bank_name = "玉山銀行 石牌分行";
@@ -282,7 +298,6 @@
                         account_number = "186540179959";
                     } else if (company_str.includes("杰租")) {
                         source_header = "租車車源";
-                        // 杰租使用預設的杰運銀行帳戶
                     }
 
                     let dealLines = [
@@ -324,11 +339,13 @@
 5. 訂金 (${deposit_wan}萬) 後尾款： ${Math.round(final_balance)} 元`;
 
                     output.deal = dealLines + calcStr;
+                    autoResize('deal', 'dealArea'); // 觸發自動長高
 
                     output.tech = `${car.year} ${car.brand} ${car.model}
 車號：${car.plate}
 施工地：${settings.site}
 車主資料已建立`;
+                    autoResize('tech', 'techArea'); // 觸發自動長高
 
                     let trans_note = settings.trans_store === "北投店" ? "" : `(${settings.trans_store.replace('店','')}過戶)`;
                     output.admin = `${car.year} ${car.brand} ${car.model}
@@ -336,6 +353,7 @@
 車號：${car.plate}
 
 ${trans_note}`;
+                    autoResize('admin', 'adminArea'); // 觸發自動長高
                     
                     if (window.innerWidth < 768) {
                         setTimeout(() => { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }, 100);
@@ -360,7 +378,7 @@ ${trans_note}`;
 
                 return {
                     statusMessage, statusColor, searchQuery, showModal, modalMessage,
-                    sites, settings, car, output,
+                    sites, settings, car, output, heights,
                     searchCar, generateText, copyText
                 };
             }

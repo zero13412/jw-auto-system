@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>📊 簡單抓資料 - 杰運汽車</title>
+    <title>📊 新竹車源即時看板 - 杰運汽車</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <style>
@@ -58,9 +58,14 @@
                          :class="getCardBorderColor(row.location)">
                          
                         <div class="flex justify-between items-center px-4 py-2 border-b" :class="getRowBg(row.location)">
-                            <span class="px-2 py-1 rounded text-xs font-bold border shadow-sm" 
-                                  :class="getLocationColor(row.location)">{{ row.location }}</span>
-                            <span class="text-gray-500 font-bold text-sm bg-white px-2 py-0.5 rounded border">{{ row.year }} 年</span>
+                            <div class="flex items-center gap-2">
+                                <span class="px-2 py-1 rounded text-xs font-bold border shadow-sm" :class="getLocationColor(row.location)">{{ row.location }}</span>
+                                <span class="text-gray-500 font-bold text-sm bg-white px-2 py-0.5 rounded border">{{ row.year }} 年</span>
+                            </div>
+                            <div class="flex items-center gap-1 bg-white px-2 py-0.5 rounded border shadow-sm">
+                                <span class="font-bold uppercase tracking-wider text-gray-700 text-sm">{{ row.plate }}</span>
+                                <button @click="copyPlate(row.plate)" class="text-gray-400 hover:text-emerald-600 active:scale-95 transition" title="複製車號">📋</button>
+                            </div>
                         </div>
                         
                         <div class="p-4 space-y-3">
@@ -74,7 +79,8 @@
                             </div>
 
                             <div v-if="row.condition" class="bg-red-50 text-red-700 p-2 rounded text-xs border border-red-100 leading-relaxed">
-                                <span class="font-bold">狀況:</span> {{ row.condition }}
+                                <span class="font-bold">狀況:</span> 
+                                <span v-html="formatCondition(row.condition)"></span>
                             </div>
 
                             <div class="flex justify-between items-end border-t pt-3 mt-2">
@@ -83,12 +89,8 @@
                                     <span class="text-2xl font-extrabold text-red-600">${{ row.price }}</span>
                                 </div>
                                 <div>
-                                    <span v-if="isCode3(row.code)" class="text-red-600 font-extrabold bg-red-100 px-3 py-1 rounded shadow-sm text-lg border border-red-200">
-                                        {{ row.code }}
-                                    </span>
-                                    <span v-else-if="row.code" class="text-gray-400 font-bold px-2 text-lg">
-                                        {{ row.code }}
-                                    </span>
+                                    <span v-if="isCode3(row.code)" class="text-red-600 font-extrabold bg-red-100 px-3 py-1 rounded shadow-sm text-lg border border-red-200">{{ row.code }}</span>
+                                    <span v-else-if="row.code" class="text-gray-400 font-bold px-2 text-lg">{{ row.code }}</span>
                                 </div>
                             </div>
                         </div>
@@ -103,6 +105,7 @@
                                 <th class="px-3 py-3 font-bold border border-gray-300 w-16 text-center">年份</th>
                                 <th class="px-3 py-3 font-bold border border-gray-300">車型</th>
                                 <th class="px-3 py-3 font-bold border border-gray-300 w-16 text-center">顏色</th>
+                                <th class="px-3 py-3 font-bold border border-gray-300 w-28 text-center">車號</th>
                                 <th class="px-3 py-3 font-bold border border-red-300 bg-yellow-50 text-red-800 text-right w-24">網路價格</th>
                                 <th class="px-3 py-3 font-bold border border-red-300 bg-yellow-50 text-red-800 text-center w-16">代碼</th>
                                 <th class="px-3 py-3 font-bold border border-gray-300 w-20 text-center">里程</th>
@@ -119,13 +122,22 @@
                                 <td class="px-3 py-2 border border-gray-200 text-gray-700 text-center font-bold">{{ row.year }}</td>
                                 <td class="px-3 py-2 border border-gray-200 font-bold text-gray-800 whitespace-normal min-w-[200px]">{{ row.model }}</td>
                                 <td class="px-3 py-2 border border-gray-200 text-gray-700 text-center">{{ row.color }}</td>
+                                
+                                <td class="px-3 py-2 border border-gray-200 text-center">
+                                    <div class="flex items-center justify-center gap-2">
+                                        <span class="font-bold uppercase text-gray-800">{{ row.plate }}</span>
+                                        <button @click="copyPlate(row.plate)" class="text-gray-400 hover:text-emerald-600 transition" title="複製車號">📋</button>
+                                    </div>
+                                </td>
+
                                 <td class="px-3 py-2 border border-gray-200 font-extrabold text-red-600 text-lg text-right">${{ row.price }}</td>
                                 <td class="px-3 py-2 border border-gray-200 text-center">
                                     <span v-if="isCode3(row.code)" class="text-red-600 font-bold bg-red-100 px-2 py-1 rounded shadow-sm text-base border border-red-200">{{ row.code }}</span>
                                     <span v-else class="text-gray-500 font-bold">{{ row.code }}</span>
                                 </td>
                                 <td class="px-3 py-2 border border-gray-200 text-gray-700 text-center">{{ row.mileage }}</td>
-                                <td class="px-3 py-2 border border-gray-200 whitespace-normal min-w-[200px] text-red-700 text-xs font-bold">{{ row.condition }}</td>
+                                
+                                <td class="px-3 py-2 border border-gray-200 whitespace-normal min-w-[200px] text-red-700 text-xs font-bold" v-html="formatCondition(row.condition)"></td>
                             </tr>
                         </tbody>
                     </table>
@@ -200,6 +212,27 @@
                     return code === '3.1' || code === '3' || String(code).startsWith('3');
                 };
 
+                // 將「原鈑件」三個字變成灰色
+                const formatCondition = (cond) => {
+                    if (!cond) return '';
+                    return String(cond).replace(/原鈑件/g, '<span class="text-gray-400 font-normal">原鈑件</span>');
+                };
+
+                // 複製車號功能
+                const copyPlate = (plate) => {
+                    if (!plate) return;
+                    navigator.clipboard.writeText(plate).then(() => {
+                        statusMessage.value = `✅ 已複製車號: ${plate}`;
+                        statusColor.value = "text-green-300";
+                        setTimeout(() => {
+                            statusMessage.value = `✅ 資料同步完成 (共 ${dataList.value.length} 筆)`;
+                            statusColor.value = "text-emerald-300";
+                        }, 2000);
+                    }).catch(err => {
+                        console.error('複製失敗', err);
+                    });
+                };
+
                 const extractData = (rawData) => {
                     if (!rawData || rawData.length === 0) return [];
                     let rawCols = Object.keys(rawData[0]);
@@ -209,16 +242,14 @@
                     };
 
                     let colMap = {};
+                    colMap.plate = findCol(['車牌', '車號']); // 加入車牌欄位
                     colMap.location = findCol(['停放', '位置', '地點']);
                     colMap.year = findCol(['年']);
                     colMap.model = findCol(['型', '版本']);
                     colMap.color = findCol(['色', '顏']); 
                     colMap.price = findCol(['價', '網', '售']);
                     colMap.mileage = findCol(['里程']);
-                    
-                    // 【精準修復】：只抓取「車況」或「狀況」，避免抓到其他備註
                     colMap.condition = findCol(['車況', '狀況']); 
-                    
                     colMap.start = findCol(['起算']); 
 
                     return rawData.map((row, i) => {
@@ -250,13 +281,14 @@
                         }
 
                         return {
+                            plate: row[colMap.plate] || '', // 加入車牌
                             location: row[colMap.location] || '未分類',
                             year: row[colMap.year] || '',
                             model: row[colMap.model] || '',
                             color: row[colMap.color] || '',
                             price: priceVal,
                             mileage: row[colMap.mileage] || '',
-                            condition: row[colMap.condition] || '', // 這裡現在會精準顯示「原鈑件」等車況了
+                            condition: row[colMap.condition] || '',
                             code: finalCode
                         };
                     });
@@ -293,7 +325,8 @@
 
                 return {
                     loading, statusMessage, statusColor, dataList, 
-                    fetchData, getRowBg, getLocationColor, getCardBorderColor, isCode3
+                    fetchData, getRowBg, getLocationColor, getCardBorderColor, isCode3,
+                    formatCondition, copyPlate // 輸出給網頁使用
                 };
             }
         }).mount('#app');

@@ -148,8 +148,9 @@
                                 <div class="text-xs text-gray-500">
                                     里程: {{ car.里程 }}萬 &nbsp;|&nbsp; 顏色: {{ car.顏色 }} &nbsp;|&nbsp; 車身: {{ car.車身 }}
                                 </div>
+                                
                                 <div v-if="car.車況 && car.車況 !== 'nan'" class="text-xs sm:text-sm text-red-600 mt-1 font-bold">
-                                    ⚠️ 車況: {{ car.車況 }}
+                                    ⚠️ 車況: <span v-html="formatCondition(car.車況)"></span>
                                 </div>
                             </div>
                             
@@ -187,7 +188,7 @@
                 const options = reactive({ brands: [], locations: [], properties: [] });
                 const loading = ref(false);
                 const statusMessage = ref("系統準備就緒");
-                const showMobileFilters = ref(false); // 控制手機版選單
+                const showMobileFilters = ref(false);
 
                 const filters = reactive({
                     brand: "全部", location: "全部", prop: "全部",
@@ -225,7 +226,7 @@
 
                 const searchCarsMobile = () => {
                     searchCars();
-                    showMobileFilters.value = false; // 搜尋後自動收起選單
+                    showMobileFilters.value = false;
                 };
 
                 const refreshData = async () => {
@@ -256,11 +257,17 @@
                     } else { alert("此車輛沒有車牌資料！"); }
                 };
 
+                // 將「原鈑件」三個字變成灰色
+                const formatCondition = (cond) => {
+                    if (!cond) return '';
+                    return String(cond).replace(/原鈑件/g, '<span class="text-gray-400 font-normal">原鈑件</span>');
+                };
+
                 onMounted(() => { fetchOptions().then(searchCars); });
 
                 return { 
                     cars, options, filters, loading, statusMessage, showMobileFilters,
-                    searchCars, searchCarsMobile, resetFilters, refreshData, copyPlate 
+                    searchCars, searchCarsMobile, resetFilters, refreshData, copyPlate, formatCondition
                 };
             }
         }).mount('#app');

@@ -149,8 +149,9 @@
                                     里程: {{ car.里程 }}萬 &nbsp;|&nbsp; 顏色: {{ car.顏色 }} &nbsp;|&nbsp; 車身: {{ car.車身 }}
                                 </div>
                                 
-                                <div v-if="car.車況 && car.車況 !== 'nan'" class="text-xs sm:text-sm text-red-600 mt-1 font-bold">
-                                    ⚠️ 車況: <span v-html="formatCondition(car.車況)"></span>
+                                <div v-if="car.車況 && car.車況 !== 'nan'" class="text-xs sm:text-sm mt-1 font-bold" 
+                                     :class="String(car.車況).trim() === '原鈑件' ? 'text-gray-400' : 'text-red-600'">
+                                    <span v-if="String(car.車況).trim() !== '原鈑件'">⚠️</span> 車況: <span v-html="formatCondition(car.車況)"></span>
                                 </div>
                             </div>
                             

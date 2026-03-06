@@ -78,7 +78,8 @@
                                 <div class="bg-gray-50 px-2 py-1 rounded border text-gray-600">里程: <span class="font-bold text-gray-800">{{ row.mileage }}</span></div>
                             </div>
 
-                            <div v-if="row.condition" class="bg-red-50 text-red-700 p-2 rounded text-xs border border-red-100 leading-relaxed">
+                            <div v-if="row.condition" class="p-2 rounded text-xs border leading-relaxed"
+                                 :class="String(row.condition).trim() === '原鈑件' ? 'bg-gray-50 border-gray-200 text-gray-500' : 'bg-red-50 border-red-100 text-red-700'">
                                 <span class="font-bold">狀況:</span> 
                                 <span v-html="formatCondition(row.condition)"></span>
                             </div>
@@ -124,9 +125,9 @@
                                 <td class="px-3 py-2 border border-gray-200 text-gray-700 text-center">{{ row.color }}</td>
                                 
                                 <td class="px-3 py-2 border border-gray-200 text-center">
-                                    <div class="flex items-center justify-center gap-2">
+                                    <div class="flex items-center justify-center gap-1">
                                         <span class="font-bold uppercase text-gray-800">{{ row.plate }}</span>
-                                        <button @click="copyPlate(row.plate)" class="text-gray-400 hover:text-emerald-600 transition" title="複製車號">📋</button>
+                                        <button @click="copyPlate(row.plate)" class="bg-white hover:bg-gray-100 border border-gray-300 text-gray-600 px-2 py-0.5 rounded text-xs shadow-sm transition whitespace-nowrap" title="複製車號">📋 複製</button>
                                     </div>
                                 </td>
 
@@ -137,7 +138,9 @@
                                 </td>
                                 <td class="px-3 py-2 border border-gray-200 text-gray-700 text-center">{{ row.mileage }}</td>
                                 
-                                <td class="px-3 py-2 border border-gray-200 whitespace-normal min-w-[200px] text-red-700 text-xs font-bold" v-html="formatCondition(row.condition)"></td>
+                                <td class="px-3 py-2 border border-gray-200 whitespace-normal min-w-[200px] text-xs font-bold" 
+                                    :class="String(row.condition).trim() === '原鈑件' ? 'text-gray-500' : 'text-red-700'" 
+                                    v-html="formatCondition(row.condition)"></td>
                             </tr>
                         </tbody>
                     </table>
@@ -242,7 +245,7 @@
                     };
 
                     let colMap = {};
-                    colMap.plate = findCol(['車牌', '車號']); // 加入車牌欄位
+                    colMap.plate = findCol(['車牌', '車號']); 
                     colMap.location = findCol(['停放', '位置', '地點']);
                     colMap.year = findCol(['年']);
                     colMap.model = findCol(['型', '版本']);
@@ -281,7 +284,7 @@
                         }
 
                         return {
-                            plate: row[colMap.plate] || '', // 加入車牌
+                            plate: row[colMap.plate] || '', 
                             location: row[colMap.location] || '未分類',
                             year: row[colMap.year] || '',
                             model: row[colMap.model] || '',
@@ -326,7 +329,7 @@
                 return {
                     loading, statusMessage, statusColor, dataList, 
                     fetchData, getRowBg, getLocationColor, getCardBorderColor, isCode3,
-                    formatCondition, copyPlate // 輸出給網頁使用
+                    formatCondition, copyPlate
                 };
             }
         }).mount('#app');

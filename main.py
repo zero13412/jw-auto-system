@@ -210,6 +210,36 @@ def get_simple_data():
         traceback.print_exc()
         return {"status": "error", "message": f"讀取失敗：{str(e)}"}
 
+# ================= 顏色轉換引擎 =================
+def get_color_rgb(cell):
+    """將 Excel 的底色代碼轉換為 Google Sheet 看得懂的 RGB 數值"""
+    try:
+        fill = cell.fill
+        if not fill or not fill.patternType: return None
+        color = fill.start_color
+        if not color: return None
+        
+        rgb_hex = None
+        if color.type == 'rgb' and color.rgb:
+            rgb_hex = str(color.rgb)
+        elif color.type == 'indexed':
+            from openpyxl.styles.colors import COLOR_INDEX
+            idx = color.indexed
+            if isinstance(idx, int) and idx < len(COLOR_INDEX):
+                rgb_hex = COLOR_INDEX[idx]
+                
+        if rgb_hex and rgb_hex not in ['00000000', 'FFFFFFFF']:
+            if len(rgb_hex) == 8: rgb_hex = rgb_hex[2:] # 拔掉 Alpha 通道
+            if len(rgb_hex) == 6:
+                return (
+                    int(rgb_hex[0:2], 16) / 255.0,
+                    int(rgb_hex[2:4], 16) / 255.0,
+                    int(rgb_hex[4:6], 16) / 255.0
+                )
+    except Exception:
+        pass
+    return None
+
 # ================= 共用的 Excel 核心處理邏輯 =================
 def process_excel_file(filename: str, contents: bytes):
     try:
@@ -237,45 +267,7 @@ def process_excel_file(filename: str, contents: bytes):
         
         data_to_upload_main = [headers_main]
         
-        for row in ws_main.iter_rows(min_row=2):
-            row_values = [cell.value if cell.value is not None else "" for cell in row]
-            if not any(str(v).strip() for v in row_values):
-                continue
-                
-            while len(row_values) < len(headers_main):
-                row_values.append("")
-            
-            is_reserved = False
-            if col_model != -1 and row_values[col_model] != "":
-                fill = row[col_model].fill
-                if fill and fill.patternType and fill.start_color.rgb not in ['00000000', 'FFFFFFFF', None]:
-                    is_reserved = True
-            if not is_reserved and col_version != -1 and row_values[col_version] != "":
-                fill = row[col_version].fill
-                if fill and fill.patternType and fill.start_color.rgb not in ['00000000', 'FFFFFFFF', None]:
-                    is_reserved = True
-                    
-            row_values[status_idx] = "已收訂" if is_reserved else ""
-            data_to_upload_main.append(row_values)
-
-        data_to_upload_sold = []
-        sheet_name_sold = None
-        for name in wb.sheetnames:
-            if "已售" in name:
-                sheet_name_sold = name
-                break
-        
-        if sheet_name_sold:
-            ws_sold = wb[sheet_name_sold]
-            headers_sold = [str(cell.value).strip() if cell.value is not None else "" for cell in ws_sold[1]]
-            data_to_upload_sold = [headers_sold]
-            
-            for row in ws_sold.iter_rows(min_row=2):
-                row_values = [cell.value if cell.value is not None else "" for cell in row]
-                if not any(str(v).strip() for v in row_values):
-                    continue
-                data_to_upload_sold.append(row_values)
-
+        # 準備 Google Sheet 的底色更新請求 (第一步：強制清除所有舊顏色)
         key_path = "/etc/secrets/google_key.json"
         if not os.path.exists(key_path):
             return {"status": "error", "message": "尚未設定 Google API 憑證！"}
@@ -285,34 +277,135 @@ def process_excel_file(filename: str, contents: bytes):
         client = gspread.authorize(creds)
         doc = client.open_by_key(SHEET_ID)
         
-        messages = []
-
         try:
             target_gsheet_main = doc.worksheet(target_tab_name)
+        except gspread.exceptions.WorksheetNotFound:
+            return {"status": "error", "message": f"找不到分頁「{target_tab_name}」"}
+
+        color_requests_main = [{
+            "updateCells": {
+                "range": { "sheetId": target_gsheet_main.id, "startRowIndex": 1 },
+                "fields": "userEnteredFormat.backgroundColor"
+            }
+        }]
+        
+        # 開始分析每一行
+        for r_idx, row in enumerate(ws_main.iter_rows(min_row=2)):
+            row_values = [cell.value if cell.value is not None else "" for cell in row]
+            if not any(str(v).strip() for v in row_values):
+                continue
+                
+            while len(row_values) < len(headers_main):
+                row_values.append("")
+            
+            is_reserved = False
+            for c_idx, cell in enumerate(row):
+                # 抓取 Excel 的自訂底色，準備同步到雲端
+                rgb = get_color_rgb(cell)
+                if rgb:
+                    color_requests_main.append({
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": target_gsheet_main.id,
+                                "startRowIndex": r_idx + 1, "endRowIndex": r_idx + 2,
+                                "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "backgroundColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }
+                                }
+                            },
+                            "fields": "userEnteredFormat.backgroundColor"
+                        }
+                    })
+                
+                # 同時處理舊有的已收訂判斷邏輯
+                if c_idx == col_model and rgb: is_reserved = True
+                if not is_reserved and c_idx == col_version and rgb: is_reserved = True
+                    
+            row_values[status_idx] = "已收訂" if is_reserved else ""
+            data_to_upload_main.append(row_values)
+
+        # 處理已售分頁 (如果有)
+        data_to_upload_sold = []
+        sheet_name_sold = None
+        for name in wb.sheetnames:
+            if "已售" in name:
+                sheet_name_sold = name
+                break
+        
+        color_requests_sold = []
+        target_gsheet_sold = None
+        if sheet_name_sold:
+            ws_sold = wb[sheet_name_sold]
+            headers_sold = [str(cell.value).strip() if cell.value is not None else "" for cell in ws_sold[1]]
+            data_to_upload_sold = [headers_sold]
+            
+            if target_tab_name == "E車源":
+                try:
+                    target_gsheet_sold = doc.worksheet("E車源售出")
+                    color_requests_sold.append({
+                        "updateCells": {
+                            "range": { "sheetId": target_gsheet_sold.id, "startRowIndex": 1 },
+                            "fields": "userEnteredFormat.backgroundColor"
+                        }
+                    })
+                except gspread.exceptions.WorksheetNotFound:
+                    pass
+            
+            for r_idx, row in enumerate(ws_sold.iter_rows(min_row=2)):
+                row_values = [cell.value if cell.value is not None else "" for cell in row]
+                if not any(str(v).strip() for v in row_values):
+                    continue
+                
+                if target_gsheet_sold:
+                    for c_idx, cell in enumerate(row):
+                        rgb = get_color_rgb(cell)
+                        if rgb:
+                            color_requests_sold.append({
+                                "repeatCell": {
+                                    "range": {
+                                        "sheetId": target_gsheet_sold.id,
+                                        "startRowIndex": r_idx + 1, "endRowIndex": r_idx + 2,
+                                        "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1
+                                    },
+                                    "cell": {
+                                        "userEnteredFormat": {
+                                            "backgroundColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }
+                                        }
+                                    },
+                                    "fields": "userEnteredFormat.backgroundColor"
+                                }
+                            })
+                data_to_upload_sold.append(row_values)
+
+        # 正式寫入資料與顏色
+        messages = []
+        try:
             target_gsheet_main.clear()
             stringified_main = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload_main]
-            try:
-                target_gsheet_main.update(values=stringified_main, range_name='A1')
-            except TypeError:
-                target_gsheet_main.update('A1', stringified_main)
-            messages.append(f"「{target_tab_name}」成功({len(data_to_upload_main)-1}筆)")
-        except gspread.exceptions.WorksheetNotFound:
-            return {"status": "error", "message": f"Google Sheet 內找不到名稱為「{target_tab_name}」的分頁！"}
+            target_gsheet_main.update(values=stringified_main, range_name='A1')
             
-        if data_to_upload_sold and target_tab_name == "E車源":
+            # 執行批量顏色塗改
+            doc.batch_update({"requests": color_requests_main})
+            messages.append(f"「{target_tab_name}」成功({len(data_to_upload_main)-1}筆，含底色)")
+        except Exception as e:
+            return {"status": "error", "message": f"寫入主表失敗：{str(e)}"}
+            
+        if data_to_upload_sold and target_tab_name == "E車源" and target_gsheet_sold:
             try:
-                target_gsheet_sold = doc.worksheet("E車源售出")
                 target_gsheet_sold.clear()
                 stringified_sold = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload_sold]
-                try:
-                    target_gsheet_sold.update(values=stringified_sold, range_name='A1')
-                except TypeError:
-                    target_gsheet_sold.update('A1', stringified_sold)
+                target_gsheet_sold.update(values=stringified_sold, range_name='A1')
+                
+                # 執行售出表批量顏色塗改
+                if color_requests_sold:
+                    doc.batch_update({"requests": color_requests_sold})
                 messages.append(f"「E車源售出」成功({len(data_to_upload_sold)-1}筆)")
-            except gspread.exceptions.WorksheetNotFound:
-                messages.append("「E車源售出」寫入失敗 (請確認GoogleSheet有無此分頁)")
+            except Exception:
+                messages.append("「E車源售出」寫入失敗")
         elif data_to_upload_sold and target_tab_name == "新竹車源":
-            messages.append("已略過新竹已售(不影響總表)")
+            messages.append("已略過新竹已售")
 
         if target_tab_name == "E車源":
             load_and_clean_data()
@@ -335,7 +428,6 @@ async def upload_excel(file: UploadFile = File(...)):
 # ================= LINE 機器人 Webhook 接口 =================
 @app.post("/callback")
 async def callback(request: Request):
-    # LINE 官方驗證通道
     signature = request.headers.get("X-Line-Signature", "")
     body = await request.body()
     body_str = body.decode("utf-8")
@@ -350,27 +442,21 @@ def handle_file_message(event):
     message_id = event.message.id
     filename = event.message.file_name
     
-    # 防呆：只接受 Excel 檔
     if not filename.endswith('.xlsx'):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 老闆，請上傳 .xlsx 格式的 Excel 檔案喔！"))
         return
     
-    # 第一時間先回覆，避免 LINE 逾時
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="⏳ 收到檔案！正在幫您解析與同步至雲端，請稍候...\n(處理完成後會自動回報)"))
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="⏳ 收到檔案！正在幫您解析資料與同步底色，請稍候...\n(處理完成後會自動回報)"))
     
-    # 建立背景執行緒來處理 Excel，避免卡住伺服器
     def process_and_notify():
         try:
-            # 從 LINE 伺服器下載檔案
             message_content = line_bot_api.get_message_content(message_id)
             contents = b""
             for chunk in message_content.iter_content():
                 contents += chunk
             
-            # 使用共用核心邏輯處理檔案
             result = process_excel_file(filename, contents)
             
-            # 處理完畢，主動推送結果給使用者
             if result["status"] == "success":
                 line_bot_api.push_message(event.source.user_id, TextSendMessage(text="✅ 處理完成！\n" + result["message"]))
             else:
@@ -382,21 +468,17 @@ def handle_file_message(event):
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
-    # 如果使用者傳文字，我們提示他怎麼用
     line_bot_api.reply_message(
         event.reply_token,
-        TextSendMessage(text="🤖 您好！我是杰運新竹店的自動上傳小幫手。\n請直接將您的「E車源總表」或「新竹車源表」Excel 檔案傳到這裡，我就會幫您自動同步到系統囉！")
+        TextSendMessage(text="🤖 您好！我是杰運新竹店的自動上傳小幫手。\n請直接將您的「E車源總表」或「新竹車源表」Excel 檔案傳到這裡，我就會幫您自動同步到系統 (含底色) 囉！")
     )
 
 # ================= 網頁路由區塊 =================
 @app.get("/")
 def serve_home(): return FileResponse("index.html")
-
-# 給 UptimeRobot 敲門用的 (防 405 錯誤)
 @app.head("/")
 @app.get("/ping")
 def ping(): return {"status": "ok"}
-
 @app.get("/cars")
 def serve_cars(): return FileResponse("cars.html")
 @app.get("/deal")

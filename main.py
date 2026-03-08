@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, UploadFile, File
+from fastapi import FastAPI, Query, UploadFile, File, Request, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
@@ -8,6 +8,12 @@ from google.oauth2.service_account import Credentials
 import re
 import os
 import io
+import threading
+
+# LINE Bot 官方套件
+from linebot import LineBotApi, WebhookHandler
+from linebot.exceptions import InvalidSignatureError
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, FileMessage
 
 app = FastAPI(title="🚗 杰運汽車新竹店 - 內部系統 API")
 
@@ -19,7 +25,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Google Sheet 設定
+# ================= LINE Bot 鑰匙設定 =================
+LINE_CHANNEL_ACCESS_TOKEN = "Vetc+mW1cmCmkEkXI7GcWpVtqqCkSEDSp/wQuOrQB0SA2GCanyXBmMczQzRW+CK8Obpv2gOMap4rtxRQIa/8/8eqCpdBm/zwozhJndUIEe+NSwPITjCVkPDbKG3usLC/jkh8KlqEkbDoAM8XFYTLRwdB04t89/1O/w1cDnyilFU="
+LINE_CHANNEL_SECRET = "ff5426c6ab3102189f8d45f0eca69652"
+
+line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
+handler = WebhookHandler(LINE_CHANNEL_SECRET)
+
+# ================= Google Sheet 設定 =================
 SHEET_ID = "1HWb5u6EGYSHVJHFhmhmsVv4xDgHlQEkdicfXBuFp86w"
 CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
 SIMPLE_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=852175657"
@@ -60,8 +73,7 @@ def load_and_clean_data():
             o = r.get('舊編號', '')
             n_str = str(n).replace('.0', '').strip() if pd.notna(n) else ""
             o_str = str(o).replace('.0', '').strip() if pd.notna(o) else ""
-            if n_str and o_str:
-                return f"{o_str} ({n_str})" 
+            if n_str and o_str: return f"{o_str} ({n_str})" 
             return o_str or n_str
         df['編號'] = df.apply(merge_ids, axis=1)
 
@@ -104,7 +116,6 @@ def load_and_clean_data():
     return df
 
 # ================= API 區塊 =================
-
 @app.get("/api/refresh")
 def refresh_data():
     load_and_clean_data()
@@ -199,14 +210,11 @@ def get_simple_data():
         traceback.print_exc()
         return {"status": "error", "message": f"讀取失敗：{str(e)}"}
 
-# ================= 自動處理 Excel 與上傳 API =================
-@app.post("/api/upload_excel")
-async def upload_excel(file: UploadFile = File(...)):
+# ================= 共用的 Excel 核心處理邏輯 =================
+def process_excel_file(filename: str, contents: bytes):
     try:
-        filename = file.filename
         target_tab_name = "新竹車源" if "新竹" in filename else "E車源"
 
-        contents = await file.read()
         wb = openpyxl.load_workbook(filename=io.BytesIO(contents), data_only=True)
         
         sheet_name_main = None
@@ -317,9 +325,78 @@ async def upload_excel(file: UploadFile = File(...)):
         traceback.print_exc()
         return {"status": "error", "message": f"處理失敗：{str(e)}"}
 
+# ================= 網頁版上傳 API =================
+@app.post("/api/upload_excel")
+async def upload_excel(file: UploadFile = File(...)):
+    filename = file.filename
+    contents = await file.read()
+    return process_excel_file(filename, contents)
+
+# ================= LINE 機器人 Webhook 接口 =================
+@app.post("/callback")
+async def callback(request: Request):
+    # LINE 官方驗證通道
+    signature = request.headers.get("X-Line-Signature", "")
+    body = await request.body()
+    body_str = body.decode("utf-8")
+    try:
+        handler.handle(body_str, signature)
+    except InvalidSignatureError:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+    return "OK"
+
+@handler.add(MessageEvent, message=FileMessage)
+def handle_file_message(event):
+    message_id = event.message.id
+    filename = event.message.file_name
+    
+    # 防呆：只接受 Excel 檔
+    if not filename.endswith('.xlsx'):
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 老闆，請上傳 .xlsx 格式的 Excel 檔案喔！"))
+        return
+    
+    # 第一時間先回覆，避免 LINE 逾時
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="⏳ 收到檔案！正在幫您解析與同步至雲端，請稍候...\n(處理完成後會自動回報)"))
+    
+    # 建立背景執行緒來處理 Excel，避免卡住伺服器
+    def process_and_notify():
+        try:
+            # 從 LINE 伺服器下載檔案
+            message_content = line_bot_api.get_message_content(message_id)
+            contents = b""
+            for chunk in message_content.iter_content():
+                contents += chunk
+            
+            # 使用共用核心邏輯處理檔案
+            result = process_excel_file(filename, contents)
+            
+            # 處理完畢，主動推送結果給使用者
+            if result["status"] == "success":
+                line_bot_api.push_message(event.source.user_id, TextSendMessage(text="✅ 處理完成！\n" + result["message"]))
+            else:
+                line_bot_api.push_message(event.source.user_id, TextSendMessage(text="❌ 處理失敗：\n" + result["message"]))
+        except Exception as e:
+            line_bot_api.push_message(event.source.user_id, TextSendMessage(text=f"❌ 發生系統錯誤：\n{str(e)}"))
+
+    threading.Thread(target=process_and_notify).start()
+
+@handler.add(MessageEvent, message=TextMessage)
+def handle_text_message(event):
+    # 如果使用者傳文字，我們提示他怎麼用
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text="🤖 您好！我是杰運新竹店的自動上傳小幫手。\n請直接將您的「E車源總表」或「新竹車源表」Excel 檔案傳到這裡，我就會幫您自動同步到系統囉！")
+    )
+
 # ================= 網頁路由區塊 =================
 @app.get("/")
 def serve_home(): return FileResponse("index.html")
+
+# 給 UptimeRobot 敲門用的 (防 405 錯誤)
+@app.head("/")
+@app.get("/ping")
+def ping(): return {"status": "ok"}
+
 @app.get("/cars")
 def serve_cars(): return FileResponse("cars.html")
 @app.get("/deal")

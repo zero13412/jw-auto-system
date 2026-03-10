@@ -156,9 +156,20 @@ def get_cars(
 
     res = res[(res['顯示價格'] >= min_price) & (res['顯示價格'] <= max_price)]
 
-    if sort_by == "價格低到高": res = res.sort_values(by='顯示價格', ascending=True)
-    elif sort_by == "價格高到低": res = res.sort_values(by='顯示價格', ascending=False)
-    else:
+    # ==========================================
+    # 【關鍵修復】：完整實裝了四種排序邏輯
+    # ==========================================
+    if sort_by == "價格低到高": 
+        res = res.sort_values(by='顯示價格', ascending=True)
+    elif sort_by == "價格高到低": 
+        res = res.sort_values(by='顯示價格', ascending=False)
+    elif sort_by == "年份舊到新":
+        if '年份' in res.columns: 
+            # fillna(9999) 是為了讓沒有年份的幽靈車排到最底下，不要佔據舊車位置
+            res['年份_num'] = pd.to_numeric(res['年份'], errors='coerce').fillna(9999)
+            res = res.sort_values(by='年份_num', ascending=True)
+            res = res.drop(columns=['年份_num'])
+    else: # "預設" 或 "年份新到舊"
         if '年份' in res.columns: 
             res['年份_num'] = pd.to_numeric(res['年份'], errors='coerce').fillna(0)
             res = res.sort_values(by='年份_num', ascending=False)
@@ -210,7 +221,7 @@ def get_simple_data():
         traceback.print_exc()
         return {"status": "error", "message": f"讀取失敗：{str(e)}"}
 
-# ================= 顏色轉換引擎 (最高靈敏度版) =================
+# ================= 顏色轉換引擎 =================
 def get_color_rgb(cell):
     """暴力抓取 Excel 底色，無視格式限制"""
     try:
@@ -296,7 +307,6 @@ def process_excel_file(filename: str, contents: bytes):
         except gspread.exceptions.WorksheetNotFound:
             return {"status": "error", "message": f"找不到分頁「{target_tab_name}」"}
 
-        # 第一步：強制洗白整個表格第 2 列之後的所有舊顏色
         color_requests_main = [{
             "repeatCell": {
                 "range": { "sheetId": target_gsheet_main.id, "startRowIndex": 1 },
@@ -311,19 +321,15 @@ def process_excel_file(filename: str, contents: bytes):
             }
         }]
         
-        # 第二步：【絕對對齊】抓取並寫入新顏色
         for row in ws_main.iter_rows(min_row=2):
             row_values = [cell.value if cell.value is not None else "" for cell in row]
             
-            # 如果是完全空白行，跳過不寫入 Google Sheet
             if not any(str(v).strip() for v in row_values):
                 continue
                 
             while len(row_values) < len(headers_main):
                 row_values.append("")
             
-            # 【關鍵修復】：取得「這行文字將會被寫在 Google Sheet 的第幾行」
-            # 這樣不管 Excel 中間有幾個空白行被刪除，顏色都會精準對齊到文字上！
             target_row_idx = len(data_to_upload_main) 
             
             is_reserved = False
@@ -356,7 +362,6 @@ def process_excel_file(filename: str, contents: bytes):
             row_values[status_idx] = "已收訂" if is_reserved else ""
             data_to_upload_main.append(row_values)
 
-        # 處理已售分頁 (邏輯與上方完全相同)
         data_to_upload_sold = []
         sheet_name_sold = None
         for name in wb.sheetnames:

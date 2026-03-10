@@ -156,20 +156,16 @@ def get_cars(
 
     res = res[(res['顯示價格'] >= min_price) & (res['顯示價格'] <= max_price)]
 
-    # ==========================================
-    # 【關鍵修復】：完整實裝了四種排序邏輯
-    # ==========================================
     if sort_by == "價格低到高": 
         res = res.sort_values(by='顯示價格', ascending=True)
     elif sort_by == "價格高到低": 
         res = res.sort_values(by='顯示價格', ascending=False)
     elif sort_by == "年份舊到新":
         if '年份' in res.columns: 
-            # fillna(9999) 是為了讓沒有年份的幽靈車排到最底下，不要佔據舊車位置
             res['年份_num'] = pd.to_numeric(res['年份'], errors='coerce').fillna(9999)
             res = res.sort_values(by='年份_num', ascending=True)
             res = res.drop(columns=['年份_num'])
-    else: # "預設" 或 "年份新到舊"
+    else: 
         if '年份' in res.columns: 
             res['年份_num'] = pd.to_numeric(res['年份'], errors='coerce').fillna(0)
             res = res.sort_values(by='年份_num', ascending=False)
@@ -221,13 +217,10 @@ def get_simple_data():
         traceback.print_exc()
         return {"status": "error", "message": f"讀取失敗：{str(e)}"}
 
-# ================= 顏色轉換引擎 =================
 def get_color_rgb(cell):
-    """暴力抓取 Excel 底色，無視格式限制"""
     try:
         fill = cell.fill
         if not fill: return None
-        
         color = getattr(fill, 'fgColor', None) or getattr(fill, 'start_color', None)
         if not color: return None
         
@@ -252,10 +245,8 @@ def get_color_rgb(cell):
             rgb_hex = rgb_hex.replace('#', '')
             if rgb_hex in ['00000000', 'FFFFFFFF']: 
                 return None
-                
             if len(rgb_hex) == 8: 
                 rgb_hex = rgb_hex[2:] 
-                
             if len(rgb_hex) == 6:
                 return (
                     int(rgb_hex[0:2], 16) / 255.0,
@@ -266,11 +257,9 @@ def get_color_rgb(cell):
         pass
     return None
 
-# ================= 共用的 Excel 核心處理邏輯 =================
 def process_excel_file(filename: str, contents: bytes):
     try:
         target_tab_name = "新竹車源" if "新竹" in filename else "E車源"
-
         wb = openpyxl.load_workbook(filename=io.BytesIO(contents), data_only=True)
         
         sheet_name_main = None
@@ -283,7 +272,6 @@ def process_excel_file(filename: str, contents: bytes):
         
         ws_main = wb[sheet_name_main]
         headers_main = [str(cell.value).strip() if cell.value is not None else "" for cell in ws_main[1]]
-        
         col_model = headers_main.index("車型") if "車型" in headers_main else -1
         col_version = headers_main.index("版本") if "版本" in headers_main else -1
         
@@ -323,15 +311,10 @@ def process_excel_file(filename: str, contents: bytes):
         
         for row in ws_main.iter_rows(min_row=2):
             row_values = [cell.value if cell.value is not None else "" for cell in row]
-            
-            if not any(str(v).strip() for v in row_values):
-                continue
-                
-            while len(row_values) < len(headers_main):
-                row_values.append("")
+            if not any(str(v).strip() for v in row_values): continue
+            while len(row_values) < len(headers_main): row_values.append("")
             
             target_row_idx = len(data_to_upload_main) 
-            
             is_reserved = False
             for c_idx, cell in enumerate(row):
                 rgb = get_color_rgb(cell)
@@ -355,7 +338,6 @@ def process_excel_file(filename: str, contents: bytes):
                             "fields": "userEnteredFormat.backgroundColorStyle"
                         }
                     })
-                
                 if c_idx == col_model and rgb: is_reserved = True
                 if not is_reserved and c_idx == col_version and rgb: is_reserved = True
                     
@@ -397,11 +379,9 @@ def process_excel_file(filename: str, contents: bytes):
             
             for row in ws_sold.iter_rows(min_row=2):
                 row_values = [cell.value if cell.value is not None else "" for cell in row]
-                if not any(str(v).strip() for v in row_values):
-                    continue
+                if not any(str(v).strip() for v in row_values): continue
                 
                 target_row_idx = len(data_to_upload_sold)
-                
                 if target_gsheet_sold:
                     for c_idx, cell in enumerate(row):
                         rgb = get_color_rgb(cell)
@@ -432,9 +412,8 @@ def process_excel_file(filename: str, contents: bytes):
             target_gsheet_main.clear()
             stringified_main = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload_main]
             target_gsheet_main.update(values=stringified_main, range_name='A1')
-            
             doc.batch_update({"requests": color_requests_main})
-            messages.append(f"「{target_tab_name}」成功({len(data_to_upload_main)-1}筆，含底色精準對齊)")
+            messages.append(f"「{target_tab_name}」成功({len(data_to_upload_main)-1}筆)")
         except Exception as e:
             return {"status": "error", "message": f"寫入主表失敗：{str(e)}"}
             
@@ -443,7 +422,6 @@ def process_excel_file(filename: str, contents: bytes):
                 target_gsheet_sold.clear()
                 stringified_sold = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload_sold]
                 target_gsheet_sold.update(values=stringified_sold, range_name='A1')
-                
                 if len(color_requests_sold) > 1:
                     doc.batch_update({"requests": color_requests_sold})
                 messages.append(f"「E車源售出」成功({len(data_to_upload_sold)-1}筆)")
@@ -463,14 +441,12 @@ def process_excel_file(filename: str, contents: bytes):
         traceback.print_exc()
         return {"status": "error", "message": f"處理失敗：{str(e)}"}
 
-# ================= 網頁版上傳 API =================
 @app.post("/api/upload_excel")
 async def upload_excel(file: UploadFile = File(...)):
     filename = file.filename
     contents = await file.read()
     return process_excel_file(filename, contents)
 
-# ================= LINE 機器人 Webhook 接口 =================
 @app.post("/callback")
 async def callback(request: Request):
     signature = request.headers.get("X-Line-Signature", "")
@@ -499,9 +475,7 @@ def handle_file_message(event):
             contents = b""
             for chunk in message_content.iter_content():
                 contents += chunk
-            
             result = process_excel_file(filename, contents)
-            
             if result["status"] == "success":
                 line_bot_api.push_message(event.source.user_id, TextSendMessage(text="✅ 處理完成！\n" + result["message"]))
             else:
@@ -536,3 +510,5 @@ def serve_dispatch(): return FileResponse("dispatch.html")
 def serve_simple(): return FileResponse("simple.html")
 @app.get("/tax")
 def serve_tax(): return FileResponse("tax.html")
+@app.get("/copy")
+def serve_copy(): return FileResponse("copy.html")

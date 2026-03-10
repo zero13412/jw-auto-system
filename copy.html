@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>📋 快捷回覆工具 - 杰運汽車</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
+        [v-cloak] { display: none !important; }
+        /* 隱藏預覽框的捲軸但保留滾動功能 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col h-screen overflow-hidden">
+    <div id="app" class="flex flex-col h-full" v-cloak>
+        
+        <header class="bg-fuchsia-700 text-white p-3 sm:p-4 shadow-md flex justify-between items-center z-10 shrink-0">
+            <h1 class="text-base sm:text-xl font-bold truncate pr-2">📋 快捷回覆與連結工具</h1>
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <a href="/" class="bg-yellow-500 hover:bg-yellow-600 text-fuchsia-900 font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm">
+                    🏠 首頁
+                </a>
+            </div>
+        </header>
+
+        <div class="bg-fuchsia-800 text-white text-xs py-1 px-4 text-center sm:text-right shrink-0 transition-colors duration-300" :class="statusColor">
+            {{ statusMessage }}
+        </div>
+
+        <main class="flex-1 overflow-y-auto p-3 sm:p-6 w-full relative">
+            <div class="max-w-7xl mx-auto space-y-8 pb-10">
+                
+                <section>
+                    <h2 class="text-xl font-bold text-gray-700 mb-4 border-b-2 border-fuchsia-200 pb-2 flex items-center gap-2 sticky top-0 bg-gray-100 pt-2 z-10">
+                        🔗 刷卡與常用連結
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div v-for="(item, index) in links" :key="'link-'+index" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex flex-col hover:shadow-md transition">
+                            <h3 class="font-bold text-fuchsia-800 mb-2">{{ item.title }}</h3>
+                            <pre class="flex-1 bg-gray-50 p-3 rounded text-xs text-gray-600 font-sans whitespace-pre-wrap overflow-y-auto max-h-40 no-scrollbar mb-3 border border-gray-100 leading-relaxed">{{ item.text }}</pre>
+                            <button @click="copyText(item.text)" class="w-full bg-fuchsia-100 hover:bg-fuchsia-200 text-fuchsia-700 font-bold py-2 sm:py-3 rounded-lg transition active:scale-95 text-sm sm:text-base">
+                                📋 一鍵複製
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                <section>
+                    <h2 class="text-xl font-bold text-gray-700 mb-4 border-b-2 border-blue-200 pb-2 flex items-center gap-2 sticky top-0 bg-gray-100 pt-2 z-10">
+                        💬 銷售與簽約話術
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div v-for="(item, index) in texts" :key="'text-'+index" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex flex-col hover:shadow-md transition">
+                            <h3 class="font-bold text-blue-800 mb-2">{{ item.title }}</h3>
+                            <pre class="flex-1 bg-gray-50 p-3 rounded text-sm text-gray-700 font-sans whitespace-pre-wrap overflow-y-auto max-h-56 no-scrollbar mb-3 border border-gray-100 leading-relaxed">{{ item.text }}</pre>
+                            <button @click="copyText(item.text)" class="w-full bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold py-2 sm:py-3 rounded-lg transition active:scale-95 text-sm sm:text-base">
+                                📋 一鍵複製
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const { createApp, ref } = Vue;
+
+        createApp({
+            setup() {
+                const statusMessage = ref("選擇你要複製的內容");
+                const statusColor = ref("text-fuchsia-200");
+
+                // ================= 連結區資料 =================
+                const links = [
+                    {
+                        title: "1. 一般刷卡連結",
+                        text: `這是我們一般刷卡連結\n網站內有我們公司 名稱和統編\n\n請您填入訂購人資料 \n姓名 手機 email\n刷卡完成 \n幫我截圖 有交易序號\n\nhttps://cart.cashier.ecpay.com.tw/qp/yZVE`
+                    },
+                    {
+                        title: "2. 估車車馬費刷卡",
+                        text: `這是我們估車車馬費刷卡連結\n網站內有我們公司 名稱和統編\n\n請您填入訂購人資料 \n姓名 手機 email\n刷卡完成 \n幫我截圖 有交易序號\n\nhttps://cart.cashier.ecpay.com.tw/qp/yZX2`
+                    },
+                    {
+                        title: "3. 試車金刷卡",
+                        text: `這是我們試車金刷卡連結\n網站內有我們公司 名稱和統編\n\n請您填入訂購人資料 \n姓名 手機 email\n刷卡完成 \n幫我截圖 有交易序號\n\nhttps://cart.cashier.ecpay.com.tw/qp/yZYB`
+                    },
+                    {
+                        title: "🟢 共享汽車 LINE@",
+                        text: `共享汽車LINE@連結\nhttps://lin.ee/9B819xj`
+                    }
+                ];
+
+                // ================= 話術區資料 =================
+                const texts = [
+                    {
+                        title: "🛡️ 說明保固與大保養",
+                        text: `說明保固：\n我們場內的車輛數量多 無法逐台事先做完整檢查。\n除非發現會影響行車安全的問題 我們才會優先處理並更換。\n\n購車會附贈一次小保養(更換機油) 交車前會幫您先完成。\n基本保固內容為三大系統：引擎、變速箱、方向機(不含消耗材)。\n保固時間為 37 天 保固金額上限 5 萬元。\n\n另外也有提供 自費的大保養＋延長保固方案。\n因為我們是二手車 您看的這台車也有一定里程\n自費做大保養可以把油水、火星塞、皮帶等項目一次處理好\n(實際項目與費用需請技師依車型報價)。\n\n完成大保養後 保固可延長至 最長一年\n(保固限額仍為 5 萬元)。\n大保養等於將車況重新整理過並且歸零 之後使用也會更安心。\n\n因為我們畢竟都不是專業 可幫您交代技師 在大保養時幫您巡一下車子 如果有其他項目建議更換的 再幫您報價。`
+                    },
+                    {
+                        title: "📝 線上簽約流程資料",
+                        text: `簽約流程：\n線上合約需提供資料\n姓名：\n身分證字號：\n出生年月日：\n地址：\n手機號碼：\n電子信箱：`
+                    },
+                    {
+                        title: "❓ 詢問是否加購大保養",
+                        text: `另外 剛剛有跟您說明\n我們基本的保固是37天\n三大系統(引擎 變速箱 方向機本體) 不含耗材\n限額5萬\n\n您有想要自費做大保養 延長保固嗎？\n(因為車型很多 需請技師另外報價)`
+                    },
+                    {
+                        title: "🎁 無大保養 (贈品說明)",
+                        text: `如果沒有作大保養\n我們車子 會送一次小保養(交車前幫您換機油)\n交車會幫您美容 把車子清潔乾淨\n\n另外 老闆因為關稅戰\n有加碼 好禮二選一\n1. 第二次小保養免費\n2. 補貼息3264元 直接折抵車價`
+                    },
+                    {
+                        title: "🧮 金額試算範例",
+                        text: `網路價50.9萬\n線上預約折1.1萬\n補貼利息折3264元\n\n合約車價：494736元\n已付訂金：29000元\n尾款：465736元\n\n另外 強制險 牌照燃料稅 規費 代辦過戶費\n實報實銷`
+                    },
+                    {
+                        title: "📷 推銷行車紀錄器",
+                        text: `對了要再跟您確定一件事情\n因為車子目前沒有行車紀錄器\n我們老闆有特別到大陸找 CP值很高\n前後雙錄的 後照鏡觸控 行車紀錄器\n原價是3999+1800安裝工資 共5799元\n\n購車一起安裝的話 可折價500元\n3499+1800 = 5,299 \n\n看您想安裝嗎\n傳影片給您參考`
+                    },
+                    {
+                        title: "📮 寄送雙證件指示",
+                        text: `麻煩您寄出前 身分證正反面先拍照傳給我\n我們要先幫您保強制險\n\n請\n雙證件(身分證+第二證件) 平常沒用到的木頭章\n寄到\n台北市北投區大度路一段21號 杰運汽車 鐘柏偉收\n0917-435-209\n然後在裡面用一張小紙條寫：\n新竹士鍇客人`
+                    }
+                ];
+
+                const copyText = (text) => {
+                    navigator.clipboard.writeText(text).then(() => {
+                        statusMessage.value = "✅ 已成功複製到剪貼簿！可以去 LINE 貼上了！";
+                        statusColor.value = "text-green-300 font-bold";
+                        setTimeout(() => {
+                            statusMessage.value = "選擇你要複製的內容";
+                            statusColor.value = "text-fuchsia-200 font-normal";
+                        }, 3000);
+                    }).catch(err => {
+                        console.error('複製失敗', err);
+                    });
+                };
+
+                return { statusMessage, statusColor, links, texts, copyText };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

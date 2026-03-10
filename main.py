@@ -210,26 +210,41 @@ def get_simple_data():
         traceback.print_exc()
         return {"status": "error", "message": f"讀取失敗：{str(e)}"}
 
-# ================= 顏色轉換引擎 =================
+# ================= 顏色轉換引擎 (最高靈敏度版) =================
 def get_color_rgb(cell):
-    """將 Excel 的底色代碼轉換為 Google Sheet 看得懂的 RGB 數值"""
+    """暴力抓取 Excel 底色，無視格式限制"""
     try:
         fill = cell.fill
-        if not fill or not fill.patternType: return None
-        color = fill.start_color
+        if not fill: return None
+        
+        color = getattr(fill, 'fgColor', None) or getattr(fill, 'start_color', None)
         if not color: return None
         
         rgb_hex = None
-        if color.type == 'rgb' and color.rgb:
-            rgb_hex = str(color.rgb)
-        elif color.type == 'indexed':
+        if hasattr(color, 'rgb') and color.rgb and isinstance(color.rgb, str):
+            rgb_hex = color.rgb
+        elif hasattr(color, 'type') and color.type == 'indexed':
             from openpyxl.styles.colors import COLOR_INDEX
             idx = color.indexed
             if isinstance(idx, int) and idx < len(COLOR_INDEX):
                 rgb_hex = COLOR_INDEX[idx]
+        elif hasattr(color, 'type') and color.type == 'theme':
+            theme_colors = [
+                "FFFFFF", "000000", "E7E6E6", "44546A", "4472C4", 
+                "ED7D31", "A5A5A5", "FFC000", "5B9BD5", "70AD47"
+            ]
+            idx = color.theme
+            if isinstance(idx, int) and idx < len(theme_colors):
+                rgb_hex = theme_colors[idx]
                 
-        if rgb_hex and rgb_hex not in ['00000000', 'FFFFFFFF']:
-            if len(rgb_hex) == 8: rgb_hex = rgb_hex[2:] # 拔掉 Alpha 通道
+        if rgb_hex and isinstance(rgb_hex, str):
+            rgb_hex = rgb_hex.replace('#', '')
+            if rgb_hex in ['00000000', 'FFFFFFFF']: 
+                return None
+                
+            if len(rgb_hex) == 8: 
+                rgb_hex = rgb_hex[2:] 
+                
             if len(rgb_hex) == 6:
                 return (
                     int(rgb_hex[0:2], 16) / 255.0,
@@ -267,7 +282,6 @@ def process_excel_file(filename: str, contents: bytes):
         
         data_to_upload_main = [headers_main]
         
-        # 準備 Google Sheet 的底色更新請求 (第一步：強制清除所有舊顏色)
         key_path = "/etc/secrets/google_key.json"
         if not os.path.exists(key_path):
             return {"status": "error", "message": "尚未設定 Google API 憑證！"}
@@ -282,51 +296,67 @@ def process_excel_file(filename: str, contents: bytes):
         except gspread.exceptions.WorksheetNotFound:
             return {"status": "error", "message": f"找不到分頁「{target_tab_name}」"}
 
+        # 第一步：強制洗白整個表格第 2 列之後的所有舊顏色
         color_requests_main = [{
-            "updateCells": {
+            "repeatCell": {
                 "range": { "sheetId": target_gsheet_main.id, "startRowIndex": 1 },
-                "fields": "userEnteredFormat.backgroundColor"
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColorStyle": {
+                            "rgbColor": { "red": 1.0, "green": 1.0, "blue": 1.0 }
+                        }
+                    }
+                },
+                "fields": "userEnteredFormat.backgroundColorStyle,userEnteredFormat.backgroundColor"
             }
         }]
         
-        # 開始分析每一行
-        for r_idx, row in enumerate(ws_main.iter_rows(min_row=2)):
+        # 第二步：【絕對對齊】抓取並寫入新顏色
+        for row in ws_main.iter_rows(min_row=2):
             row_values = [cell.value if cell.value is not None else "" for cell in row]
+            
+            # 如果是完全空白行，跳過不寫入 Google Sheet
             if not any(str(v).strip() for v in row_values):
                 continue
                 
             while len(row_values) < len(headers_main):
                 row_values.append("")
             
+            # 【關鍵修復】：取得「這行文字將會被寫在 Google Sheet 的第幾行」
+            # 這樣不管 Excel 中間有幾個空白行被刪除，顏色都會精準對齊到文字上！
+            target_row_idx = len(data_to_upload_main) 
+            
             is_reserved = False
             for c_idx, cell in enumerate(row):
-                # 抓取 Excel 的自訂底色，準備同步到雲端
                 rgb = get_color_rgb(cell)
                 if rgb:
                     color_requests_main.append({
                         "repeatCell": {
                             "range": {
                                 "sheetId": target_gsheet_main.id,
-                                "startRowIndex": r_idx + 1, "endRowIndex": r_idx + 2,
-                                "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1
+                                "startRowIndex": target_row_idx,
+                                "endRowIndex": target_row_idx + 1,
+                                "startColumnIndex": c_idx, 
+                                "endColumnIndex": c_idx + 1
                             },
                             "cell": {
                                 "userEnteredFormat": {
-                                    "backgroundColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }
+                                    "backgroundColorStyle": {
+                                        "rgbColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }
+                                    }
                                 }
                             },
-                            "fields": "userEnteredFormat.backgroundColor"
+                            "fields": "userEnteredFormat.backgroundColorStyle"
                         }
                     })
                 
-                # 同時處理舊有的已收訂判斷邏輯
                 if c_idx == col_model and rgb: is_reserved = True
                 if not is_reserved and c_idx == col_version and rgb: is_reserved = True
                     
             row_values[status_idx] = "已收訂" if is_reserved else ""
             data_to_upload_main.append(row_values)
 
-        # 處理已售分頁 (如果有)
+        # 處理已售分頁 (邏輯與上方完全相同)
         data_to_upload_sold = []
         sheet_name_sold = None
         for name in wb.sheetnames:
@@ -345,18 +375,27 @@ def process_excel_file(filename: str, contents: bytes):
                 try:
                     target_gsheet_sold = doc.worksheet("E車源售出")
                     color_requests_sold.append({
-                        "updateCells": {
+                        "repeatCell": {
                             "range": { "sheetId": target_gsheet_sold.id, "startRowIndex": 1 },
-                            "fields": "userEnteredFormat.backgroundColor"
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "backgroundColorStyle": {
+                                        "rgbColor": { "red": 1.0, "green": 1.0, "blue": 1.0 }
+                                    }
+                                }
+                            },
+                            "fields": "userEnteredFormat.backgroundColorStyle,userEnteredFormat.backgroundColor"
                         }
                     })
                 except gspread.exceptions.WorksheetNotFound:
                     pass
             
-            for r_idx, row in enumerate(ws_sold.iter_rows(min_row=2)):
+            for row in ws_sold.iter_rows(min_row=2):
                 row_values = [cell.value if cell.value is not None else "" for cell in row]
                 if not any(str(v).strip() for v in row_values):
                     continue
+                
+                target_row_idx = len(data_to_upload_sold)
                 
                 if target_gsheet_sold:
                     for c_idx, cell in enumerate(row):
@@ -366,29 +405,31 @@ def process_excel_file(filename: str, contents: bytes):
                                 "repeatCell": {
                                     "range": {
                                         "sheetId": target_gsheet_sold.id,
-                                        "startRowIndex": r_idx + 1, "endRowIndex": r_idx + 2,
-                                        "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1
+                                        "startRowIndex": target_row_idx, 
+                                        "endRowIndex": target_row_idx + 1,
+                                        "startColumnIndex": c_idx, 
+                                        "endColumnIndex": c_idx + 1
                                     },
                                     "cell": {
                                         "userEnteredFormat": {
-                                            "backgroundColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }
+                                            "backgroundColorStyle": {
+                                                "rgbColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }
+                                            }
                                         }
                                     },
-                                    "fields": "userEnteredFormat.backgroundColor"
+                                    "fields": "userEnteredFormat.backgroundColorStyle"
                                 }
                             })
                 data_to_upload_sold.append(row_values)
 
-        # 正式寫入資料與顏色
         messages = []
         try:
             target_gsheet_main.clear()
             stringified_main = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload_main]
             target_gsheet_main.update(values=stringified_main, range_name='A1')
             
-            # 執行批量顏色塗改
             doc.batch_update({"requests": color_requests_main})
-            messages.append(f"「{target_tab_name}」成功({len(data_to_upload_main)-1}筆，含底色)")
+            messages.append(f"「{target_tab_name}」成功({len(data_to_upload_main)-1}筆，含底色精準對齊)")
         except Exception as e:
             return {"status": "error", "message": f"寫入主表失敗：{str(e)}"}
             
@@ -398,8 +439,7 @@ def process_excel_file(filename: str, contents: bytes):
                 stringified_sold = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload_sold]
                 target_gsheet_sold.update(values=stringified_sold, range_name='A1')
                 
-                # 執行售出表批量顏色塗改
-                if color_requests_sold:
+                if len(color_requests_sold) > 1:
                     doc.batch_update({"requests": color_requests_sold})
                 messages.append(f"「E車源售出」成功({len(data_to_upload_sold)-1}筆)")
             except Exception:
@@ -446,7 +486,7 @@ def handle_file_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 老闆，請上傳 .xlsx 格式的 Excel 檔案喔！"))
         return
     
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="⏳ 收到檔案！正在幫您解析資料與同步底色，請稍候...\n(處理完成後會自動回報)"))
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="⏳ 收到檔案！正在幫您解析資料與精準同步底色，請稍候...\n(處理完成後會自動回報)"))
     
     def process_and_notify():
         try:

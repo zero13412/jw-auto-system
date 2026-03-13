@@ -79,6 +79,8 @@
                                 <option value="年份舊到新">年份: 舊 → 新</option>
                                 <option value="價格高到低">價格: 高 → 低</option>
                                 <option value="價格低到高">價格: 低 → 高</option>
+                                <option value="最新入庫">入庫: 新 → 舊 (最新)</option>
+                                <option value="最舊入庫">入庫: 舊 → 新 (最舊)</option>
                             </select>
                         </div>
                     </div>
@@ -215,7 +217,6 @@
                 const statusMessage = ref("系統準備就緒");
                 const showMobileFilters = ref(false);
 
-                // 【修改】：加入 hide_reserved 綁定狀態
                 const filters = reactive({
                     brand: "全部", location: "全部", prop: "全部",
                     model: "", plate: "", min_price: "", max_price: "",

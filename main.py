@@ -145,9 +145,7 @@ def get_cars(
     if cached_df is None: load_and_clean_data()
     res = cached_df.copy()
 
-    # ==========================================
-    # 【新增】：搜尋字串自動去除前後空白 (防呆)
-    # ==========================================
+    # 防呆：搜尋字串自動去除前後空白
     model = model.strip()
     version = version.strip()
     vin = vin.strip()
@@ -166,9 +164,7 @@ def get_cars(
 
     res = res[(res['顯示價格'] >= min_price) & (res['顯示價格'] <= max_price)]
 
-    # ==========================================
-    # 過濾特殊車輛 (電洽、已收訂)
-    # ==========================================
+    # 過濾特殊車輛
     if hide_no_price.lower() == "true":
         res = res[res['顯示價格'] > 0]
         
@@ -176,7 +172,7 @@ def get_cars(
         res = res[res['is_reserved'] == False]
 
     # ==========================================
-    # 排序邏輯
+    # 【新增】：排序邏輯擴充 入庫日期排序
     # ==========================================
     if sort_by == "價格低到高": 
         res = res.sort_values(by='顯示價格', ascending=True)
@@ -187,6 +183,13 @@ def get_cars(
             res['年份_num'] = pd.to_numeric(res['年份'], errors='coerce').fillna(9999)
             res = res.sort_values(by='年份_num', ascending=True)
             res = res.drop(columns=['年份_num'])
+    elif sort_by == "最新入庫":
+        if '入庫_dt' in res.columns:
+            # 最新入庫排前面，如果沒有日期的排在最後
+            res = res.sort_values(by='入庫_dt', ascending=False, na_position='last')
+    elif sort_by == "最舊入庫":
+        if '入庫_dt' in res.columns:
+            res = res.sort_values(by='入庫_dt', ascending=True, na_position='last')
     else: 
         if '年份' in res.columns: 
             res['年份_num'] = pd.to_numeric(res['年份'], errors='coerce').fillna(0)

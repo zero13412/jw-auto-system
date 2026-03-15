@@ -504,9 +504,11 @@ def process_excel_file(filename: str, contents: bytes):
             
             # ==========================================
             # 【新增】：為新竹車源表補上動態台數計算公式
+            # 改用 SUMPRODUCT 排除不可見的空白字元
             # ==========================================
             if target_tab_name == "新竹車源":
-target_gsheet_main.update_acell('A2', '="共"&SUMPRODUCT(--(LEN(TRIM($C$5:$C$133))>0))&"台"')                
+                target_gsheet_main.update_acell('A2', '="共"&SUMPRODUCT(--(LEN(TRIM($C$5:$C$133))>0))&"台"')
+                
             doc.batch_update({"requests": color_requests_main})
             messages.append(f"「{target_tab_name}」成功({len(data_to_upload_main)-1}筆)")
         except Exception as e:

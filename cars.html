@@ -68,6 +68,10 @@
                             </select>
                         </div>
                         <div>
+                            <label class="block text-gray-600 mb-1">人員搜尋</label>
+                            <input v-model="filters.person" type="text" class="w-full border rounded p-2" placeholder="搜尋負責人或採購">
+                        </div>
+                        <div>
                             <label class="block text-gray-600 mb-1">車牌</label>
                             <input v-model="filters.plate" type="text" class="w-full border rounded p-2">
                         </div>
@@ -166,8 +170,9 @@
                                     車牌: <span class="font-bold text-blue-600">{{ car.車牌 }}</span> &nbsp;|&nbsp; 
                                     地點: {{ car.車輛位置 }}<br class="sm:hidden">
                                     <span class="hidden sm:inline">&nbsp;|&nbsp;</span>
-                                    入庫: <span class="text-orange-600">{{ String(car.入庫日期).split(' ')[0] }}</span> &nbsp;|&nbsp; 
-                                    負責: {{ car.負責人 }}
+                                    入庫: <span class="text-orange-600">{{ String(car.入庫日期).split(' ')[0] }}</span> 
+                                    <span v-if="car.負責人 && String(car.負責人).trim() !== 'nan' && String(car.負責人).trim() !== ''">&nbsp;|&nbsp; <span class="font-bold text-indigo-700">負責: {{ car.負責人 }}</span></span>
+                                    <span v-if="car.採購 && String(car.採購).trim() !== 'nan' && String(car.採購).trim() !== ''">&nbsp;|&nbsp; <span class="font-bold text-teal-700">採購: {{ car.採購 }}</span></span>
                                 </div>
                                 <div class="text-xs text-gray-500">
                                     里程: {{ car.里程 }}萬 &nbsp;|&nbsp; 顏色: {{ car.顏色 }} &nbsp;|&nbsp; 車身: {{ car.車身 }}
@@ -219,7 +224,7 @@
 
                 const filters = reactive({
                     brand: "全部", location: "全部", prop: "全部",
-                    model: "", plate: "", min_price: "", max_price: "",
+                    model: "", plate: "", person: "", min_price: "", max_price: "",
                     sort_by: "預設", hide_no_price: false, hide_reserved: false
                 });
 
@@ -272,7 +277,7 @@
                 const resetFilters = () => {
                     Object.assign(filters, {
                         brand: "全部", location: "全部", prop: "全部",
-                        model: "", plate: "", min_price: "", max_price: "", 
+                        model: "", plate: "", person: "", min_price: "", max_price: "", 
                         sort_by: "預設", hide_no_price: false, hide_reserved: false
                     });
                     searchCarsMobile();

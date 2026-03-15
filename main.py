@@ -431,7 +431,6 @@ def process_excel_file(filename: str, contents: bytes):
                     color = str(row_vals[idx_color]) if idx_color != -1 and len(row_vals) > idx_color else ""
                     year = re.sub(r'\.0$', '', year)
                     disp_plate = plate if plate else "無牌"
-                    # 【修正排版】：改成 🔸 2017 TOURAN 白  #ATM-8230
                     new_cars_msg_list.append(f"🔸 {year} {model} {color}  #{disp_plate}")
 
         data_to_upload_sold = []
@@ -502,6 +501,13 @@ def process_excel_file(filename: str, contents: bytes):
             target_gsheet_main.clear()
             stringified_main = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload_main]
             target_gsheet_main.update(values=stringified_main, range_name='A1')
+            
+            # ==========================================
+            # 【新增】：為新竹車源表補上動態台數計算公式
+            # ==========================================
+            if target_tab_name == "新竹車源":
+                target_gsheet_main.update_acell('A2', '="共"&COUNTA($C$5:$C$133)&"台"')
+                
             doc.batch_update({"requests": color_requests_main})
             messages.append(f"「{target_tab_name}」成功({len(data_to_upload_main)-1}筆)")
         except Exception as e:

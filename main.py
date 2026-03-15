@@ -67,17 +67,13 @@ def load_and_clean_data():
     df = pd.read_csv(CSV_URL)
     df.columns = [str(c).strip() for c in df.columns]
     
-    # ==========================================
-    # 【修正】：將「負責人」與「採購」獨立分開處理
-    # ==========================================
-    # 處理負責人 (廣告刊登者)
+    # 將「負責人」與「採購」獨立分開處理
     if '負責人' not in df.columns:
         if '車輛負責人' in df.columns:
             df['負責人'] = df['車輛負責人']
         else:
             df['負責人'] = ""
             
-    # 處理採購 (買車的人)
     if '採購' not in df.columns:
         df['採購'] = ""
             
@@ -152,7 +148,7 @@ def get_options():
 def get_cars(
     brand: str = "全部", location: str = "全部", prop: str = "全部",
     model: str = "", version: str = "", vin: str = "", plate: str = "",
-    person: str = "", min_price: float = 0.0, max_price: float = 99999.0,
+    min_price: float = 0.0, max_price: float = 99999.0,
     sort_by: str = "預設", limit: int = 100, 
     hide_no_price: str = "false", hide_reserved: str = "false"
 ):
@@ -164,7 +160,6 @@ def get_cars(
     version = version.strip()
     vin = vin.strip()
     plate = plate.strip()
-    person = person.strip()
 
     if brand != "全部": res = res[res['廠牌'] == brand]
     if location != "全部": res = res[res['車輛位置'] == location]
@@ -175,15 +170,6 @@ def get_cars(
     if vin and '車身' in res.columns: res = res[res['車身'].astype(str).str.lower().str.contains(vin.lower(), na=False)]
     if plate and '車牌' in res.columns: res = res[res['車牌'].astype(str).str.lower().str.contains(plate.lower(), na=False)]
     
-    # 【升級】：搜尋人員時，同時比對「負責人」與「採購」
-    if person:
-        mask = pd.Series(False, index=res.index)
-        if '負責人' in res.columns:
-            mask = mask | res['負責人'].astype(str).str.lower().str.contains(person.lower(), na=False)
-        if '採購' in res.columns:
-            mask = mask | res['採購'].astype(str).str.lower().str.contains(person.lower(), na=False)
-        res = res[mask]
-
     res = res[(res['顯示價格'] >= min_price) & (res['顯示價格'] <= max_price)]
 
     # 過濾特殊車輛

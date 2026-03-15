@@ -68,10 +68,6 @@
                             </select>
                         </div>
                         <div>
-                            <label class="block text-gray-600 mb-1">人員搜尋</label>
-                            <input v-model="filters.person" type="text" class="w-full border rounded p-2" placeholder="搜尋負責人或採購">
-                        </div>
-                        <div>
                             <label class="block text-gray-600 mb-1">車牌</label>
                             <input v-model="filters.plate" type="text" class="w-full border rounded p-2">
                         </div>
@@ -222,9 +218,10 @@
                 const statusMessage = ref("系統準備就緒");
                 const showMobileFilters = ref(false);
 
+                // 已移除 person 欄位
                 const filters = reactive({
                     brand: "全部", location: "全部", prop: "全部",
-                    model: "", plate: "", person: "", min_price: "", max_price: "",
+                    model: "", plate: "", min_price: "", max_price: "",
                     sort_by: "預設", hide_no_price: false, hide_reserved: false
                 });
 
@@ -277,7 +274,7 @@
                 const resetFilters = () => {
                     Object.assign(filters, {
                         brand: "全部", location: "全部", prop: "全部",
-                        model: "", plate: "", person: "", min_price: "", max_price: "", 
+                        model: "", plate: "", min_price: "", max_price: "", 
                         sort_by: "預設", hide_no_price: false, hide_reserved: false
                     });
                     searchCarsMobile();

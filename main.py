@@ -148,7 +148,7 @@ def get_options():
 def get_cars(
     brand: str = "全部", location: str = "全部", prop: str = "全部",
     model: str = "", version: str = "", vin: str = "", plate: str = "",
-    min_price: float = 0.0, max_price: float = 99999.0,
+    person: str = "", min_price: float = 0.0, max_price: float = 99999.0,
     sort_by: str = "預設", limit: int = 100, 
     hide_no_price: str = "false", hide_reserved: str = "false"
 ):
@@ -160,6 +160,7 @@ def get_cars(
     version = version.strip()
     vin = vin.strip()
     plate = plate.strip()
+    person = person.strip()
 
     if brand != "全部": res = res[res['廠牌'] == brand]
     if location != "全部": res = res[res['車輛位置'] == location]
@@ -170,6 +171,14 @@ def get_cars(
     if vin and '車身' in res.columns: res = res[res['車身'].astype(str).str.lower().str.contains(vin.lower(), na=False)]
     if plate and '車牌' in res.columns: res = res[res['車牌'].astype(str).str.lower().str.contains(plate.lower(), na=False)]
     
+    if person:
+        mask = pd.Series(False, index=res.index)
+        if '負責人' in res.columns:
+            mask = mask | res['負責人'].astype(str).str.lower().str.contains(person.lower(), na=False)
+        if '採購' in res.columns:
+            mask = mask | res['採購'].astype(str).str.lower().str.contains(person.lower(), na=False)
+        res = res[mask]
+
     res = res[(res['顯示價格'] >= min_price) & (res['顯示價格'] <= max_price)]
 
     # 過濾特殊車輛
@@ -326,6 +335,27 @@ def process_excel_file(filename: str, contents: bytes):
         except gspread.exceptions.WorksheetNotFound:
             return {"status": "error", "message": f"找不到分頁「{target_tab_name}」"}
 
+        # 讀取舊資料，準備揪出新進車輛 (僅限新竹車源)
+        old_vins = set()
+        old_plates = set()
+        if target_tab_name == "新竹車源":
+            try:
+                old_values = target_gsheet_main.get_all_values()
+                if len(old_values) > 1:
+                    headers_old = [str(x).strip() for x in old_values[0]]
+                    idx_vin_old = headers_old.index("車身") if "車身" in headers_old else -1
+                    idx_plate_old = headers_old.index("車牌") if "車牌" in headers_old else -1
+                    
+                    for r in old_values[1:]:
+                        if idx_vin_old != -1 and len(r) > idx_vin_old:
+                            v = str(r[idx_vin_old]).strip().upper()
+                            if v: old_vins.add(v)
+                        if idx_plate_old != -1 and len(r) > idx_plate_old:
+                            p = str(r[idx_plate_old]).strip().upper()
+                            if p: old_plates.add(p)
+            except Exception:
+                pass 
+
         color_requests_main = [{
             "repeatCell": {
                 "range": { "sheetId": target_gsheet_main.id, "startRowIndex": 1 },
@@ -374,6 +404,35 @@ def process_excel_file(filename: str, contents: bytes):
                     
             row_values[status_idx] = "已收訂" if is_reserved else ""
             data_to_upload_main.append(row_values)
+
+        # 比對舊資料，整理新進車輛清單
+        new_cars_msg_list = []
+        if target_tab_name == "新竹車源" and (old_vins or old_plates):
+            h = data_to_upload_main[0]
+            idx_year = h.index("年份") if "年份" in h else -1
+            idx_model = h.index("車型") if "車型" in h else -1
+            idx_color = h.index("顏色") if "顏色" in h else -1
+            idx_plate = h.index("車牌") if "車牌" in h else -1
+            idx_vin = h.index("車身") if "車身" in h else -1
+
+            for row_vals in data_to_upload_main[1:]:
+                vin = str(row_vals[idx_vin]).strip().upper() if idx_vin != -1 and len(row_vals) > idx_vin else ""
+                plate = str(row_vals[idx_plate]).strip().upper() if idx_plate != -1 and len(row_vals) > idx_plate else ""
+                
+                is_new = False
+                if vin:
+                    if vin not in old_vins: is_new = True
+                elif plate:
+                    if plate not in old_plates: is_new = True
+                        
+                if is_new:
+                    year = str(row_vals[idx_year]) if idx_year != -1 and len(row_vals) > idx_year else ""
+                    model = str(row_vals[idx_model]) if idx_model != -1 and len(row_vals) > idx_model else ""
+                    color = str(row_vals[idx_color]) if idx_color != -1 and len(row_vals) > idx_color else ""
+                    year = re.sub(r'\.0$', '', year)
+                    disp_plate = plate if plate else "無牌"
+                    # 【修正排版】：改成 🔸 2017 TOURAN 白  #ATM-8230
+                    new_cars_msg_list.append(f"🔸 {year} {model} {color}  #{disp_plate}")
 
         data_to_upload_sold = []
         sheet_name_sold = None
@@ -465,6 +524,13 @@ def process_excel_file(filename: str, contents: bytes):
             load_and_clean_data()
             
         final_msg = " ＆ ".join(messages)
+        
+        if new_cars_msg_list:
+            if len(new_cars_msg_list) > 20:
+                new_cars_msg_list = new_cars_msg_list[:20]
+                new_cars_msg_list.append("...(以下省略，新車數量較多)")
+            final_msg += f"\n\n🎉 發現 {len(new_cars_msg_list)} 台新進車輛：\n" + "\n".join(new_cars_msg_list)
+
         return {"status": "success", "message": final_msg}
         
     except Exception as e:

@@ -67,6 +67,18 @@ def load_and_clean_data():
     df = pd.read_csv(CSV_URL)
     df.columns = [str(c).strip() for c in df.columns]
     
+    # ==========================================
+    # 【新增】：智慧翻譯「負責人」欄位
+    # 解決 E車源叫「採購」，新竹車源叫「車輛負責人」的問題
+    # ==========================================
+    if '負責人' not in df.columns:
+        if '採購' in df.columns:
+            df['負責人'] = df['採購']
+        elif '車輛負責人' in df.columns:
+            df['負責人'] = df['車輛負責人']
+        else:
+            df['負責人'] = ""
+            
     if '新編號' in df.columns or '舊編號' in df.columns:
         def merge_ids(r):
             n = r.get('新編號', '')
@@ -171,9 +183,7 @@ def get_cars(
     if hide_reserved.lower() == "true":
         res = res[res['is_reserved'] == False]
 
-    # ==========================================
-    # 【新增】：排序邏輯擴充 入庫日期排序
-    # ==========================================
+    # 排序邏輯擴充 入庫日期排序
     if sort_by == "價格低到高": 
         res = res.sort_values(by='顯示價格', ascending=True)
     elif sort_by == "價格高到低": 
@@ -185,7 +195,6 @@ def get_cars(
             res = res.drop(columns=['年份_num'])
     elif sort_by == "最新入庫":
         if '入庫_dt' in res.columns:
-            # 最新入庫排前面，如果沒有日期的排在最後
             res = res.sort_values(by='入庫_dt', ascending=False, na_position='last')
     elif sort_by == "最舊入庫":
         if '入庫_dt' in res.columns:

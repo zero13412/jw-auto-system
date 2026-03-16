@@ -335,24 +335,30 @@ def process_excel_file(filename: str, contents: bytes):
         except gspread.exceptions.WorksheetNotFound:
             return {"status": "error", "message": f"找不到分頁「{target_tab_name}」"}
 
-        # 讀取舊資料，準備揪出新進車輛 (僅限新竹車源)
-        old_vins = set()
+        # ==========================================
+        # 【修正】：聰明尋找舊表標題，準備比對新進車輛
+        # ==========================================
         old_plates = set()
         if target_tab_name == "新竹車源":
             try:
                 old_values = target_gsheet_main.get_all_values()
-                if len(old_values) > 1:
-                    headers_old = [str(x).strip() for x in old_values[0]]
-                    idx_vin_old = headers_old.index("車身") if "車身" in headers_old else -1
+                headers_old = []
+                header_idx = 0
+                # 往下找前 10 行，尋找真正的標題列
+                for i, r in enumerate(old_values[:10]):
+                    r_str = [str(x).strip() for x in r]
+                    if "車牌" in r_str or "車型" in r_str:
+                        headers_old = r_str
+                        header_idx = i
+                        break
+                
+                if headers_old:
                     idx_plate_old = headers_old.index("車牌") if "車牌" in headers_old else -1
-                    
-                    for r in old_values[1:]:
-                        if idx_vin_old != -1 and len(r) > idx_vin_old:
-                            v = str(r[idx_vin_old]).strip().upper()
-                            if v: old_vins.add(v)
-                        if idx_plate_old != -1 and len(r) > idx_plate_old:
-                            p = str(r[idx_plate_old]).strip().upper()
-                            if p: old_plates.add(p)
+                    if idx_plate_old != -1:
+                        for r in old_values[header_idx+1:]:
+                            if len(r) > idx_plate_old:
+                                p = str(r[idx_plate_old]).strip().upper()
+                                if p: old_plates.add(p)
             except Exception:
                 pass 
 
@@ -405,33 +411,40 @@ def process_excel_file(filename: str, contents: bytes):
             row_values[status_idx] = "已收訂" if is_reserved else ""
             data_to_upload_main.append(row_values)
 
-        # 比對舊資料，整理新進車輛清單
+        # ==========================================
+        # 【修正】：聰明尋找新表標題，產生新車清單
+        # ==========================================
         new_cars_msg_list = []
-        if target_tab_name == "新竹車源" and (old_vins or old_plates):
-            h = data_to_upload_main[0]
-            idx_year = h.index("年份") if "年份" in h else -1
-            idx_model = h.index("車型") if "車型" in h else -1
-            idx_color = h.index("顏色") if "顏色" in h else -1
-            idx_plate = h.index("車牌") if "車牌" in h else -1
-            idx_vin = h.index("車身") if "車身" in h else -1
+        if target_tab_name == "新竹車源" and old_plates:
+            h = []
+            header_idx = 0
+            # 同樣往下找前 10 行，避免被前面的說明文字干擾
+            for i, r in enumerate(data_to_upload_main[:10]):
+                r_str = [str(x).strip() for x in r]
+                if "車牌" in r_str or "車型" in r_str:
+                    h = r_str
+                    header_idx = i
+                    break
 
-            for row_vals in data_to_upload_main[1:]:
-                vin = str(row_vals[idx_vin]).strip().upper() if idx_vin != -1 and len(row_vals) > idx_vin else ""
-                plate = str(row_vals[idx_plate]).strip().upper() if idx_plate != -1 and len(row_vals) > idx_plate else ""
-                
-                is_new = False
-                if vin:
-                    if vin not in old_vins: is_new = True
-                elif plate:
-                    if plate not in old_plates: is_new = True
+            if h:
+                idx_year = h.index("年份") if "年份" in h else -1
+                idx_model = h.index("車型") if "車型" in h else -1
+                idx_color = h.index("顏色") if "顏色" in h else -1
+                idx_plate = h.index("車牌") if "車牌" in h else -1
+
+                for row_vals in data_to_upload_main[header_idx+1:]:
+                    plate = str(row_vals[idx_plate]).strip().upper() if idx_plate != -1 and len(row_vals) > idx_plate else ""
+                    
+                    if plate and plate not in old_plates:
+                        year = str(row_vals[idx_year]) if idx_year != -1 and len(row_vals) > idx_year else ""
+                        model = str(row_vals[idx_model]) if idx_model != -1 and len(row_vals) > idx_model else ""
+                        color = str(row_vals[idx_color]) if idx_color != -1 and len(row_vals) > idx_color else ""
                         
-                if is_new:
-                    year = str(row_vals[idx_year]) if idx_year != -1 and len(row_vals) > idx_year else ""
-                    model = str(row_vals[idx_model]) if idx_model != -1 and len(row_vals) > idx_model else ""
-                    color = str(row_vals[idx_color]) if idx_color != -1 and len(row_vals) > idx_color else ""
-                    year = re.sub(r'\.0$', '', year)
-                    disp_plate = plate if plate else "無牌"
-                    new_cars_msg_list.append(f"🔸 {year} {model} {color}  #{disp_plate}")
+                        # 確保這筆資料真的有車型（過濾掉空白或純數字的雜訊行）
+                        if model and str(model).strip().lower() != "nan":
+                            year = re.sub(r'\.0$', '', year)
+                            disp_plate = plate if plate else "無牌"
+                            new_cars_msg_list.append(f"🔸 {year} {model} {color}  #{disp_plate}")
 
         data_to_upload_sold = []
         sheet_name_sold = None
@@ -502,10 +515,7 @@ def process_excel_file(filename: str, contents: bytes):
             stringified_main = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload_main]
             target_gsheet_main.update(values=stringified_main, range_name='A1')
             
-            # ==========================================
-            # 【新增】：為新竹車源表補上動態台數計算公式
-            # 改用 SUMPRODUCT 排除不可見的空白字元
-            # ==========================================
+            # 補上動態台數計算公式 (排除空字元)
             if target_tab_name == "新竹車源":
                 target_gsheet_main.update_acell('A2', '="共"&SUMPRODUCT(--(LEN(TRIM($C$5:$C$133))>0))&"台"')
                 

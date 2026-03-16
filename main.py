@@ -335,16 +335,13 @@ def process_excel_file(filename: str, contents: bytes):
         except gspread.exceptions.WorksheetNotFound:
             return {"status": "error", "message": f"找不到分頁「{target_tab_name}」"}
 
-        # ==========================================
-        # 【修正】：聰明尋找舊表標題，準備比對新進車輛
-        # ==========================================
+        # 聰明尋找舊表標題，準備比對新進車輛
         old_plates = set()
         if target_tab_name == "新竹車源":
             try:
                 old_values = target_gsheet_main.get_all_values()
                 headers_old = []
                 header_idx = 0
-                # 往下找前 10 行，尋找真正的標題列
                 for i, r in enumerate(old_values[:10]):
                     r_str = [str(x).strip() for x in r]
                     if "車牌" in r_str or "車型" in r_str:
@@ -411,14 +408,11 @@ def process_excel_file(filename: str, contents: bytes):
             row_values[status_idx] = "已收訂" if is_reserved else ""
             data_to_upload_main.append(row_values)
 
-        # ==========================================
-        # 【修正】：聰明尋找新表標題，產生新車清單
-        # ==========================================
+        # 聰明尋找新表標題，產生新車清單
         new_cars_msg_list = []
         if target_tab_name == "新竹車源" and old_plates:
             h = []
             header_idx = 0
-            # 同樣往下找前 10 行，避免被前面的說明文字干擾
             for i, r in enumerate(data_to_upload_main[:10]):
                 r_str = [str(x).strip() for x in r]
                 if "車牌" in r_str or "車型" in r_str:
@@ -440,7 +434,6 @@ def process_excel_file(filename: str, contents: bytes):
                         model = str(row_vals[idx_model]) if idx_model != -1 and len(row_vals) > idx_model else ""
                         color = str(row_vals[idx_color]) if idx_color != -1 and len(row_vals) > idx_color else ""
                         
-                        # 確保這筆資料真的有車型（過濾掉空白或純數字的雜訊行）
                         if model and str(model).strip().lower() != "nan":
                             year = re.sub(r'\.0$', '', year)
                             disp_plate = plate if plate else "無牌"
@@ -515,7 +508,6 @@ def process_excel_file(filename: str, contents: bytes):
             stringified_main = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload_main]
             target_gsheet_main.update(values=stringified_main, range_name='A1')
             
-            # 補上動態台數計算公式 (排除空字元)
             if target_tab_name == "新竹車源":
                 target_gsheet_main.update_acell('A2', '="共"&SUMPRODUCT(--(LEN(TRIM($C$5:$C$133))>0))&"台"')
                 
@@ -581,7 +573,15 @@ def handle_file_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 老闆，請上傳 .xlsx 格式的 Excel 檔案喔！"))
         return
     
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="⏳ 收到檔案！正在幫您解析資料與精準同步底色，請稍候...\n(處理完成後會自動回報)"))
+    # ==========================================
+    # 【新增】：根據檔名決定第一時間的回覆訊息
+    # ==========================================
+    if "新竹" in filename:
+        reply_msg = "⏳ 收到檔案！正在幫您解析資料與精準同步底色，並比對回傳新進車輛，請稍候...\n(處理完成後會自動回報)"
+    else:
+        reply_msg = "⏳ 收到檔案！正在幫您解析資料與精準同步底色，請稍候...\n(處理完成後會自動回報)"
+        
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
     
     def process_and_notify():
         try:

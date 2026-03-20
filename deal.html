@@ -341,7 +341,11 @@
                     output.deal = dealLines + calcStr;
                     autoResize('deal', 'dealArea'); // 觸發自動長高
 
-                    output.tech = `${car.year} ${car.brand} ${car.model}
+                    // ==========================================
+                    // 【修改】：在給技師的話術最上方加上大保養報價提醒
+                    // ==========================================
+                    output.tech = `麻煩協助安排大保養報價
+${car.year} ${car.brand} ${car.model}
 車號：${car.plate}
 施工地：${settings.site}
 車主資料已建立`;

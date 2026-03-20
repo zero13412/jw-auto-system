@@ -25,7 +25,7 @@
             </div>
         </header>
 
-        <div class="bg-cyan-800 text-white text-xs py-1 px-4 text-center sm:text-right" :class="statusColor">
+        <div class="bg-cyan-800 text-white text-xs py-1 px-4 text-center sm:text-right transition-colors duration-300" :class="statusColor">
             {{ statusMessage }}
         </div>
 
@@ -37,7 +37,7 @@
                     <h2 class="font-bold text-gray-700 mb-2">1. 搜尋車輛 (自動帶入地點)</h2>
                     <div class="flex gap-2">
                         <input v-model="searchQuery" @keyup.enter="searchCar" type="text" placeholder="輸入車牌" class="flex-1 border border-gray-300 rounded p-2 focus:ring-2 focus:ring-cyan-400 focus:outline-none uppercase text-lg font-bold">
-                        <button @click="searchCar" class="bg-cyan-600 text-white px-4 py-2 rounded hover:bg-cyan-700 transition font-bold">搜尋</button>
+                        <button @click="searchCar" class="bg-cyan-600 text-white px-4 py-2 rounded hover:bg-cyan-700 transition font-bold shadow-sm">搜尋</button>
                     </div>
                 </div>
 
@@ -46,7 +46,7 @@
                     
                     <div class="flex items-center gap-2">
                         <label class="w-20 text-sm font-bold text-gray-600">客源來源:</label>
-                        <select v-model="settings.custSrc" class="flex-1 border rounded p-1.5 bg-white text-sm">
+                        <select v-model="settings.custSrc" class="flex-1 border rounded p-1.5 bg-white text-sm focus:ring-1 focus:ring-cyan-400 focus:outline-none">
                             <option value="自行開發">自行開發</option>
                             <option value="網路客">網路客</option>
                             <option value="電話客">電話客</option>
@@ -54,20 +54,20 @@
                     </div>
                     <div class="flex items-center gap-2">
                         <label class="w-20 text-sm font-bold text-gray-600">客戶稱呼:</label>
-                        <input v-model="settings.custName" type="text" class="flex-1 border rounded p-1.5 text-sm">
+                        <input v-model="settings.custName" type="text" class="flex-1 border rounded p-1.5 text-sm focus:ring-1 focus:ring-cyan-400 focus:outline-none">
                     </div>
                     
                     <div class="flex items-center justify-between gap-1 mt-2 bg-gray-50 p-2 rounded border">
                         <div class="flex flex-col flex-1">
                             <label class="text-xs font-bold text-blue-600">車輛所在地</label>
-                            <select v-model="settings.locFrom" :disabled="settings.mode === 'reserve'" class="border rounded p-1 text-sm bg-white mt-1">
+                            <select v-model="settings.locFrom" :disabled="settings.mode === 'reserve'" class="border rounded p-1 text-sm bg-white mt-1 focus:ring-1 focus:ring-cyan-400 focus:outline-none">
                                 <option v-for="l in locations" :value="l">{{ l }}</option>
                             </select>
                         </div>
                         <div class="text-gray-400 font-bold px-1 mt-4">➜</div>
                         <div class="flex flex-col flex-1">
                             <label class="text-xs font-bold text-red-600">客戶賞車地</label>
-                            <select v-model="settings.locTo" :disabled="settings.mode === 'reserve'" class="border rounded p-1 text-sm bg-white mt-1">
+                            <select v-model="settings.locTo" :disabled="settings.mode === 'reserve'" class="border rounded p-1 text-sm bg-white mt-1 focus:ring-1 focus:ring-cyan-400 focus:outline-none">
                                 <option v-for="l in locations" :value="l">{{ l }}</option>
                             </select>
                         </div>
@@ -78,66 +78,78 @@
                     <h2 class="font-bold text-gray-700 mb-2">3. 作業模式 & 付款</h2>
                     
                     <div class="flex flex-col gap-2 text-sm bg-cyan-50 p-2 rounded border border-cyan-100">
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="transfer"> <span>[模式1] 付費調度 (賞車)</span></label>
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="order"> <span>[模式2] 已訂購整備 (交車)</span></label>
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="reserve"> <span>[模式3] 不用調度 保留優惠</span></label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="transfer" class="text-cyan-600 focus:ring-cyan-500"> <span class="font-bold text-cyan-900">[模式1] 付費調度 (賞車)</span></label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="order" class="text-cyan-600 focus:ring-cyan-500"> <span class="text-gray-700">[模式2] 已訂購整備 (交車)</span></label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="reserve" class="text-cyan-600 focus:ring-cyan-500"> <span class="text-gray-700">[模式3] 不用調度 保留優惠</span></label>
                     </div>
 
                     <div class="flex items-center gap-2 mt-2">
                         <label class="text-sm font-bold text-gray-700 w-12">金額:</label>
-                        <input v-model="settings.amount" :disabled="settings.mode === 'order'" type="number" class="w-24 border rounded p-1.5 font-bold text-red-600">
+                        <input v-model="settings.amount" :disabled="settings.mode === 'order'" type="number" class="w-24 border rounded p-1.5 font-bold text-red-600 focus:ring-1 focus:ring-cyan-400 focus:outline-none">
                         <span class="text-xs text-gray-500">{{ amountHint }}</span>
                     </div>
 
                     <div class="flex items-center gap-2">
                         <label class="text-sm font-bold text-gray-700 w-12">付款:</label>
                         <div class="flex gap-3 text-sm">
-                            <label class="flex items-center gap-1"><input type="radio" v-model="settings.payMethod" value="現金" :disabled="settings.mode === 'order'"> 現金</label>
-                            <label class="flex items-center gap-1"><input type="radio" v-model="settings.payMethod" value="刷卡" :disabled="settings.mode === 'order'"> 刷卡</label>
-                            <label class="flex items-center gap-1"><input type="radio" v-model="settings.payMethod" value="匯款" :disabled="settings.mode === 'order'"> 匯款</label>
+                            <label class="flex items-center gap-1 cursor-pointer"><input type="radio" v-model="settings.payMethod" value="現金" :disabled="settings.mode === 'order'"> 現金</label>
+                            <label class="flex items-center gap-1 cursor-pointer"><input type="radio" v-model="settings.payMethod" value="刷卡" :disabled="settings.mode === 'order'"> 刷卡</label>
+                            <label class="flex items-center gap-1 cursor-pointer"><input type="radio" v-model="settings.payMethod" value="匯款" :disabled="settings.mode === 'order'"> 匯款</label>
                         </div>
                     </div>
 
                     <div v-if="settings.payMethod === '匯款' && settings.mode !== 'order'" class="flex items-center gap-2">
                         <label class="text-sm font-bold text-gray-700 w-20">後五碼:</label>
-                        <input v-model="settings.last5" type="text" class="flex-1 border rounded p-1.5" placeholder="輸入帳號後五碼">
+                        <input v-model="settings.last5" type="text" class="flex-1 border rounded p-1.5 focus:ring-1 focus:ring-cyan-400 focus:outline-none" placeholder="輸入帳號後五碼">
                     </div>
                 </div>
 
                 <div>
                     <h2 class="font-bold text-gray-700 mb-2">4. 車輛明細</h2>
                     <div class="grid grid-cols-2 gap-2 text-xs sm:text-sm">
-                        <div class="flex flex-col"><label class="text-gray-500 mb-1">車牌</label><input v-model="car.plate" type="text" class="border p-1.5 rounded bg-gray-50 font-bold"></div>
-                        <div class="flex flex-col"><label class="text-gray-500 mb-1">廠牌</label><input v-model="car.brand" type="text" class="border p-1.5 rounded bg-gray-50"></div>
-                        <div class="flex flex-col"><label class="text-gray-500 mb-1">年份</label><input v-model="car.year" type="text" class="border p-1.5 rounded bg-gray-50"></div>
-                        <div class="flex flex-col"><label class="text-gray-500 mb-1">顏色</label><input v-model="car.color" type="text" class="border p-1.5 rounded bg-gray-50"></div>
-                        <div class="flex flex-col col-span-2"><label class="text-gray-500 mb-1">車型</label><input v-model="car.model" type="text" class="border p-1.5 rounded bg-gray-50"></div>
-                        <div class="flex flex-col col-span-2"><label class="text-gray-500 mb-1">里程(萬)</label><input v-model="car.mileage" type="text" class="border p-1.5 rounded bg-gray-50"></div>
+                        <div class="flex flex-col"><label class="text-gray-500 mb-1">車牌</label><input v-model="car.plate" type="text" class="border p-1.5 rounded bg-gray-50 font-bold focus:outline-none"></div>
+                        <div class="flex flex-col"><label class="text-gray-500 mb-1">廠牌</label><input v-model="car.brand" type="text" class="border p-1.5 rounded bg-gray-50 focus:outline-none"></div>
+                        <div class="flex flex-col"><label class="text-gray-500 mb-1">年份</label><input v-model="car.year" type="text" class="border p-1.5 rounded bg-gray-50 focus:outline-none"></div>
+                        <div class="flex flex-col"><label class="text-gray-500 mb-1">顏色</label><input v-model="car.color" type="text" class="border p-1.5 rounded bg-gray-50 focus:outline-none"></div>
+                        <div class="flex flex-col col-span-2"><label class="text-gray-500 mb-1">車型</label><input v-model="car.model" type="text" class="border p-1.5 rounded bg-gray-50 focus:outline-none"></div>
+                        <div class="flex flex-col col-span-2"><label class="text-gray-500 mb-1">里程(萬)</label><input v-model="car.mileage" type="text" class="border p-1.5 rounded bg-gray-50 focus:outline-none"></div>
                     </div>
                 </div>
 
-                <button @click="generateTexts" class="w-full bg-cyan-700 hover:bg-cyan-800 text-white font-bold py-3 sm:py-4 px-4 rounded mt-4 shadow-md transition text-lg">
+                <button @click="generateTexts" class="w-full bg-cyan-700 hover:bg-cyan-800 text-white font-bold py-3 sm:py-4 px-4 rounded mt-4 shadow-md transition active:scale-95 text-lg">
                     ✨ 生成回報與話術 ✨
                 </button>
             </aside>
 
             <main class="flex-1 flex flex-col gap-4 overflow-y-auto pb-10 md:pb-4 h-full relative p-1">
                 
-                <div class="flex flex-col bg-white border rounded-lg shadow-sm shrink-0">
+                <div class="flex flex-col bg-white border rounded-lg shadow-sm shrink-0" v-if="output.report">
                     <div class="bg-gray-100 p-2 sm:p-3 border-b flex justify-between items-center rounded-t-lg sticky top-0 z-10">
                         <span class="font-bold text-gray-700 text-sm sm:text-base">🏢 公司內部回報</span>
-                        <button @click="copyText('report')" class="bg-cyan-100 hover:bg-cyan-200 text-cyan-800 font-bold px-3 py-1 rounded text-sm transition">📋 複製回報</button>
+                        <button @click="copyContent(output.report)" class="bg-cyan-100 hover:bg-cyan-200 text-cyan-800 font-bold px-3 py-1 rounded text-sm transition shadow-sm active:scale-95">📋 複製回報</button>
                     </div>
-                    <textarea id="reportArea" v-model="output.report" class="w-full p-3 sm:p-4 resize-none focus:outline-none text-sm sm:text-base leading-relaxed font-mono bg-white min-h-[250px]" readonly :style="{ height: heights.report + 'px' }"></textarea>
+                    <textarea id="reportArea" v-model="output.report" class="w-full p-3 sm:p-4 resize-none focus:outline-none text-sm sm:text-base leading-relaxed font-mono bg-white min-h-[250px]" readonly></textarea>
                 </div>
 
-                <div class="flex flex-col bg-white border rounded-lg shadow-sm shrink-0">
-                    <div class="bg-gray-100 p-2 sm:p-3 border-b flex justify-between items-center rounded-t-lg sticky top-0 z-10">
-                        <span class="font-bold text-gray-700 text-sm sm:text-base">💬 對客說明話術</span>
-                        <button @click="copyText('pitch')" class="bg-green-100 hover:bg-green-200 text-green-800 font-bold px-3 py-1 rounded text-sm transition">📋 複製話術</button>
+                <div class="flex flex-col bg-white border rounded-lg shadow-sm shrink-0 mb-4" v-if="output.pitches.length > 0">
+                    <div class="bg-gray-100 p-2 sm:p-3 border-b rounded-t-lg sticky top-0 z-10 flex justify-between items-center">
+                        <span class="font-bold text-gray-700 text-sm sm:text-base">💬 對客說明話術 (已自動分段)</span>
+                        <span class="text-xs text-gray-500 font-normal hidden sm:inline">可依對話節奏，一段一段發送給客人</span>
                     </div>
-                    <textarea id="pitchArea" v-model="output.pitch" class="w-full p-3 sm:p-4 resize-none focus:outline-none text-sm sm:text-base leading-relaxed bg-white min-h-[400px]" readonly :style="{ height: heights.pitch + 'px' }"></textarea>
+                    
+                    <div class="p-3 sm:p-4 space-y-4 bg-gray-50 rounded-b-lg">
+                        <div v-for="(pitch, index) in output.pitches" :key="index" class="bg-white border border-gray-200 rounded-lg shadow-sm p-4 relative hover:shadow-md transition">
+                            <div class="flex justify-between items-center mb-3 border-b pb-2">
+                                <span class="text-sm font-bold text-cyan-700 bg-cyan-50 px-2 py-1 rounded">第 {{ index + 1 }} 段</span>
+                                <button @click="copyContent(pitch)" class="bg-green-100 hover:bg-green-200 text-green-800 font-bold px-3 py-1 rounded text-xs sm:text-sm transition shadow-sm active:scale-95">
+                                    📋 複製此段
+                                </button>
+                            </div>
+                            <pre class="w-full whitespace-pre-wrap font-sans text-sm sm:text-base leading-relaxed text-gray-700 m-0">{{ pitch }}</pre>
+                        </div>
+                    </div>
                 </div>
+
             </main>
         </div>
     </div>
@@ -149,7 +161,7 @@
         createApp({
             setup() {
                 const statusMessage = ref("系統準備就緒");
-                const statusColor = ref("text-cyan-300");
+                const statusColor = ref("text-cyan-200");
                 const searchQuery = ref("");
 
                 const locations = ["台北", "桃園", "新竹", "台中", "高雄"];
@@ -172,21 +184,18 @@
                     plate: '', brand: '', model: '', year: '', color: '', mileage: ''
                 });
 
-                const output = reactive({ report: "", pitch: "" });
-                // 記錄高度
-                const heights = reactive({ report: 250, pitch: 400 });
+                // 將 pitch 改為 array 儲存分段
+                const output = reactive({ report: "", pitches: [] });
 
-                // 自動調整高度函式
-                const autoResize = (type, areaId) => {
+                // report 專屬高度調整
+                const autoResizeReport = () => {
                     nextTick(() => {
-                        let el = document.getElementById(areaId);
+                        let el = document.getElementById('reportArea');
                         if (el) {
-                            el.style.height = 'auto'; // 歸零
+                            el.style.height = 'auto';
                             let newHeight = el.scrollHeight;
-                            // 防呆最小高度
-                            if (type === 'report' && newHeight < 250) newHeight = 250;
-                            if (type === 'pitch' && newHeight < 400) newHeight = 400;
-                            heights[type] = newHeight;
+                            if (newHeight < 250) newHeight = 250;
+                            el.style.height = newHeight + 'px';
                         }
                     });
                 };
@@ -213,7 +222,7 @@
 
                 const searchCar = async () => {
                     if (!searchQuery.value) return;
-                    updateStatus("搜尋中...", "text-yellow-300");
+                    updateStatus("搜尋中...", "text-yellow-300 font-bold");
                     
                     try {
                         const res = await fetch(`${API_URL}/search_plate?plate=${encodeURIComponent(searchQuery.value)}`);
@@ -235,13 +244,13 @@
                                 settings.locFrom = dbLoc;
                             }
                             
-                            updateStatus(`✅ 找到車輛：${car.model} (自動帶入地點: ${dbLoc})`, "text-green-300");
+                            updateStatus(`✅ 找到車輛：${car.model} (自動帶入地點: ${dbLoc})`, "text-green-300 font-bold");
                         } else {
                             car.plate = searchQuery.value.toUpperCase();
-                            updateStatus("❌ 查無此車，請手動輸入明細", "text-red-300");
+                            updateStatus("❌ 查無此車，請手動輸入明細", "text-red-300 font-bold");
                         }
                     } catch (e) {
-                        updateStatus("❌ 網路連線錯誤", "text-red-300");
+                        updateStatus("❌ 網路連線錯誤", "text-red-300 font-bold");
                     }
                 };
 
@@ -252,7 +261,7 @@
                     if (window.innerWidth < 768) {
                         setTimeout(() => { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }, 100);
                     }
-                    updateStatus(`⚡ 文案與話術生成完畢！`, "text-cyan-300");
+                    updateStatus(`⚡ 文案與話術生成完畢！`, "text-green-300 font-bold");
                 };
 
                 const generateReport = () => {
@@ -297,78 +306,45 @@
                         text_out += check_receipt_msg;
                     }
                     output.report = text_out;
-                    autoResize('report', 'reportArea'); // 觸發自動長高
+                    autoResizeReport();
                 };
 
                 const generatePitch = () => {
+                    // 同門市免調度費的情境
                     if (settings.locFrom === settings.locTo) {
-                        output.pitch = `車輛目前已在「${settings.locTo}」店，可以直接邀請客戶來店賞車！\n無需收取調度費。`;
-                        autoResize('pitch', 'pitchArea');
+                        output.pitches = [`車輛目前已在「${settings.locTo}」店，可以直接邀請客戶來店賞車！\n無需收取調度費。`];
                         return;
                     }
 
+                    // 取得計算後的費用
                     let fee = parseInt(settings.amount) || priceMatrix[settings.locFrom]?.[settings.locTo] || 0;
                     let deposit_balance = 29000 - fee;
 
-                    output.pitch = `賞車有兩種方式
+                    // 拆分成4個獨立字串
+                    const p1 = `賞車有兩種方式\n\n您直接到「${settings.locFrom}」店賞車的話\n我們可以補貼您 單人單趟的高鐵費\n現場看過車覺得不喜歡 不買也有補貼\n\n缺點就是您要跑一趟 而且如果好幾個人一起去就划不來\n因為只有補貼一個人 去程 (自行開車沒有)`;
+                    
+                    const p2 = `另一種方式是 您可線上預刷 ${fee} 元調度金\n我們可幫您把車調度到「${settings.locTo}」店\n如果車到「${settings.locTo}」 您覺得OK 簽約\n${fee} 可折抵車價 不用額外付調度費\n\n那如果車調度到「${settings.locTo}」後 您看過車不想買 也沒有其他考慮的車款\n${fee} 元就沒有退 當作您部分負擔調度費`;
+                    
+                    const p3 = `再跟您詳細說明\n${fee} 是調度金 不是訂金 \n您預刷 ${fee} 後 是第一順位\n\n因為我們車跑的速度蠻快\n車子調度需要排隊\n假設車子還沒調度 有其他人想直接付訂金\n(我們訂金是收 29000 元)\n會馬上告知您 您有3小時考慮時間\n\n如您有意願購買 就必須3小時內 補刷 ${deposit_balance} 元\n如您沒有意願 就會安排會計小姐 刷退 ${fee} 元`;
+                    
+                    const p4 = `但如果 您決定要直接到 「${settings.locFrom}」店賞車 還是建議您 先預付 ${fee} 元賞車金 (刷卡匯款都可)\n\n直接過去 就沒有拖車 不買需付 ${fee} 元的問題\n不滿意 也不考慮其他車款 ${fee} 元可全退\n而且您就是第一順位 如有其他人想買 您可考慮3小時\n\n因為我們常常發生 客人在路上 結果車被現場客人買走`;
 
-您直接到「${settings.locFrom}」店賞車的話
-我們可以補貼您 單人單趟的高鐵費
-現場看過車覺得不喜歡 不買也有補貼
-
-缺點就是您要跑一趟 而且如果好幾個人一起去就划不來
-因為只有補貼一個人 去程 (自行開車沒有)
-
----------------------------------------
-
-另一種方式是 您可線上預刷 ${fee} 元調度金
-我們可幫您把車調度到「${settings.locTo}」店
-如果車到「${settings.locTo}」 您覺得OK 簽約
-${fee} 可折抵車價 不用額外付調度費
-
-那如果車調度到「${settings.locTo}」後 您看過車不想買 也沒有其他考慮的車款
-${fee} 元就沒有退 當作您部分負擔調度費
-
----------------------------------------
-
-再跟您詳細說明
-${fee} 是調度金 不是訂金 
-您預刷 ${fee} 後 是第一順位
-
-因為我們車跑的速度蠻快
-車子調度需要排隊
-假設車子還沒調度 有其他人想直接付訂金
-(我們訂金是收 29000 元)
-會馬上告知您 您有3小時考慮時間
-
-如您有意願購買 就必須3小時內 補刷 ${deposit_balance} 元
-如您沒有意願 就會安排會計小姐 刷退 ${fee} 元
-
----------------------------------------
-
-但如果 您決定要直接到 「${settings.locFrom}」店賞車 還是建議您 先預付 ${fee} 元賞車金 (刷卡匯款都可)
-
-直接過去 就沒有拖車 不買需付 ${fee} 元的問題
-不滿意 也不考慮其他車款 ${fee} 元可全退
-而且您就是第一順位 如有其他人想買 您可考慮3小時
-
-因為我們常常發生 客人在路上 結果車被現場客人買走`;
-                    autoResize('pitch', 'pitchArea'); // 觸發自動長高
+                    output.pitches = [p1, p2, p3, p4];
                 };
 
-                const copyText = (type) => {
-                    let textToCopy = output[type];
+                // 通用複製函式：直接傳入要複製的文字內容
+                const copyContent = (textToCopy) => {
                     if (!textToCopy) return;
                     navigator.clipboard.writeText(textToCopy).then(() => {
-                        updateStatus(`✅ 已複製 (${type === 'report' ? '內部回報' : '對客話術'})`, "text-yellow-300");
-                        setTimeout(() => updateStatus("系統準備就緒", "text-cyan-300"), 3000);
+                        updateStatus(`✅ 複製成功！可以去貼給客人了！`, "text-yellow-300 font-bold");
+                        setTimeout(() => updateStatus("系統準備就緒", "text-cyan-200"), 3000);
                     });
                 };
 
                 return {
                     statusMessage, statusColor, searchQuery,
-                    locations, settings, car, output, amountHint, heights,
-                    searchCar, generateTexts, copyText
+                    locations, settings, car, output, amountHint,
+                    searchCar, generateTexts, copyContent
                 };
             }
         }).mount('#app');

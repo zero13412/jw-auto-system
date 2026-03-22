@@ -9,7 +9,6 @@
     <style>
         body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
         [v-cloak] { display: none !important; }
-        /* 隱藏手動拉伸標記，由系統自動處理高度 */
         textarea { overflow-y: hidden; } 
     </style>
 </head>
@@ -123,21 +122,26 @@
 
             <main class="flex-1 flex flex-col gap-4 overflow-y-auto pb-10 md:pb-4 h-full relative p-1">
                 
-                <div class="flex flex-col bg-white border rounded-lg shadow-sm shrink-0" v-if="output.report">
+                <div class="flex flex-col bg-white border rounded-lg shadow-sm shrink-0">
                     <div class="bg-gray-100 p-2 sm:p-3 border-b flex justify-between items-center rounded-t-lg sticky top-0 z-10">
                         <span class="font-bold text-gray-700 text-sm sm:text-base">🏢 公司內部回報</span>
-                        <button @click="copyContent(output.report)" class="bg-cyan-100 hover:bg-cyan-200 text-cyan-800 font-bold px-3 py-1 rounded text-sm transition shadow-sm active:scale-95">📋 複製回報</button>
+                        <button v-if="output.report" @click="copyContent(output.report)" class="bg-cyan-100 hover:bg-cyan-200 text-cyan-800 font-bold px-3 py-1 rounded text-sm transition shadow-sm active:scale-95">📋 複製回報</button>
                     </div>
-                    <textarea id="reportArea" v-model="output.report" class="w-full p-3 sm:p-4 resize-none focus:outline-none text-sm sm:text-base leading-relaxed font-mono bg-white min-h-[250px]" readonly></textarea>
+                    <div v-if="!output.report" class="p-8 text-center text-gray-400 text-sm">請先點擊左下角生成按鈕...</div>
+                    <textarea v-else id="reportArea" v-model="output.report" class="w-full p-3 sm:p-4 resize-none focus:outline-none text-sm sm:text-base leading-relaxed font-mono bg-white min-h-[200px]" readonly></textarea>
                 </div>
 
-                <div class="flex flex-col bg-white border rounded-lg shadow-sm shrink-0 mb-4" v-if="output.pitches.length > 0">
+                <div class="flex flex-col bg-white border rounded-lg shadow-sm shrink-0 mb-4">
                     <div class="bg-gray-100 p-2 sm:p-3 border-b rounded-t-lg sticky top-0 z-10 flex justify-between items-center">
-                        <span class="font-bold text-gray-700 text-sm sm:text-base">💬 對客說明話術 (已自動分段)</span>
+                        <span class="font-bold text-gray-700 text-sm sm:text-base">💬 對客說明話術 (四段分開複製)</span>
                         <span class="text-xs text-gray-500 font-normal hidden sm:inline">可依對話節奏，一段一段發送給客人</span>
                     </div>
                     
-                    <div class="p-3 sm:p-4 space-y-4 bg-gray-50 rounded-b-lg">
+                    <div v-if="output.pitches.length === 0" class="p-8 text-center text-gray-400 text-sm bg-gray-50 rounded-b-lg">
+                        請先搜尋車輛並點擊「✨ 生成回報與話術 ✨」
+                    </div>
+
+                    <div v-else class="p-3 sm:p-4 space-y-4 bg-gray-50 rounded-b-lg">
                         <div v-for="(pitch, index) in output.pitches" :key="index" class="bg-white border border-gray-200 rounded-lg shadow-sm p-4 relative hover:shadow-md transition">
                             <div class="flex justify-between items-center mb-3 border-b pb-2">
                                 <span class="text-sm font-bold text-cyan-700 bg-cyan-50 px-2 py-1 rounded">第 {{ index + 1 }} 段</span>
@@ -184,17 +188,15 @@
                     plate: '', brand: '', model: '', year: '', color: '', mileage: ''
                 });
 
-                // 將 pitch 改為 array 儲存分段
                 const output = reactive({ report: "", pitches: [] });
 
-                // report 專屬高度調整
                 const autoResizeReport = () => {
                     nextTick(() => {
                         let el = document.getElementById('reportArea');
                         if (el) {
                             el.style.height = 'auto';
                             let newHeight = el.scrollHeight;
-                            if (newHeight < 250) newHeight = 250;
+                            if (newHeight < 200) newHeight = 200;
                             el.style.height = newHeight + 'px';
                         }
                     });
@@ -310,29 +312,28 @@
                 };
 
                 const generatePitch = () => {
-                    // 同門市免調度費的情境
                     if (settings.locFrom === settings.locTo) {
                         output.pitches = [`車輛目前已在「${settings.locTo}」店，可以直接邀請客戶來店賞車！\n無需收取調度費。`];
                         return;
                     }
 
-                    // 取得計算後的費用
                     let fee = parseInt(settings.amount) || priceMatrix[settings.locFrom]?.[settings.locTo] || 0;
                     let deposit_balance = 29000 - fee;
 
-                    // 拆分成4個獨立字串
                     const p1 = `賞車有兩種方式\n\n您直接到「${settings.locFrom}」店賞車的話\n我們可以補貼您 單人單趟的高鐵費\n現場看過車覺得不喜歡 不買也有補貼\n\n缺點就是您要跑一趟 而且如果好幾個人一起去就划不來\n因為只有補貼一個人 去程 (自行開車沒有)`;
                     
                     const p2 = `另一種方式是 您可線上預刷 ${fee} 元調度金\n我們可幫您把車調度到「${settings.locTo}」店\n如果車到「${settings.locTo}」 您覺得OK 簽約\n${fee} 可折抵車價 不用額外付調度費\n\n那如果車調度到「${settings.locTo}」後 您看過車不想買 也沒有其他考慮的車款\n${fee} 元就沒有退 當作您部分負擔調度費`;
                     
-                    const p3 = `再跟您詳細說明\n${fee} 是調度金 不是訂金 \n您預刷 ${fee} 後 是第一順位\n\n因為我們車跑的速度蠻快\n車子調度需要排隊\n假設車子還沒調度 有其他人想直接付訂金\n(我們訂金是收 29000 元)\n會馬上告知您 您有3小時考慮時間\n\n如您有意願購買 就必須3小時內 補刷 ${deposit_balance} 元\n如您沒有意願 就會安排會計小姐 刷退 ${fee} 元`;
+                    // ==========================================
+                    // 【修改】：第三段話術更新為更嚴謹的說法
+                    // ==========================================
+                    const p3 = `再跟您詳細說明\n${fee} 是調度金 不是訂金 \n您預刷 ${fee} 後 是第一順位\n\n因為我們車跑的速度蠻快\n車子調度需要排隊\n假設車子還沒調度 或是調度到了 在您來看車之前 有其他人想直接付訂金\n(我們訂金是收 29000 元)\n會馬上告知您 您有3小時考慮時間\n\n如您有意願購買 就必須3小時內 補刷 ${deposit_balance} 元\n如您沒有意願 就會安排會計小姐 刷退 ${fee} 元`;
                     
                     const p4 = `但如果 您決定要直接到 「${settings.locFrom}」店賞車 還是建議您 先預付 ${fee} 元賞車金 (刷卡匯款都可)\n\n直接過去 就沒有拖車 不買需付 ${fee} 元的問題\n不滿意 也不考慮其他車款 ${fee} 元可全退\n而且您就是第一順位 如有其他人想買 您可考慮3小時\n\n因為我們常常發生 客人在路上 結果車被現場客人買走`;
 
                     output.pitches = [p1, p2, p3, p4];
                 };
 
-                // 通用複製函式：直接傳入要複製的文字內容
                 const copyContent = (textToCopy) => {
                     if (!textToCopy) return;
                     navigator.clipboard.writeText(textToCopy).then(() => {

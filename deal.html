@@ -315,7 +315,7 @@
                         `售價：${car.list_price}萬`,
                         (settings.discount === "折1.1萬" ? "線上折1.1萬" : ""),
                         (has_subsidy ? "貸款補貼息3264元" : ""),
-                        "合約車主：",
+                        "合約車主:",
                         `合約售價：${car.deal_price}${has_subsidy ? '元' : '萬'}`,
                         "付款方式:匯款/貸款",
                         "匯款人：",
@@ -331,19 +331,22 @@
                         (has_subsidy ? "贈交美、好禮二選一補貼息3264元" : "贈交美、好禮二選一")
                     ].filter(line => line !== "").join("\n");
 
-                    let calcStr = `\n\n\n\n【金額試算明細】
-1. 售價 (網路)： ${list_price_wan} 萬
-2. 折1.1萬後 ： ${settings.discount === "折1.1萬" ? (price_after_11k/10000) + '萬' : '未選擇'}
-3. 貸款補貼息： ${has_subsidy ? '有 (折3264)' : '無'}
-4. 合約總價  ： ${has_subsidy ? Math.round(price_after_subsidy) + '元' : (price_after_subsidy/10000) + '萬'}
-5. 訂金 (${deposit_wan}萬) 後尾款： ${Math.round(final_balance)} 元`;
+                    // ==========================================
+                    // 【修改】：無編號版金額試算，並判斷是否隱藏補貼息
+                    // ==========================================
+                    let calcStrLines = [
+                        "【金額試算明細】",
+                        `售價 (網路)： ${list_price_wan} 萬`,
+                        `折1.1萬後 ： ${settings.discount === "折1.1萬" ? (price_after_11k/10000) + '萬' : '未選擇'}`,
+                        has_subsidy ? "貸款補貼息： 有 (折3264)" : "",
+                        `合約總價  ： ${has_subsidy ? Math.round(price_after_subsidy) + '元' : (price_after_subsidy/10000) + '萬'}`,
+                        `訂金 (${deposit_wan}萬) 後尾款： ${Math.round(final_balance)} 元`
+                    ];
+                    let calcStr = "\n\n\n\n" + calcStrLines.filter(line => line !== "").join("\n");
 
                     output.deal = dealLines + calcStr;
                     autoResize('deal', 'dealArea'); // 觸發自動長高
 
-                    // ==========================================
-                    // 【修改】：在給技師的話術最上方加上大保養報價提醒
-                    // ==========================================
                     output.tech = `麻煩協助安排大保養報價
 ${car.year} ${car.brand} ${car.model}
 車號：${car.plate}

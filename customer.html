@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>👥 客資管理看板 - 杰運汽車</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F8FAFC; }
+        [v-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden text-gray-800">
+    <div id="app" class="flex flex-col h-full w-full" v-cloak>
+        
+        <header class="bg-cyan-700 text-white p-3 sm:p-4 shadow-md flex justify-between items-center z-20 shrink-0">
+            <h1 class="text-base sm:text-xl font-bold truncate pr-2">👥 客資管理看板 (CRM)</h1>
+            <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+                <a href="/" class="bg-yellow-500 hover:bg-yellow-600 text-cyan-900 font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm">
+                    🏠 首頁
+                </a>
+            </div>
+        </header>
+
+        <div class="bg-cyan-800 text-white text-xs py-1 px-4 text-center sm:text-right shrink-0 transition-colors duration-300" :class="statusColor">
+            {{ statusMessage }}
+        </div>
+
+        <main class="flex-1 overflow-y-auto p-3 sm:p-6 w-full relative">
+            <div class="max-w-6xl mx-auto space-y-6 pb-10">
+                
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-5 flex flex-col md:flex-row gap-4 justify-between items-center sticky top-0 z-10">
+                    <div class="flex items-center gap-3 w-full md:w-1/2">
+                        <div class="relative w-full">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <span class="text-gray-400">🔍</span>
+                            </div>
+                            <input v-model="searchQuery" type="text" class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:outline-none transition shadow-sm" placeholder="搜尋姓名、電話或需求...">
+                        </div>
+                    </div>
+                    
+                    <button @click="showAddModal = true" class="w-full md:w-auto bg-cyan-600 hover:bg-cyan-700 text-white font-bold py-2 px-6 rounded-lg transition shadow-sm flex justify-center items-center gap-2">
+                        <span>➕ 手動新增客資</span>
+                    </button>
+                </div>
+
+                <div class="text-gray-600 font-bold text-sm">
+                    共找到 {{ filteredCustomers.length }} 筆資料
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div v-if="filteredCustomers.length === 0" class="col-span-full bg-white p-10 text-center rounded-xl border border-dashed border-gray-300 text-gray-400">
+                        查無客戶資料，或資料庫尚未建立。
+                    </div>
+                    
+                    <div v-for="(cust, index) in filteredCustomers" :key="index" class="bg-white rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition overflow-hidden flex flex-col">
+                        <div class="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
+                            <span class="font-bold text-lg text-cyan-800">{{ cust['姓名'] || '未填寫' }}</span>
+                            <span class="text-xs text-gray-400 font-mono">{{ cust['日期'] }}</span>
+                        </div>
+                        <div class="p-4 space-y-3 flex-1">
+                            <div class="flex items-start gap-2">
+                                <span class="text-gray-400 mt-0.5">📞</span>
+                                <div class="flex-1 flex justify-between items-center">
+                                    <span class="font-mono text-gray-700 font-bold tracking-wide">{{ cust['電話'] || '無' }}</span>
+                                    <button v-if="cust['電話']" @click="copyText(cust['電話'])" class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded transition">複製</button>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-2">
+                                <span class="text-gray-400 mt-0.5">🎯</span>
+                                <span class="text-gray-800 font-bold">{{ cust['需求'] || '無' }}</span>
+                            </div>
+                            <div v-if="cust['備註']" class="flex items-start gap-2 pt-2 border-t mt-2 border-gray-100">
+                                <span class="text-gray-400 mt-0.5">📝</span>
+                                <p class="text-gray-500 text-sm whitespace-pre-wrap">{{ cust['備註'] }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+
+        <div v-if="showAddModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+                <div class="bg-cyan-700 text-white px-5 py-4 font-bold flex justify-between items-center">
+                    <span>➕ 新增客資</span>
+                    <button @click="showAddModal = false" class="text-cyan-200 hover:text-white transition text-xl">&times;</button>
+                </div>
+                <div class="p-5 space-y-4">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">姓名 <span class="text-red-500">*</span></label>
+                        <input v-model="newCust.name" type="text" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-cyan-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">電話 <span class="text-red-500">*</span></label>
+                        <input v-model="newCust.phone" type="text" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-cyan-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">找什麼車/預算需求 <span class="text-red-500">*</span></label>
+                        <input v-model="newCust.needs" type="text" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-cyan-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">備註 (選填)</label>
+                        <textarea v-model="newCust.memo" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-cyan-500 focus:outline-none h-20 resize-none"></textarea>
+                    </div>
+                </div>
+                <div class="bg-gray-50 px-5 py-4 border-t flex justify-end gap-3">
+                    <button @click="showAddModal = false" class="px-4 py-2 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300 transition">取消</button>
+                    <button @click="submitCustomer" :disabled="isSubmitting" class="px-4 py-2 bg-cyan-600 text-white font-bold rounded-lg hover:bg-cyan-700 transition disabled:opacity-50">
+                        {{ isSubmitting ? '儲存中...' : '確認儲存' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const statusMessage = ref("資料載入中...");
+                const statusColor = ref("text-cyan-200");
+                const customers = ref([]);
+                const searchQuery = ref("");
+                const showAddModal = ref(false);
+                const isSubmitting = ref(false);
+
+                const newCust = ref({ name: "", phone: "", needs: "", memo: "" });
+
+                const loadData = async () => {
+                    statusMessage.value = "🔄 同步客資中...";
+                    try {
+                        const res = await fetch("/api/customers");
+                        const result = await res.json();
+                        if (result.status === "success") {
+                            customers.value = result.data;
+                            statusMessage.value = `✅ 已同步 ${customers.value.length} 筆客資`;
+                        } else {
+                            statusMessage.value = "❌ 載入失敗: " + result.message;
+                            statusColor.value = "text-red-300";
+                        }
+                    } catch (err) {
+                        statusMessage.value = "❌ 網路連線錯誤";
+                        statusColor.value = "text-red-300";
+                    }
+                };
+
+                const filteredCustomers = computed(() => {
+                    if (!searchQuery.value) return customers.value;
+                    const q = searchQuery.value.toLowerCase();
+                    return customers.value.filter(c => {
+                        const name = (c['姓名'] || "").toLowerCase();
+                        const phone = (c['電話'] || "").toLowerCase();
+                        const needs = (c['需求'] || "").toLowerCase();
+                        return name.includes(q) || phone.includes(q) || needs.includes(q);
+                    });
+                });
+
+                const submitCustomer = async () => {
+                    if (!newCust.value.name || !newCust.value.phone || !newCust.value.needs) {
+                        alert("請填寫姓名、電話與需求！");
+                        return;
+                    }
+                    
+                    isSubmitting.value = true;
+                    try {
+                        const res = await fetch("/api/customers", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(newCust.value)
+                        });
+                        const result = await res.json();
+                        
+                        if (result.status === "success") {
+                            showAddModal.value = false;
+                            newCust.value = { name: "", phone: "", needs: "", memo: "" };
+                            loadData(); // 重新讀取
+                        } else {
+                            alert("新增失敗: " + result.message);
+                        }
+                    } catch (e) {
+                        alert("網路連線錯誤");
+                    } finally {
+                        isSubmitting.value = false;
+                    }
+                };
+
+                const copyText = (text) => {
+                    navigator.clipboard.writeText(text).then(() => {
+                        statusMessage.value = "📋 已複製電話號碼";
+                        statusColor.value = "text-yellow-300";
+                        setTimeout(() => {
+                            statusMessage.value = `✅ 已同步 ${customers.value.length} 筆客資`;
+                            statusColor.value = "text-cyan-200";
+                        }, 2000);
+                    });
+                };
+
+                onMounted(() => {
+                    loadData();
+                });
+
+                return {
+                    statusMessage, statusColor, searchQuery, filteredCustomers,
+                    showAddModal, newCust, isSubmitting, submitCustomer, copyText
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

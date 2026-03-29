@@ -254,7 +254,21 @@ def get_customers():
     try:
         client = get_gspread_client()
         sheet = client.open_by_key(SHEET_ID).worksheet("客資紀錄")
-        records = sheet.get_all_records()
+        
+        # 【修改】：使用 get_all_values() 抓最原始的字串，避免套件自作主張把 0 吃掉
+        raw_values = sheet.get_all_values()
+        if not raw_values or len(raw_values) < 2:
+            return {"status": "success", "data": []}
+            
+        headers = [str(h).strip() for h in raw_values[0]]
+        records = []
+        for row in raw_values[1:]:
+            # 過濾掉開頭的單引號，確保畫面乾淨
+            row_data = [str(cell).strip().lstrip("'") for cell in row]
+            while len(row_data) < len(headers):
+                row_data.append("")
+            records.append(dict(zip(headers, row_data)))
+            
         return {"status": "success", "data": list(reversed(records))}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -266,17 +280,21 @@ async def add_customer(request: Request):
         tw_time = datetime.utcnow() + timedelta(hours=8)
         date_str = tw_time.strftime("%Y/%m/%d %H:%M")
         
+        phone_str = str(data.get("phone", "")).strip()
+        if phone_str.startswith("0"):
+            phone_str = f"'{phone_str}"
+            
         row_data = [
             date_str,
             data.get("name", ""),
-            data.get("phone", ""),
+            phone_str,
             data.get("needs", ""),
             data.get("memo", "")
         ]
         
         client = get_gspread_client()
         sheet = client.open_by_key(SHEET_ID).worksheet("客資紀錄")
-        sheet.append_row(row_data)
+        sheet.append_row(row_data, value_input_option='USER_ENTERED')
         return {"status": "success", "message": "客資已新增"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -522,16 +540,18 @@ def handle_text_message(event):
             parts = [p.strip() for p in text.split('/')]
             if len(parts) >= 4:
                 name = parts[1]
-                phone = parts[2]
+                phone = parts[2].strip()
                 needs = parts[3]
                 memo = parts[4] if len(parts) > 4 else ""
+                
+                phone_val = f"'{phone}" if phone.startswith("0") else phone
                 
                 tw_time = datetime.utcnow() + timedelta(hours=8)
                 date_str = tw_time.strftime("%Y/%m/%d %H:%M")
                 
                 client = get_gspread_client()
                 sheet = client.open_by_key(SHEET_ID).worksheet("客資紀錄")
-                sheet.append_row([date_str, name, phone, needs, memo])
+                sheet.append_row([date_str, name, phone_val, needs, memo], value_input_option='USER_ENTERED')
                 
                 reply = f"✅ 客資建檔成功！\n姓名：{name}\n電話：{phone}\n需求：{needs}"
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))

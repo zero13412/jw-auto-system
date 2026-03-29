@@ -185,17 +185,14 @@
                 });
 
                 const output = reactive({ deal: "", tech: "", admin: "" });
-                // 用來記錄每個框的即時高度
                 const heights = reactive({ deal: 300, tech: 150, admin: 150 });
 
-                // 動態計算高度的核心函數
                 const autoResize = (type, areaId) => {
                     nextTick(() => {
                         let el = document.getElementById(areaId);
                         if (el) {
-                            el.style.height = 'auto'; // 先歸零以取得真實高度
+                            el.style.height = 'auto'; 
                             let newHeight = el.scrollHeight;
-                            // 設定最小高度防呆
                             if (type === 'deal' && newHeight < 300) newHeight = 300;
                             if ((type === 'tech' || type === 'admin') && newHeight < 150) newHeight = 150;
                             heights[type] = newHeight;
@@ -332,12 +329,12 @@
                     ].filter(line => line !== "").join("\n");
 
                     // ==========================================
-                    // 【修改】：無編號版金額試算，並判斷是否隱藏補貼息
+                    // 【修改】：如果沒選折 1.1 萬，整行直接隱形
                     // ==========================================
                     let calcStrLines = [
                         "【金額試算明細】",
                         `售價 (網路)： ${list_price_wan} 萬`,
-                        `折1.1萬後 ： ${settings.discount === "折1.1萬" ? (price_after_11k/10000) + '萬' : '未選擇'}`,
+                        settings.discount === "折1.1萬" ? `折1.1萬後 ： ${(price_after_11k/10000)} 萬` : "",
                         has_subsidy ? "貸款補貼息： 有 (折3264)" : "",
                         `合約總價  ： ${has_subsidy ? Math.round(price_after_subsidy) + '元' : (price_after_subsidy/10000) + '萬'}`,
                         `訂金 (${deposit_wan}萬) 後尾款： ${Math.round(final_balance)} 元`
@@ -345,22 +342,14 @@
                     let calcStr = "\n\n\n\n" + calcStrLines.filter(line => line !== "").join("\n");
 
                     output.deal = dealLines + calcStr;
-                    autoResize('deal', 'dealArea'); // 觸發自動長高
+                    autoResize('deal', 'dealArea'); 
 
-                    output.tech = `麻煩協助安排大保養報價
-${car.year} ${car.brand} ${car.model}
-車號：${car.plate}
-施工地：${settings.site}
-車主資料已建立`;
-                    autoResize('tech', 'techArea'); // 觸發自動長高
+                    output.tech = `麻煩協助安排大保養報價\n${car.year} ${car.brand} ${car.model}\n車號：${car.plate}\n施工地：${settings.site}\n車主資料已建立`;
+                    autoResize('tech', 'techArea'); 
 
                     let trans_note = settings.trans_store === "北投店" ? "" : `(${settings.trans_store.replace('店','')}過戶)`;
-                    output.admin = `${car.year} ${car.brand} ${car.model}
-編號：${car.stock_id}
-車號：${car.plate}
-
-${trans_note}`;
-                    autoResize('admin', 'adminArea'); // 觸發自動長高
+                    output.admin = `${car.year} ${car.brand} ${car.model}\n編號：${car.stock_id}\n車號：${car.plate}\n\n${trans_note}`;
+                    autoResize('admin', 'adminArea'); 
                     
                     if (window.innerWidth < 768) {
                         setTimeout(() => { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }, 100);

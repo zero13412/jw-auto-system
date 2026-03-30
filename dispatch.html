@@ -58,7 +58,7 @@
                     
                     <div class="flex items-center gap-2">
                         <label class="w-20 text-sm font-bold text-blue-600">賞車日期:</label>
-                        <input v-model="settings.viewDate" type="text" placeholder="如: 4/2(四)" class="flex-1 border border-blue-200 bg-blue-50 rounded p-1.5 text-sm focus:ring-1 focus:ring-cyan-400 focus:outline-none font-bold">
+                        <input v-model="settings.viewDate" type="date" class="flex-1 border border-blue-200 bg-blue-50 rounded p-1.5 text-sm focus:ring-1 focus:ring-cyan-400 focus:outline-none font-bold text-gray-700">
                     </div>
 
                     <div class="flex items-center justify-between gap-1 mt-2 bg-gray-50 p-2 rounded border">
@@ -175,17 +175,20 @@
                 const statusColor = ref("text-cyan-200");
                 const searchQuery = ref("");
 
-                const locations = ["台北", "桃園", "新竹", "台中", "高雄"];
+                // 【修改】：加入濱江店，價位基準與台北相同
+                const locations = ["台北", "濱江", "桃園", "新竹", "台中", "高雄"];
                 const priceMatrix = {
-                    "台北": {"台北": 0, "桃園": 1000, "新竹": 1500, "台中": 2000, "高雄": 2500},
-                    "桃園": {"台北": 1000, "桃園": 0, "新竹": 1000, "台中": 1500, "高雄": 2000},
-                    "新竹": {"台北": 1500, "桃園": 1000, "新竹": 0, "台中": 1000, "高雄": 2000},
-                    "台中": {"台北": 2000, "桃園": 1500, "新竹": 1000, "台中": 0, "高雄": 2000},
-                    "高雄": {"台北": 2500, "桃園": 2000, "新竹": 2000, "台中": 2000, "高雄": 0}
+                    "台北": {"台北": 0, "濱江": 0, "桃園": 1000, "新竹": 1500, "台中": 2000, "高雄": 2500},
+                    "濱江": {"台北": 0, "濱江": 0, "桃園": 1000, "新竹": 1500, "台中": 2000, "高雄": 2500},
+                    "桃園": {"台北": 1000, "濱江": 1000, "桃園": 0, "新竹": 1000, "台中": 1500, "高雄": 2000},
+                    "新竹": {"台北": 1500, "濱江": 1500, "桃園": 1000, "新竹": 0, "台中": 1000, "高雄": 2000},
+                    "台中": {"台北": 2000, "濱江": 2000, "桃園": 1500, "新竹": 1000, "台中": 0, "高雄": 2000},
+                    "高雄": {"台北": 2500, "濱江": 2500, "桃園": 2000, "新竹": 2000, "台中": 2000, "高雄": 0}
                 };
 
+                // 【修改】：預設稱呼改為先生小姐
                 const settings = reactive({
-                    custSrc: "網路客", custName: "李明哲", viewDate: "",
+                    custSrc: "網路客", custName: "先生小姐", viewDate: "",
                     locFrom: "桃園", locTo: "新竹",
                     mode: "reserve", amount: 1000,
                     payMethod: "匯款", last5: ""
@@ -250,6 +253,8 @@
                             
                             let dbLoc = (d['車輛位置'] || '').replace('店', '');
                             if (dbLoc.includes('北投') || dbLoc.includes('立賢')) dbLoc = '台北';
+                            // 判斷濱江
+                            if (dbLoc.includes('濱江')) dbLoc = '濱江';
                             
                             if (locations.includes(dbLoc)) {
                                 settings.locFrom = dbLoc;
@@ -289,11 +294,18 @@
                     let plate_str = car.plate.toUpperCase();
                     if (plate_str && !plate_str.startsWith("#")) plate_str = "#" + plate_str;
 
-                    let view_date_str = settings.viewDate ? `${settings.viewDate} ` : "";
+                    // 【新增】：將日曆選擇的 YYYY-MM-DD 轉為 MM/DD(星期)
+                    let view_date_str = "";
+                    if (settings.viewDate) {
+                        const dDate = new Date(settings.viewDate);
+                        if (!isNaN(dDate.getTime())) {
+                            const daysOfWeek = ["日", "一", "二", "三", "四", "五", "六"];
+                            view_date_str = `${dDate.getMonth() + 1}/${dDate.getDate()}(${daysOfWeek[dDate.getDay()]}) `;
+                        } else {
+                            view_date_str = `${settings.viewDate} `;
+                        }
+                    }
                     
-                    // ==========================================
-                    // 【修改】：加入「杰租」車源的判斷
-                    // ==========================================
                     let source_str = "";
                     if (car.company) {
                         if (car.company.includes("禾迪")) source_str = "(禾迪車源)";
@@ -303,8 +315,9 @@
                     }
 
                     let text_out = "";
+                    // 【修改】：移除原本寫死的「新竹」
                     if (settings.mode === "order") {
-                        text_out = `${today_str} 新竹${settings.custSrc} ${settings.custName}\n`;
+                        text_out = `${today_str} ${settings.custSrc} ${settings.custName}\n`;
                         text_out += `訂購${settings.locFrom} ${car.year}年 ${car.model} ${car.color}${source_str}\n`;
                         text_out += `${settings.locTo}整備交車 再麻煩公司協助調度\n\n`;
                         text_out += `${route_str}\n`;
@@ -312,7 +325,7 @@
                         text_out += `里程：${car.mileage}萬公里`;
                         
                     } else if (settings.mode === "transfer") {
-                        text_out = `${today_str} 新竹${settings.custSrc} ${settings.custName}\n`;
+                        text_out = `${today_str} ${settings.custSrc} ${settings.custName}\n`;
                         text_out += `線上預約$${settings.amount} ${settings.payMethod} 調度賞車\n`;
                         text_out += `${view_date_str}預約${settings.locTo}店賞車\n\n`;
                         text_out += `${route_str}\n`;
@@ -324,7 +337,7 @@
                         if (settings.payMethod === "匯款") text_out += `\n${last5_info}${check_receipt_msg}`;
                         
                     } else if (settings.mode === "reserve") {
-                        text_out = `${today_str} 新竹${settings.custSrc} ${settings.custName}\n`;
+                        text_out = `${today_str} ${settings.custSrc} ${settings.custName}\n`;
                         text_out += `線上預約$${settings.amount} ${settings.payMethod} 保留優惠七天\n`;
                         text_out += `${view_date_str}直接到${settings.locTo}店賞車\n\n`;
                         text_out += `${car.year}年${car.model} ${car.color}${source_str}\n`;

@@ -246,7 +246,6 @@
                             car.color = d['顏色'] || '';
                             car.mileage = d['里程'] || '';
                             
-                            // 【新增】：自動抓取產權公司
                             car.company = (d['產權'] && d['產權'] !== 'nan') ? d['產權'] : ((d['公司'] && d['公司'] !== 'nan') ? d['公司'] : '');
                             
                             let dbLoc = (d['車輛位置'] || '').replace('店', '');
@@ -292,18 +291,18 @@
 
                     let view_date_str = settings.viewDate ? `${settings.viewDate} ` : "";
                     
-                    // 【新增】：判斷是否為非杰運車源
+                    // ==========================================
+                    // 【修改】：加入「杰租」車源的判斷
+                    // ==========================================
                     let source_str = "";
-                    if (car.company && !car.company.includes("杰")) {
+                    if (car.company) {
                         if (car.company.includes("禾迪")) source_str = "(禾迪車源)";
                         else if (car.company.includes("展帆")) source_str = "(展帆車源)";
-                        else source_str = `(${car.company}車源)`;
+                        else if (car.company.includes("杰租") || car.company.includes("租車")) source_str = "(杰租車源)";
+                        else if (!car.company.includes("杰")) source_str = `(${car.company}車源)`;
                     }
 
                     let text_out = "";
-                    // ==========================================
-                    // 【修改】：全面套用新竹店的專屬排版格式
-                    // ==========================================
                     if (settings.mode === "order") {
                         text_out = `${today_str} 新竹${settings.custSrc} ${settings.custName}\n`;
                         text_out += `訂購${settings.locFrom} ${car.year}年 ${car.model} ${car.color}${source_str}\n`;

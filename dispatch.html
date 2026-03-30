@@ -41,13 +41,13 @@
                 </div>
 
                 <div class="border-b pb-4 space-y-3">
-                    <h2 class="font-bold text-gray-700 mb-2">2. 客戶與路徑</h2>
+                    <h2 class="font-bold text-gray-700 mb-2">2. 客戶與賞車資訊</h2>
                     
                     <div class="flex items-center gap-2">
                         <label class="w-20 text-sm font-bold text-gray-600">客源來源:</label>
                         <select v-model="settings.custSrc" class="flex-1 border rounded p-1.5 bg-white text-sm focus:ring-1 focus:ring-cyan-400 focus:outline-none">
-                            <option value="自行開發">自行開發</option>
                             <option value="網路客">網路客</option>
+                            <option value="自行開發">自行開發</option>
                             <option value="電話客">電話客</option>
                         </select>
                     </div>
@@ -56,9 +56,14 @@
                         <input v-model="settings.custName" type="text" class="flex-1 border rounded p-1.5 text-sm focus:ring-1 focus:ring-cyan-400 focus:outline-none">
                     </div>
                     
+                    <div class="flex items-center gap-2">
+                        <label class="w-20 text-sm font-bold text-blue-600">賞車日期:</label>
+                        <input v-model="settings.viewDate" type="text" placeholder="如: 4/2(四)" class="flex-1 border border-blue-200 bg-blue-50 rounded p-1.5 text-sm focus:ring-1 focus:ring-cyan-400 focus:outline-none font-bold">
+                    </div>
+
                     <div class="flex items-center justify-between gap-1 mt-2 bg-gray-50 p-2 rounded border">
                         <div class="flex flex-col flex-1">
-                            <label class="text-xs font-bold text-blue-600">車輛所在地</label>
+                            <label class="text-xs font-bold text-gray-500">車輛所在地</label>
                             <select v-model="settings.locFrom" :disabled="settings.mode === 'reserve'" class="border rounded p-1 text-sm bg-white mt-1 focus:ring-1 focus:ring-cyan-400 focus:outline-none">
                                 <option v-for="l in locations" :value="l">{{ l }}</option>
                             </select>
@@ -78,8 +83,8 @@
                     
                     <div class="flex flex-col gap-2 text-sm bg-cyan-50 p-2 rounded border border-cyan-100">
                         <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="transfer" class="text-cyan-600 focus:ring-cyan-500"> <span class="font-bold text-cyan-900">[模式1] 付費調度 (賞車)</span></label>
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="order" class="text-cyan-600 focus:ring-cyan-500"> <span class="text-gray-700">[模式2] 已訂購整備 (交車)</span></label>
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="reserve" class="text-cyan-600 focus:ring-cyan-500"> <span class="text-gray-700">[模式3] 不用調度 保留優惠</span></label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="reserve" class="text-cyan-600 focus:ring-cyan-500"> <span class="font-bold text-cyan-900">[模式2] 不用調度 保留優惠</span></label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="order" class="text-cyan-600 focus:ring-cyan-500"> <span class="text-gray-700">[模式3] 已訂購整備 (交車)</span></label>
                     </div>
 
                     <div class="flex items-center gap-2 mt-2">
@@ -111,7 +116,9 @@
                         <div class="flex flex-col"><label class="text-gray-500 mb-1">年份</label><input v-model="car.year" type="text" class="border p-1.5 rounded bg-gray-50 focus:outline-none"></div>
                         <div class="flex flex-col"><label class="text-gray-500 mb-1">顏色</label><input v-model="car.color" type="text" class="border p-1.5 rounded bg-gray-50 focus:outline-none"></div>
                         <div class="flex flex-col col-span-2"><label class="text-gray-500 mb-1">車型</label><input v-model="car.model" type="text" class="border p-1.5 rounded bg-gray-50 focus:outline-none"></div>
-                        <div class="flex flex-col col-span-2"><label class="text-gray-500 mb-1">里程(萬)</label><input v-model="car.mileage" type="text" class="border p-1.5 rounded bg-gray-50 focus:outline-none"></div>
+                        <div class="flex flex-col"><label class="text-gray-500 mb-1">里程(萬)</label><input v-model="car.mileage" type="text" class="border p-1.5 rounded bg-gray-50 focus:outline-none"></div>
+                        
+                        <div class="flex flex-col"><label class="text-red-600 font-bold mb-1">產權公司</label><input v-model="car.company" type="text" class="border border-red-200 p-1.5 rounded bg-yellow-50 text-red-700 font-bold focus:outline-none" placeholder="系統自動判斷"></div>
                     </div>
                 </div>
 
@@ -178,14 +185,14 @@
                 };
 
                 const settings = reactive({
-                    custSrc: "自行開發", custName: "劉先生",
-                    locFrom: "高雄", locTo: "新竹",
-                    mode: "transfer", amount: 2000,
-                    payMethod: "刷卡", last5: ""
+                    custSrc: "網路客", custName: "李明哲", viewDate: "",
+                    locFrom: "桃園", locTo: "新竹",
+                    mode: "reserve", amount: 1000,
+                    payMethod: "匯款", last5: ""
                 });
 
                 const car = reactive({
-                    plate: '', brand: '', model: '', year: '', color: '', mileage: ''
+                    plate: '', brand: '', model: '', year: '', color: '', mileage: '', company: ''
                 });
 
                 const output = reactive({ report: "", pitches: [] });
@@ -209,7 +216,7 @@
 
                 const amountHint = computed(() => {
                     if (settings.mode === 'order') return "";
-                    if (settings.mode === 'reserve') return "(請自行輸入保留金)";
+                    if (settings.mode === 'reserve') return "(請自行輸入金額)";
                     
                     let fee = priceMatrix[settings.locFrom]?.[settings.locTo] || 0;
                     if (fee === 0) return "(同門市，無調度費)";
@@ -239,6 +246,9 @@
                             car.color = d['顏色'] || '';
                             car.mileage = d['里程'] || '';
                             
+                            // 【新增】：自動抓取產權公司
+                            car.company = (d['產權'] && d['產權'] !== 'nan') ? d['產權'] : ((d['公司'] && d['公司'] !== 'nan') ? d['公司'] : '');
+                            
                             let dbLoc = (d['車輛位置'] || '').replace('店', '');
                             if (dbLoc.includes('北投') || dbLoc.includes('立賢')) dbLoc = '台北';
                             
@@ -246,7 +256,7 @@
                                 settings.locFrom = dbLoc;
                             }
                             
-                            updateStatus(`✅ 找到車輛：${car.model} (自動帶入地點: ${dbLoc})`, "text-green-300 font-bold");
+                            updateStatus(`✅ 找到車輛：${car.model} (產權: ${car.company || '無'})`, "text-green-300 font-bold");
                         } else {
                             car.plate = searchQuery.value.toUpperCase();
                             updateStatus("❌ 查無此車，請手動輸入明細", "text-red-300 font-bold");
@@ -270,43 +280,60 @@
                     let last5_info = "";
                     let check_receipt_msg = "";
                     if (settings.payMethod === "匯款" && settings.mode !== "order") {
-                        last5_info = settings.last5 ? ` (帳號後五碼：${settings.last5})` : " (帳號後五碼：未填)";
+                        last5_info = settings.last5 ? `(帳號後五碼：${settings.last5})` : "(帳號後五碼：未填)";
                         check_receipt_msg = "\n煩請公司查收";
                     }
 
                     const today = new Date();
-                    const today_str = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}`;
+                    const today_str = `${today.getMonth() + 1}/${today.getDate()}`;
                     const route_str = `杰運${settings.locFrom}-》杰運${settings.locTo}`;
                     let plate_str = car.plate.toUpperCase();
                     if (plate_str && !plate_str.startsWith("#")) plate_str = "#" + plate_str;
 
+                    let view_date_str = settings.viewDate ? `${settings.viewDate} ` : "";
+                    
+                    // 【新增】：判斷是否為非杰運車源
+                    let source_str = "";
+                    if (car.company && !car.company.includes("杰")) {
+                        if (car.company.includes("禾迪")) source_str = "(禾迪車源)";
+                        else if (car.company.includes("展帆")) source_str = "(展帆車源)";
+                        else source_str = `(${car.company}車源)`;
+                    }
+
                     let text_out = "";
+                    // ==========================================
+                    // 【修改】：全面套用新竹店的專屬排版格式
+                    // ==========================================
                     if (settings.mode === "order") {
-                        text_out = `${settings.custSrc} ${settings.custName}\n`;
-                        text_out += `訂購${settings.locFrom} ${car.year} ${car.model} ${car.color} \n`;
+                        text_out = `${today_str} 新竹${settings.custSrc} ${settings.custName}\n`;
+                        text_out += `訂購${settings.locFrom} ${car.year}年 ${car.model} ${car.color}${source_str}\n`;
                         text_out += `${settings.locTo}整備交車 再麻煩公司協助調度\n\n`;
                         text_out += `${route_str}\n`;
-                        text_out += `${car.year} ${car.brand} ${car.model}\n`;
-                        text_out += `${plate_str} ${car.color}\n`;
-                        text_out += `里程${car.mileage}萬`;
+                        text_out += `${plate_str}\n`;
+                        text_out += `里程：${car.mileage}萬公里`;
+                        
                     } else if (settings.mode === "transfer") {
-                        text_out = `${settings.custSrc} ${settings.custName}\n`;
-                        text_out += `${settings.payMethod}${last5_info}$${settings.amount} 預約${settings.locFrom}店${car.year} ${car.model}\n`;
-                        text_out += `${settings.locTo}店賞車\n\n`;
+                        text_out = `${today_str} 新竹${settings.custSrc} ${settings.custName}\n`;
+                        text_out += `線上預約$${settings.amount} ${settings.payMethod} 調度賞車\n`;
+                        text_out += `${view_date_str}預約${settings.locTo}店賞車\n\n`;
                         text_out += `${route_str}\n`;
-                        text_out += `${car.year} ${car.model} 跑${car.mileage}萬\n`;
+                        text_out += `${car.year}年${car.model} ${car.color}${source_str}\n`;
+                        text_out += `里程：${car.mileage}萬公里\n`;
                         text_out += `${plate_str}\n`;
                         text_out += `麻煩公司安排調度\n`;
-                        text_out += `已告知客戶未購買需負擔${settings.amount}`;
-                        text_out += check_receipt_msg;
+                        text_out += `已告知客戶未購買需負擔$${settings.amount}`;
+                        if (settings.payMethod === "匯款") text_out += `\n${last5_info}${check_receipt_msg}`;
+                        
                     } else if (settings.mode === "reserve") {
-                        text_out = `${today_str}${settings.custSrc} ${settings.custName}\n`;
-                        text_out += `線上預約${settings.amount} ${settings.payMethod}${last5_info}保留優惠七天\n\n`;
-                        text_out += `${car.year}年${car.model} ${car.color}\n`;
+                        text_out = `${today_str} 新竹${settings.custSrc} ${settings.custName}\n`;
+                        text_out += `線上預約$${settings.amount} ${settings.payMethod} 保留優惠七天\n`;
+                        text_out += `${view_date_str}直接到${settings.locTo}店賞車\n\n`;
+                        text_out += `${car.year}年${car.model} ${car.color}${source_str}\n`;
                         text_out += `里程：${car.mileage}萬公里\n`;
                         text_out += `${plate_str}`;
-                        text_out += check_receipt_msg;
+                        if (settings.payMethod === "匯款") text_out += `\n${last5_info}${check_receipt_msg}`;
                     }
+                    
                     output.report = text_out;
                     autoResizeReport();
                 };
@@ -324,9 +351,6 @@
                     
                     const p2 = `另一種方式是 您可線上預刷 ${fee} 元調度金\n我們可幫您把車調度到「${settings.locTo}」店\n如果車到「${settings.locTo}」 您覺得OK 簽約\n${fee} 可折抵車價 不用額外付調度費\n\n那如果車調度到「${settings.locTo}」後 您看過車不想買 也沒有其他考慮的車款\n${fee} 元就沒有退 當作您部分負擔調度費`;
                     
-                    // ==========================================
-                    // 【修改】：第三段話術更新為條列式的嚴謹說法
-                    // ==========================================
                     const p3 = `再跟您詳細說明\n${fee} 是調度金 不是訂金 \n您預刷 ${fee} 後 是第一順位\n\n因為我們車跑的速度蠻快\n車子調度需要排隊\n假設\n1. 車子還沒調度 \n2. 調度到了 您來看車之前\n有第二順位出現 想直接付訂金\n(我們訂金是收 29000 元)\n會馬上告知您 您有3小時考慮時間\n\n如您有意願購買 就必須3小時內 補刷 ${deposit_balance} 元\n如您沒有意願 就會安排會計小姐 刷退 ${fee} 元`;
                     
                     const p4 = `但如果 您決定要直接到 「${settings.locFrom}」店賞車 還是建議您 先預付 ${fee} 元賞車金 (刷卡匯款都可)\n\n直接過去 就沒有拖車 不買需付 ${fee} 元的問題\n不滿意 也不考慮其他車款 ${fee} 元可全退\n而且您就是第一順位 如有其他人想買 您可考慮3小時\n\n因為我們常常發生 客人在路上 結果車被現場客人買走`;

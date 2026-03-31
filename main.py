@@ -50,10 +50,13 @@ def get_gspread_client():
 
 def clean_money(val):
     if pd.isna(val): return 0.0
-    s = str(val)
+    s = str(val).replace(',', '')
     matches = re.findall(r"(\d+\.?\d*)", s)
     if matches:
-        try: return float(matches[-1])
+        try: 
+            v = float(matches[-1])
+            if v > 1000: return round(v / 10000, 2)
+            return v
         except: return 0.0
     return 0.0
 
@@ -78,9 +81,12 @@ def load_and_clean_data():
     
     if '負責人' not in df.columns:
         if '車輛負責人' in df.columns: df['負責人'] = df['車輛負責人']
+        elif '採購人' in df.columns: df['負責人'] = df['採購人']
         else: df['負責人'] = ""
             
-    if '採購' not in df.columns: df['採購'] = ""
+    if '採購' not in df.columns: 
+        if '採購人' in df.columns: df['採購'] = df['採購人']
+        else: df['採購'] = ""
             
     if '新編號' in df.columns or '舊編號' in df.columns:
         def merge_ids(r):
@@ -88,8 +94,11 @@ def load_and_clean_data():
             o = r.get('舊編號', '')
             n_str = str(n).replace('.0', '').strip() if pd.notna(n) else ""
             o_str = str(o).replace('.0', '').strip() if pd.notna(o) else ""
-            if n_str and o_str: return f"{o_str} ({n_str})" 
-            return o_str or n_str
+            if n_str and n_str.lower() != 'nan' and o_str and o_str.lower() != 'nan': 
+                return f"{o_str} ({n_str})" 
+            if o_str and o_str.lower() != 'nan': return o_str
+            if n_str and n_str.lower() != 'nan': return n_str
+            return ""
         df['編號'] = df.apply(merge_ids, axis=1)
 
     if '網路' in df.columns:
@@ -105,16 +114,57 @@ def load_and_clean_data():
     if '起算' in df.columns: df['calc_start'] = df['起算'].apply(clean_money)
     else: df['calc_start'] = 0.0
 
+    # ==========================================
+    # 【修復】：終極版廠牌清理，強制抹除所有中文字與斜線
+    # ==========================================
+    if '廠牌' in df.columns:
+        def clean_brand(b):
+            b = str(b).strip().upper()
+            # 1. 遇到半形或全形斜線，只取前面
+            b = re.split(r'[/／]', b)[0]
+            # 2. 橡皮擦機制：把所有中文字清空
+            b = re.sub(r'[\u4e00-\u9fa5]', '', b).strip()
+            return b
+        df['廠牌'] = df['廠牌'].apply(clean_brand)
+
+    if '年份' in df.columns:
+        df['年份'] = df['年份'].astype(str).str[:4]
+
+    if '里程' in df.columns:
+        def clean_mileage(m):
+            try:
+                m_str = str(m).replace(',', '').strip()
+                matches = re.findall(r"(\d+\.?\d*)", m_str)
+                if matches:
+                    val = float(matches[0])
+                    if val > 1000: return round(val / 10000, 1)
+                    return val
+                return m
+            except:
+                return m
+        df['里程'] = df['里程'].apply(clean_mileage)
+
+    if '車輛位置' in df.columns:
+        def clean_loc(loc):
+            loc = str(loc).strip()
+            if '台北' in loc: return '北投店'
+            if '新竹' in loc: return '新竹店'
+            if '桃園' in loc: return '桃園店'
+            if '台中' in loc: return '台中店'
+            if '高雄' in loc: return '高雄新廠'
+            return loc
+        df['車輛位置'] = df['車輛位置'].apply(clean_loc)
+
     def normalize_property(row):
         p = str(row.get('產權', '')).strip()
-        if p and p.lower() != 'nan': return p
-        z = str(row.get('展帆', '')).strip()
-        if z and z.lower() != 'nan': return z
         c = str(row.get('公司', '')).strip()
-        if c and c.lower() != 'nan':
-            if c == '杰': return '杰運' 
-            return c
-        return "其他"
+        full_str = p + c
+        if full_str == "" or full_str.lower() == "nan": return "其他"
+        if '禾迪' in full_str: return '禾迪'
+        if '展帆' in full_str: return '展帆'
+        if '杰租' in full_str or '租車' in full_str: return '杰租'
+        if '杰' in full_str: return '杰運'
+        return p if p else (c if c else "其他")
     
     df['filter_property'] = df.apply(normalize_property, axis=1)
     
@@ -255,7 +305,6 @@ def get_customers():
         client = get_gspread_client()
         sheet = client.open_by_key(SHEET_ID).worksheet("客資紀錄")
         
-        # 【修改】：使用 get_all_values() 抓最原始的字串，避免套件自作主張把 0 吃掉
         raw_values = sheet.get_all_values()
         if not raw_values or len(raw_values) < 2:
             return {"status": "success", "data": []}
@@ -263,7 +312,6 @@ def get_customers():
         headers = [str(h).strip() for h in raw_values[0]]
         records = []
         for row in raw_values[1:]:
-            # 過濾掉開頭的單引號，確保畫面乾淨
             row_data = [str(cell).strip().lstrip("'") for cell in row]
             while len(row_data) < len(headers):
                 row_data.append("")

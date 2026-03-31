@@ -72,6 +72,10 @@
                             <input v-model="filters.plate" type="text" class="w-full border rounded p-2">
                         </div>
                         <div>
+                            <label class="block text-gray-600 mb-1">採購</label>
+                            <input v-model="filters.person" type="text" class="w-full border rounded p-2" placeholder="輸入名字或稱呼">
+                        </div>
+                        <div>
                             <label class="block text-gray-600 mb-1">排序方式</label>
                             <select v-model="filters.sort_by" class="w-full border rounded p-2 focus:ring-2 focus:ring-blue-400 bg-white">
                                 <option value="預設">預設 (年份新 → 舊)</option>
@@ -167,11 +171,10 @@
                                     地點: {{ car.車輛位置 }}<br class="sm:hidden">
                                     <span class="hidden sm:inline">&nbsp;|&nbsp;</span>
                                     入庫: <span class="text-orange-600">{{ String(car.入庫日期).split(' ')[0] }}</span> 
-                                    <span v-if="car.負責人 && String(car.負責人).trim() !== 'nan' && String(car.負責人).trim() !== ''">&nbsp;|&nbsp; <span class="font-bold text-indigo-700">負責: {{ car.負責人 }}</span></span>
                                     <span v-if="car.採購 && String(car.採購).trim() !== 'nan' && String(car.採購).trim() !== ''">&nbsp;|&nbsp; <span class="font-bold text-teal-700">採購: {{ car.採購 }}</span></span>
                                 </div>
                                 <div class="text-xs text-gray-500">
-                                    里程: {{ car.里程 }}萬 &nbsp;|&nbsp; 顏色: {{ car.顏色 }} &nbsp;|&nbsp; 車身: {{ car.車身 }}
+                                    里程: {{ car.里程 }} &nbsp;|&nbsp; 顏色: {{ car.顏色 }} &nbsp;|&nbsp; 車身: {{ car.車身 }}
                                 </div>
                                 
                                 <div v-if="car.車況 && car.車況 !== 'nan'" class="text-xs sm:text-sm mt-1 font-bold" 
@@ -218,10 +221,9 @@
                 const statusMessage = ref("系統準備就緒");
                 const showMobileFilters = ref(false);
 
-                // 已移除 person 欄位
                 const filters = reactive({
                     brand: "全部", location: "全部", prop: "全部",
-                    model: "", plate: "", min_price: "", max_price: "",
+                    model: "", plate: "", person: "", min_price: "", max_price: "",
                     sort_by: "預設", hide_no_price: false, hide_reserved: false
                 });
 
@@ -274,7 +276,7 @@
                 const resetFilters = () => {
                     Object.assign(filters, {
                         brand: "全部", location: "全部", prop: "全部",
-                        model: "", plate: "", min_price: "", max_price: "", 
+                        model: "", plate: "", person: "", min_price: "", max_price: "", 
                         sort_by: "預設", hide_no_price: false, hide_reserved: false
                     });
                     searchCarsMobile();

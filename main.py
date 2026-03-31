@@ -79,15 +79,16 @@ def load_and_clean_data():
     df = pd.read_csv(CSV_URL)
     df.columns = [str(c).strip() for c in df.columns]
     
-    if '負責人' not in df.columns:
-        if '車輛負責人' in df.columns: df['負責人'] = df['車輛負責人']
-        elif '採購人' in df.columns: df['負責人'] = df['採購人']
-        else: df['負責人'] = ""
-            
+    # 【修改】：直接把負責人與採購合併為單一「採購」欄位，並捨棄舊的冗餘欄位
     if '採購' not in df.columns: 
         if '採購人' in df.columns: df['採購'] = df['採購人']
+        elif '車輛負責人' in df.columns: df['採購'] = df['車輛負責人']
+        elif '負責人' in df.columns: df['採購'] = df['負責人']
         else: df['採購'] = ""
-            
+        
+    drop_cols = ['負責人', '車輛負責人', '採購人']
+    df = df.drop(columns=[c for c in drop_cols if c in df.columns])
+
     if '新編號' in df.columns or '舊編號' in df.columns:
         def merge_ids(r):
             n = r.get('新編號', '')
@@ -114,15 +115,10 @@ def load_and_clean_data():
     if '起算' in df.columns: df['calc_start'] = df['起算'].apply(clean_money)
     else: df['calc_start'] = 0.0
 
-    # ==========================================
-    # 【修復】：終極版廠牌清理，強制抹除所有中文字與斜線
-    # ==========================================
     if '廠牌' in df.columns:
         def clean_brand(b):
             b = str(b).strip().upper()
-            # 1. 遇到半形或全形斜線，只取前面
             b = re.split(r'[/／]', b)[0]
-            # 2. 橡皮擦機制：把所有中文字清空
             b = re.sub(r'[\u4e00-\u9fa5]', '', b).strip()
             return b
         df['廠牌'] = df['廠牌'].apply(clean_brand)
@@ -130,18 +126,14 @@ def load_and_clean_data():
     if '年份' in df.columns:
         df['年份'] = df['年份'].astype(str).str[:4]
 
+    # 【修改】：里程直接顯示原始數字，不做萬元轉換
     if '里程' in df.columns:
         def clean_mileage(m):
-            try:
-                m_str = str(m).replace(',', '').strip()
-                matches = re.findall(r"(\d+\.?\d*)", m_str)
-                if matches:
-                    val = float(matches[0])
-                    if val > 1000: return round(val / 10000, 1)
-                    return val
-                return m
-            except:
-                return m
+            if pd.isna(m): return ""
+            m_str = str(m).replace(',', '').strip()
+            if m_str.lower() == 'nan': return ""
+            if m_str.endswith('.0'): return m_str[:-2]
+            return m_str
         df['里程'] = df['里程'].apply(clean_mileage)
 
     if '車輛位置' in df.columns:
@@ -225,9 +217,9 @@ def get_cars(
     if vin and '車身' in res.columns: res = res[res['車身'].astype(str).str.lower().str.contains(vin.lower(), na=False)]
     if plate and '車牌' in res.columns: res = res[res['車牌'].astype(str).str.lower().str.contains(plate.lower(), na=False)]
     
+    # 【修改】：搜尋邏輯只針對單一「採購」欄位
     if person:
         mask = pd.Series(False, index=res.index)
-        if '負責人' in res.columns: mask = mask | res['負責人'].astype(str).str.lower().str.contains(person.lower(), na=False)
         if '採購' in res.columns: mask = mask | res['採購'].astype(str).str.lower().str.contains(person.lower(), na=False)
         res = res[mask]
 

@@ -224,7 +224,8 @@
                 const filters = reactive({
                     brand: "全部", location: "全部", prop: "全部",
                     model: "", plate: "", person: "", min_price: "", max_price: "",
-                    sort_by: "預設", hide_no_price: false, hide_sold: false
+                    // 【修改】：這裡把 hide_sold 預設值改為 true
+                    sort_by: "預設", hide_no_price: false, hide_sold: true
                 });
 
                 const fetchOptions = async () => {
@@ -277,7 +278,8 @@
                     Object.assign(filters, {
                         brand: "全部", location: "全部", prop: "全部",
                         model: "", plate: "", person: "", min_price: "", max_price: "", 
-                        sort_by: "預設", hide_no_price: false, hide_sold: false
+                        // 【修改】：重置時一樣保持 hide_sold 為 true
+                        sort_by: "預設", hide_no_price: false, hide_sold: true
                     });
                     searchCarsMobile();
                 };

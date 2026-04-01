@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>🚗 杰運汽車新竹店 - E車源系統</title>
+    <title>🚗 杰運汽車 - E車源系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <style>
@@ -19,7 +19,7 @@
 <body>
     <div id="app" class="flex flex-col h-screen" v-cloak>
         <header class="bg-slate-800 text-white p-3 sm:p-4 shadow-md flex flex-wrap justify-between items-center gap-2 z-20 relative">
-            <h1 class="text-lg sm:text-xl font-bold w-full sm:w-auto text-center sm:text-left">🚗 杰運汽車新竹店</h1>
+            <h1 class="text-lg sm:text-xl font-bold w-full sm:w-auto text-center sm:text-left">🚗 杰運汽車</h1>
             <div class="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
                 <a href="/" class="bg-yellow-500 hover:bg-yellow-600 text-slate-900 font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm">
                     🏠 首頁
@@ -100,12 +100,12 @@
                         <div class="mt-3 flex flex-col gap-2">
                             <label class="flex items-center gap-2 cursor-pointer bg-gray-50 border border-gray-200 px-3 py-2 rounded-lg w-full hover:bg-gray-100 transition shadow-sm">
                                 <input v-model="filters.hide_no_price" type="checkbox" class="w-5 h-5 text-blue-600 rounded">
-                                <span class="text-sm font-bold text-gray-700">🚫 隱藏「電洽」車輛</span>
+                                <span class="text-sm font-bold text-gray-700">🚫 隱藏「無價錢」車輛</span>
                             </label>
                             
-                            <label class="flex items-center gap-2 cursor-pointer bg-red-50 border border-red-200 px-3 py-2 rounded-lg w-full hover:bg-red-100 transition shadow-sm">
-                                <input v-model="filters.hide_reserved" type="checkbox" class="w-5 h-5 text-red-600 rounded">
-                                <span class="text-sm font-bold text-red-700">⛔ 隱藏「已收訂」車輛</span>
+                            <label class="flex items-center gap-2 cursor-pointer bg-gray-50 border border-gray-200 px-3 py-2 rounded-lg w-full hover:bg-gray-100 transition shadow-sm">
+                                <input v-model="filters.hide_sold" type="checkbox" class="w-5 h-5 text-gray-600 rounded">
+                                <span class="text-sm font-bold text-gray-700">⛔ 隱藏「已售」車輛</span>
                             </label>
                         </div>
                     </div>
@@ -132,14 +132,14 @@
                     <p class="text-gray-500 mb-2 sm:mb-4 text-sm sm:text-base">共找到 {{ cars.length }} 筆資料</p>
                     
                     <div v-for="(car, index) in cars" :key="index" 
-                         class="bg-white p-4 sm:p-5 rounded-lg shadow border transition"
-                         :class="car.is_reserved ? 'border-red-300 bg-red-50' : 'border-gray-200 hover:shadow-md'">
+                         class="bg-white p-4 sm:p-5 rounded-lg shadow border transition relative"
+                         :class="car.is_sold ? 'border-gray-300 bg-gray-50 opacity-75' : 'border-gray-200 hover:shadow-md'">
                          
                         <div class="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-0">
                             
                             <div class="space-y-2 w-full sm:w-auto">
-                                <div v-if="car.is_reserved" class="bg-yellow-200 text-red-700 font-bold px-2 py-1 rounded shadow-sm inline-block mb-1 text-xs sm:text-sm border border-red-300">
-                                    ⛔ 注意：此車可能已收訂
+                                <div v-if="car.is_sold" class="bg-gray-200 text-gray-700 font-bold px-2 py-1 rounded shadow-sm inline-block mb-1 text-xs sm:text-sm border border-gray-300">
+                                    ⛔ 已售出
                                 </div>
 
                                 <h3 class="text-lg sm:text-xl font-bold text-slate-800 leading-tight">
@@ -185,7 +185,7 @@
                             
                             <div class="text-left sm:text-right flex flex-row sm:flex-col justify-between items-center sm:items-end w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0 mt-2 sm:mt-0">
                                 <div class="text-2xl sm:text-3xl font-bold text-red-600 sm:mb-2">
-                                    {{ car.顯示價格 > 0 ? '$' + car.顯示價格 + ' 萬' : '電洽' }}
+                                    {{ car.顯示價格 > 0 ? '$' + car.顯示價格 + ' 萬' : '無價錢' }}
                                 </div>
                                 <div class="flex flex-col items-end gap-1">
                                     <button @click="copyPlate(car.車牌, car.車型)" class="text-xs sm:text-sm bg-white hover:bg-gray-100 border border-gray-300 px-4 py-2 sm:px-3 sm:py-1 rounded shadow-sm text-gray-700 transition font-bold">
@@ -224,7 +224,7 @@
                 const filters = reactive({
                     brand: "全部", location: "全部", prop: "全部",
                     model: "", plate: "", person: "", min_price: "", max_price: "",
-                    sort_by: "預設", hide_no_price: false, hide_reserved: false
+                    sort_by: "預設", hide_no_price: false, hide_sold: false
                 });
 
                 const fetchOptions = async () => {
@@ -277,7 +277,7 @@
                     Object.assign(filters, {
                         brand: "全部", location: "全部", prop: "全部",
                         model: "", plate: "", person: "", min_price: "", max_price: "", 
-                        sort_by: "預設", hide_no_price: false, hide_reserved: false
+                        sort_by: "預設", hide_no_price: false, hide_sold: false
                     });
                     searchCarsMobile();
                 };

@@ -76,7 +76,35 @@ def parse_roc_date(date_val):
 
 def load_and_clean_data():
     global cached_df
-    df = pd.read_csv(CSV_URL)
+    
+    client = get_gspread_client()
+    doc = client.open_by_key(SHEET_ID)
+    
+    dfs = []
+    
+    # 【升級】：同時讀取「E車源」與「E車源售出」兩個分頁並縫合
+    try:
+        ws_main = doc.worksheet("E車源")
+        df_main = pd.read_csv(f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={ws_main.id}")
+        df_main['is_sold_sheet'] = False
+        dfs.append(df_main)
+    except Exception as e:
+        pass
+        
+    try:
+        ws_sold = doc.worksheet("E車源售出")
+        df_sold = pd.read_csv(f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={ws_sold.id}")
+        df_sold['is_sold_sheet'] = True
+        dfs.append(df_sold)
+    except Exception as e:
+        pass
+
+    if not dfs:
+        df = pd.read_csv(CSV_URL)
+        df['is_sold_sheet'] = False
+    else:
+        df = pd.concat(dfs, ignore_index=True)
+
     df.columns = [str(c).strip() for c in df.columns]
     
     if '採購' not in df.columns: 
@@ -123,7 +151,7 @@ def load_and_clean_data():
         df['廠牌'] = df['廠牌'].apply(clean_brand)
 
     if '年份' in df.columns:
-        df['年份'] = df['年份'].astype(str).str[:4]
+        df['年份'] = df['年份'].astype(str)
 
     if '里程' in df.columns:
         def clean_mileage(m):
@@ -138,7 +166,6 @@ def load_and_clean_data():
         def clean_loc(loc):
             loc = str(loc).strip()
             if '台北' in loc: return '北投店'
-            if '新竹' in loc: return '新竹店'
             if '桃園' in loc: return '桃園店'
             if '台中' in loc: return '台中店'
             if '高雄' in loc: return '高雄新廠'
@@ -158,10 +185,10 @@ def load_and_clean_data():
     
     df['filter_property'] = df.apply(normalize_property, axis=1)
     
-    if '收訂狀態' in df.columns:
-        df['is_reserved'] = df['收訂狀態'].apply(lambda x: True if str(x).strip() == "已收訂" else False)
+    if '狀態' in df.columns:
+        df['is_sold'] = df.apply(lambda r: True if '已售' in str(r.get('狀態', '')) or r.get('is_sold_sheet') else False, axis=1)
     else:
-        df['is_reserved'] = False 
+        df['is_sold'] = df.get('is_sold_sheet', False)
     
     if '入庫日期' in df.columns:
         df['入庫_dt'] = df['入庫日期'].apply(parse_roc_date)
@@ -195,7 +222,7 @@ def get_cars(
     model: str = "", version: str = "", vin: str = "", plate: str = "",
     person: str = "", min_price: float = 0.0, max_price: float = 99999.0,
     sort_by: str = "預設", limit: int = 100, 
-    hide_no_price: str = "false", hide_reserved: str = "false"
+    hide_no_price: str = "false", hide_sold: str = "false"
 ):
     if cached_df is None: load_and_clean_data()
     res = cached_df.copy()
@@ -223,13 +250,14 @@ def get_cars(
     res = res[(res['顯示價格'] >= min_price) & (res['顯示價格'] <= max_price)]
 
     if hide_no_price.lower() == "true": res = res[res['顯示價格'] > 0]
-    if hide_reserved.lower() == "true": res = res[res['is_reserved'] == False]
+    if hide_sold.lower() == "true" and 'is_sold' in res.columns: 
+        res = res[res['is_sold'] == False]
 
     if sort_by == "價格低到高": res = res.sort_values(by='顯示價格', ascending=True)
     elif sort_by == "價格高到低": res = res.sort_values(by='顯示價格', ascending=False)
     elif sort_by == "年份舊到新":
         if '年份' in res.columns: 
-            res['年份_num'] = pd.to_numeric(res['年份'], errors='coerce').fillna(9999)
+            res['年份_num'] = pd.to_numeric(res['年份'], errors='coerce').fillna(999999)
             res = res.sort_values(by='年份_num', ascending=True)
             res = res.drop(columns=['年份_num'])
     elif sort_by == "最新入庫":
@@ -367,13 +395,17 @@ def get_color_rgb(cell):
 
 def process_excel_file(filename: str, contents: bytes):
     try:
-        target_tab_name = "新竹車源" if "新竹" in filename else "E車源"
+        target_tab_name = "E車源"
+        if "新竹" in filename:
+            target_tab_name = "新竹車源"
+            
         wb = openpyxl.load_workbook(filename=io.BytesIO(contents), data_only=True)
-        
         ws_main = wb[wb.sheetnames[0]]
         headers_main = [str(cell.value).strip() if cell.value is not None else "" for cell in ws_main[1]]
         
-        status_col_idx = headers_main.index("狀態") if "狀態" in headers_main else -1
+        if "狀態" not in headers_main:
+            headers_main.append("狀態")
+        status_col_idx = headers_main.index("狀態")
         
         data_to_upload_main = [headers_main]
         data_to_upload_sold = [headers_main]
@@ -428,7 +460,6 @@ def process_excel_file(filename: str, contents: bytes):
             if not any(str(v).strip() for v in row_values): continue
             while len(row_values) < len(headers_main): row_values.append("")
             
-            is_sold = False
             has_color = False
             row_colors = []
             
@@ -437,15 +468,11 @@ def process_excel_file(filename: str, contents: bytes):
                 row_colors.append(rgb)
                 if rgb: has_color = True
 
-            if status_col_idx != -1:
-                status_val = str(row_values[status_col_idx]).strip()
-                if "已售" in status_val:
-                    is_sold = True
-                    
-            if has_color:
-                is_sold = True
-
-            if is_sold:
+            status_val = str(row_values[status_col_idx]).strip()
+            
+            # 【升級】：實體分流寫入不同的 Sheet，保持後台乾淨
+            if has_color or "已售" in status_val:
+                row_values[status_col_idx] = "已售"
                 target_row_idx = len(data_to_upload_sold) 
                 data_to_upload_sold.append(row_values)
                 if target_gsheet_sold:
@@ -459,6 +486,8 @@ def process_excel_file(filename: str, contents: bytes):
                                 }
                             })
             else:
+                if not status_val:
+                    row_values[status_col_idx] = "在庫"
                 target_row_idx = len(data_to_upload_main) 
                 data_to_upload_main.append(row_values)
                 for c_idx, rgb in enumerate(row_colors):

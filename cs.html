@@ -50,8 +50,8 @@
                         </div>
 
                         <div class="flex gap-2">
-                            <button @click="analyzeData" class="bg-indigo-600 text-white px-4 py-1.5 rounded hover:bg-indigo-700 transition font-bold text-sm shadow-sm">⚡ 分析</button>
-                            <button @click="clearFilters" class="bg-gray-200 text-gray-700 px-4 py-1.5 rounded hover:bg-gray-300 transition font-bold text-sm shadow-sm">🔄 清除</button>
+                            <button @click="analyzeData" class="bg-indigo-600 text-white px-4 py-1.5 rounded hover:bg-indigo-700 transition font-bold text-sm shadow-sm active:scale-95">⚡ 分析</button>
+                            <button @click="clearFilters" class="bg-gray-200 text-gray-700 px-4 py-1.5 rounded hover:bg-gray-300 transition font-bold text-sm shadow-sm active:scale-95">🔄 清除</button>
                         </div>
                     </div>
 
@@ -61,21 +61,25 @@
                 </div>
 
                 <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-                    <div class="bg-white rounded-lg shadow-sm border p-4 flex flex-col justify-center items-center text-center">
-                        <span class="text-gray-500 font-bold text-xs sm:text-sm mb-1">在庫台數 (可售/總數)</span>
-                        <span class="text-2xl sm:text-3xl font-black text-gray-800">{{ kpi.available }} / {{ kpi.total }}</span>
+                    <div class="bg-white rounded-lg shadow-sm border p-4 flex flex-col justify-center items-center text-center relative overflow-hidden group">
+                        <div class="absolute inset-0 bg-indigo-50 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <span class="text-gray-500 font-bold text-xs sm:text-sm mb-1 relative z-10">在庫台數 (可售/總數)</span>
+                        <span class="text-2xl sm:text-3xl font-black text-gray-800 relative z-10">{{ kpi.available }} / {{ kpi.total }}</span>
                     </div>
-                    <div class="bg-white rounded-lg shadow-sm border p-4 flex flex-col justify-center items-center text-center">
-                        <span class="text-gray-500 font-bold text-xs sm:text-sm mb-1">平均開價 (萬)</span>
-                        <span class="text-2xl sm:text-3xl font-black text-indigo-600">{{ kpi.avgPrice }}</span>
+                    <div class="bg-white rounded-lg shadow-sm border p-4 flex flex-col justify-center items-center text-center relative overflow-hidden group">
+                        <div class="absolute inset-0 bg-indigo-50 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <span class="text-gray-500 font-bold text-xs sm:text-sm mb-1 relative z-10">平均開價 (萬)</span>
+                        <span class="text-2xl sm:text-3xl font-black text-indigo-600 relative z-10">{{ kpi.avgPrice }}</span>
                     </div>
-                    <div class="bg-white rounded-lg shadow-sm border p-4 flex flex-col justify-center items-center text-center">
-                        <span class="text-gray-500 font-bold text-xs sm:text-sm mb-1">售價區間 (萬)</span>
-                        <span class="text-lg sm:text-xl font-black text-gray-800 mt-1">{{ kpi.priceRange }}</span>
+                    <div class="bg-white rounded-lg shadow-sm border p-4 flex flex-col justify-center items-center text-center relative overflow-hidden group">
+                        <div class="absolute inset-0 bg-indigo-50 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <span class="text-gray-500 font-bold text-xs sm:text-sm mb-1 relative z-10">售價區間 (萬)</span>
+                        <span class="text-lg sm:text-xl font-black text-gray-800 mt-1 relative z-10">{{ kpi.priceRange }}</span>
                     </div>
-                    <div class="bg-white rounded-lg shadow-sm border p-4 flex flex-col justify-center items-center text-center">
-                        <span class="text-gray-500 font-bold text-xs sm:text-sm mb-1">平均庫存天數</span>
-                        <span class="text-2xl sm:text-3xl font-black text-orange-500">{{ kpi.avgDays }} 天</span>
+                    <div class="bg-white rounded-lg shadow-sm border p-4 flex flex-col justify-center items-center text-center relative overflow-hidden group">
+                        <div class="absolute inset-0 bg-indigo-50 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <span class="text-gray-500 font-bold text-xs sm:text-sm mb-1 relative z-10">平均庫存天數</span>
+                        <span class="text-2xl sm:text-3xl font-black text-orange-500 relative z-10">{{ kpi.avgDays }} 天</span>
                     </div>
                 </div>
 
@@ -95,8 +99,9 @@
                 </div>
 
                 <div class="bg-white rounded-lg shadow-sm border overflow-hidden flex flex-col">
-                    <div class="bg-gray-100 p-2 sm:p-3 border-b">
-                        <span class="font-bold text-gray-700 text-sm">📊 詳細車輛明細 (依年份新到舊排序)</span>
+                    <div class="bg-gray-100 p-2 sm:p-3 border-b flex justify-between items-center">
+                        <span class="font-bold text-gray-700 text-sm">📊 相關在庫車輛明細 (已自動排除售出/取證車輛)</span>
+                        <span class="text-xs text-gray-500 font-bold">依年份新到舊排序</span>
                     </div>
                     <div class="overflow-x-auto table-container max-h-[400px]">
                         <table class="w-full text-left border-collapse text-xs sm:text-sm whitespace-nowrap">
@@ -121,12 +126,12 @@
                                     <td class="p-2 text-center font-bold" :class="car.is_reserved ? 'text-red-500' : 'text-green-600'">
                                         {{ car.is_reserved ? '⛔ 已收訂' : '✅ 待售' }}
                                     </td>
-                                    <td class="p-2 text-center font-mono">{{ car.year_str }}</td>
+                                    <td class="p-2 text-center font-mono">{{ car.year_display }}</td>
                                     <td class="p-2">{{ car.brand }}</td>
                                     <td class="p-2 font-bold text-gray-800">{{ car.model }}</td>
                                     <td class="p-2 text-gray-600">{{ car.version }}</td>
                                     <td class="p-2 text-center">{{ car.color }}</td>
-                                    <td class="p-2 text-center font-mono">{{ car.mileage }}</td>
+                                    <td class="p-2 text-center font-mono">{{ car.mileage_display }}</td>
                                     <td class="p-2 text-center font-bold text-red-600">{{ car.price > 0 ? car.price : '未標' }}</td>
                                     <td class="p-2 text-center" :class="car.days > 60 ? 'text-red-500 font-bold' : ''">{{ car.days_str }}</td>
                                 </tr>
@@ -162,7 +167,6 @@
                 let scatterChartInstance = null;
                 let barChartInstance = null;
 
-                // 處理民國年字串為 Date 物件
                 const parseDate = (dateStr) => {
                     if (!dateStr) return null;
                     let s = String(dateStr).trim().replace(/\./g, '/').replace(/-/g, '/');
@@ -182,7 +186,8 @@
                         statusMessage.value = "🔄 正在從雲端取得最新車源...";
                         const [optRes, carsRes] = await Promise.all([
                             fetch(`${API_URL}/options`),
-                            fetch(`${API_URL}/cars?limit=5000`) // 取得所有資料供前端快速篩選
+                            // 【升級】：API 讀取時，直接要求過濾掉已售與取證的車輛
+                            fetch(`${API_URL}/cars?limit=5000&hide_sold=true&hide_cert=true`) 
                         ]);
                         
                         const optData = await optRes.json();
@@ -193,8 +198,30 @@
 
                         allCars = carsData.data.map((c, index) => {
                             let price = parseFloat(c['顯示價格']) || 0;
-                            let yearStr = String(c['年份'] || '').replace('.0', '');
-                            let numYear = parseFloat(yearStr.replace(/[^\d.]/g, '')) || 0;
+                            
+                            // 【升級】：處理 202411 這種新格式，並算出數字年份與顯示字串
+                            let raw_year = String(c['年份'] || c['clean_year'] || '').replace('.0', '').trim();
+                            let numYear = 0;
+                            let yearDisplay = raw_year;
+
+                            if (raw_year.length === 6) {
+                                numYear = parseFloat(raw_year.substring(0, 4));
+                                yearDisplay = `${raw_year.substring(0, 4)}/${raw_year.substring(4, 6)}`;
+                            } else if (raw_year.length === 4) {
+                                numYear = parseFloat(raw_year);
+                            } else {
+                                numYear = parseFloat(raw_year.replace(/[^\d.]/g, '')) || 0;
+                            }
+
+                            // 【升級】：里程自動換算回「萬公里」顯示
+                            let m_val = parseFloat(c['里程']) || 0;
+                            let m_display = "";
+                            if (m_val > 1000) {
+                                m_display = (m_val / 10000).toFixed(1).replace(/\.0$/, '');
+                            } else {
+                                m_display = m_val > 0 ? String(m_val) : '';
+                            }
+
                             let dateObj = parseDate(c['入庫日期']);
                             let days = -1;
                             if (dateObj) {
@@ -207,21 +234,20 @@
                                 model: c['車型'] || '',
                                 version: c['版本'] || '',
                                 color: c['顏色'] || '',
-                                mileage: c['里程'] || '',
+                                mileage_display: m_display,
                                 is_reserved: c['is_reserved'] === true || c['is_reserved'] === 'true',
                                 price: price,
-                                year_str: yearStr,
+                                year_display: yearDisplay,
                                 num_year: numYear,
                                 days: days,
                                 days_str: days >= 0 ? `${days}天` : '-'
                             };
                         });
 
-                        statusMessage.value = `✅ 資料載入完成 (共 ${allCars.length} 筆)`;
-                        analyzeData(); // 初始化分析
+                        statusMessage.value = `✅ 資料庫同步完成 (有效分析樣本: ${allCars.length} 筆)`;
+                        analyzeData(); 
                     } catch (err) {
                         statusMessage.value = "❌ 資料載入失敗，請確認網路或 API 狀態";
-                        console.error(err);
                     }
                 };
 
@@ -232,7 +258,6 @@
                 };
 
                 const analyzeData = () => {
-                    // 1. 篩選資料
                     let kw = filters.keyword.toLowerCase().replace(/\s+/g, '');
                     let b = filters.brand;
                     let isSpecific = false;
@@ -245,11 +270,9 @@
 
                     if (b !== "全部" || kw !== "") isSpecific = true;
 
-                    // 排序：年份新到舊
                     currentCars.sort((a, b) => b.num_year - a.num_year);
                     filteredCars.value = currentCars;
 
-                    // 2. 計算 KPI
                     let total = currentCars.length;
                     let availableCars = currentCars.filter(c => !c.is_reserved);
                     let available = availableCars.length;
@@ -268,7 +291,6 @@
                     kpi.priceRange = minPrice > 0 ? `${minPrice} ~ ${maxPrice}` : "無標價";
                     kpi.avgDays = avgDays;
 
-                    // 3. 策略燈號判斷
                     if (total === 0) {
                         signalText.value = "🟢 極度缺車 (若車況佳建議積極報價)";
                         signalBg.value = "bg-green-500 text-white";
@@ -292,7 +314,6 @@
                 };
 
                 const updateCharts = (dataList) => {
-                    // 準備散佈圖資料 (年份 vs 價格，加一點 jitter 避免重疊)
                     let scatterData = dataList.filter(c => c.num_year > 0 && c.price > 0).map(c => {
                         let jitter = (Math.random() - 0.5) * 0.3;
                         return { x: c.num_year + jitter, y: c.price, rawYear: c.num_year, model: c.model };
@@ -306,12 +327,12 @@
                             datasets: [{
                                 label: '開價行情',
                                 data: scatterData,
-                                backgroundColor: 'rgba(79, 70, 229, 0.6)', // Indigo
+                                backgroundColor: 'rgba(79, 70, 229, 0.6)', 
                                 borderColor: 'rgba(79, 70, 229, 1)',
                                 borderWidth: 1,
                                 pointRadius: 6,
                                 pointHoverRadius: 9,
-                                pointHoverBackgroundColor: 'rgba(239, 68, 68, 1)' // Red on hover
+                                pointHoverBackgroundColor: 'rgba(239, 68, 68, 1)' 
                             }]
                         },
                         options: {
@@ -334,8 +355,7 @@
                         }
                     });
 
-                    // 準備長條圖資料 (庫存天數)
-                    let bin1=0, bin2=0, bin3=0; // <30, 31-60, >60
+                    let bin1=0, bin2=0, bin3=0; 
                     dataList.forEach(c => {
                         if (c.days >= 0) {
                             if (c.days <= 30) bin1++;
@@ -354,9 +374,9 @@
                                 label: '台數',
                                 data: [bin1, bin2, bin3],
                                 backgroundColor: [
-                                    'rgba(34, 197, 94, 0.7)',  // Green
-                                    'rgba(234, 179, 8, 0.7)',  // Yellow
-                                    'rgba(239, 68, 68, 0.7)'   // Red
+                                    'rgba(34, 197, 94, 0.7)',  
+                                    'rgba(234, 179, 8, 0.7)',  
+                                    'rgba(239, 68, 68, 0.7)'   
                                 ],
                                 borderColor: [
                                     'rgba(34, 197, 94, 1)',

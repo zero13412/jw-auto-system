@@ -82,8 +82,8 @@
                     <h2 class="font-bold text-gray-700 mb-2">3. 作業模式 & 付款</h2>
                     
                     <div class="flex flex-col gap-2 text-sm bg-cyan-50 p-2 rounded border border-cyan-100">
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="transfer" class="text-cyan-600 focus:ring-cyan-500"> <span class="font-bold text-cyan-900">[模式1] 付費調度 (賞車)</span></label>
-                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="reserve" class="text-cyan-600 focus:ring-cyan-500"> <span class="font-bold text-cyan-900">[模式2] 不用調度 保留優惠</span></label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="reserve" class="text-cyan-600 focus:ring-cyan-500"> <span class="font-bold text-cyan-900">[模式1] 不用調度 保留優惠</span></label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="transfer" class="text-cyan-600 focus:ring-cyan-500"> <span class="font-bold text-cyan-900">[模式2] 付費調度 (賞車)</span></label>
                         <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="order" class="text-cyan-600 focus:ring-cyan-500"> <span class="text-gray-700">[模式3] 已訂購整備 (交車)</span></label>
                     </div>
 
@@ -187,8 +187,8 @@
 
                 const settings = reactive({
                     custSrc: "網路客", custName: "先生小姐", viewDate: "",
-                    locFrom: "桃園", locTo: "新竹",
-                    mode: "reserve", amount: 1000,
+                    locFrom: "桃園", locTo: "台北",
+                    mode: "reserve", amount: 1500,
                     payMethod: "匯款", last5: ""
                 });
 
@@ -227,6 +227,8 @@
                 watch([() => settings.locFrom, () => settings.locTo, () => settings.mode], () => {
                     if (settings.mode === 'transfer') {
                         settings.amount = priceMatrix[settings.locFrom]?.[settings.locTo] || 0;
+                    } else if (settings.mode === 'reserve') {
+                        settings.amount = 1500;
                     }
                 });
 
@@ -347,29 +349,25 @@
 
                 const generatePitch = () => {
                     let fee = parseInt(settings.amount) || 0;
-                    let deposit_balance = 29000 - fee;
 
-                    // 【新增】：模式2 (不用調度/保留優惠) 的專屬話術
                     if (settings.mode === 'reserve') {
-                        const p1 = `您刷 ${fee} 元是賞車金 不是訂金\n因為我們車跑的速度蠻快\n您付 ${fee} 元賞車金之後 保留優惠 並且是購車的第一順位\n\n假設 您來看車之前\n有第二順位出現 想直接付訂金\n(我們訂金是收 29000 元)\n會馬上告知您 您有3小時考慮時間 可馬上來看車\n如您有意願購買 就必須3小時內 補刷到 29000 元\n如您沒有意願 就會安排會計小姐 刷退 ${fee} 元`;
+                        const p1 = `您要直接到店賞車 看您有沒有意願線上預付賞車金${fee}元\n${fee} 元是賞車金 不是訂金\n(刷卡或匯款都可)\n因為我們車跑的速度蠻快\n您付賞車金之後 保留優惠 並且是購車的第一順位\n\n假設 您來看車之前\n有第二順位出現 他想直接付訂金\n(我們訂金是收 29000 元)\n會馬上告知您 您有3小時考慮時間 可馬上來看車\n如您有意願購買 就必須3小時內 補刷到 29000 元\n如您沒有意願 就會安排會計小姐 刷退 ${fee} 元\n那如果看完車不滿意 現場也沒有其他考慮的車款\n${fee}元可全退`;
                         output.pitches = [p1];
                         return;
                     }
 
-                    // 模式3 (已訂購交車) 不產生對客話術
                     if (settings.mode === 'order') {
                         output.pitches = [];
                         return;
                     }
 
-                    // 模式1 (調度賞車)
                     if (settings.locFrom === settings.locTo) {
                         output.pitches = [`車輛目前已在「${settings.locTo}」店，可以直接邀請客戶來店賞車！\n無需收取調度費。`];
                         return;
                     }
 
                     fee = parseInt(settings.amount) || priceMatrix[settings.locFrom]?.[settings.locTo] || 0;
-                    deposit_balance = 29000 - fee;
+                    let deposit_balance = 29000 - fee;
 
                     const p1 = `賞車有兩種方式\n\n您直接到「${settings.locFrom}」店賞車的話\n我們可以補貼您 單人單趟的高鐵費\n現場看過車覺得不喜歡 不買也有補貼\n\n缺點就是您要跑一趟 而且如果好幾個人一起去就划不來\n因為只有補貼一個人 去程 (自行開車沒有)`;
                     

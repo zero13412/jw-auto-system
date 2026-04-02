@@ -107,6 +107,11 @@
                                 <input v-model="filters.hide_sold" type="checkbox" class="w-5 h-5 text-gray-600 rounded">
                                 <span class="text-sm font-bold text-gray-700">⛔ 隱藏「已售」車輛</span>
                             </label>
+
+                            <label class="flex items-center gap-2 cursor-pointer bg-blue-50 border border-blue-200 px-3 py-2 rounded-lg w-full hover:bg-blue-100 transition shadow-sm">
+                                <input v-model="filters.hide_cert" type="checkbox" class="w-5 h-5 text-blue-600 rounded">
+                                <span class="text-sm font-bold text-blue-700">📜 隱藏「取證」車輛</span>
+                            </label>
                         </div>
                     </div>
                 </div>
@@ -133,13 +138,16 @@
                     
                     <div v-for="(car, index) in cars" :key="index" 
                          class="bg-white p-4 sm:p-5 rounded-lg shadow border transition relative"
-                         :class="car.is_sold ? 'border-gray-300 bg-gray-50 opacity-75' : 'border-gray-200 hover:shadow-md'">
+                         :class="car.is_sold ? 'border-gray-300 bg-gray-50 opacity-75' : (car.is_cert ? 'border-blue-300 bg-blue-50 opacity-85' : 'border-gray-200 hover:shadow-md')">
                          
                         <div class="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-0">
                             
                             <div class="space-y-2 w-full sm:w-auto">
                                 <div v-if="car.is_sold" class="bg-gray-200 text-gray-700 font-bold px-2 py-1 rounded shadow-sm inline-block mb-1 text-xs sm:text-sm border border-gray-300">
                                     ⛔ 已售出
+                                </div>
+                                <div v-else-if="car.is_cert" class="bg-blue-200 text-blue-800 font-bold px-2 py-1 rounded shadow-sm inline-block mb-1 text-xs sm:text-sm border border-blue-300">
+                                    📜 取證中
                                 </div>
 
                                 <h3 class="text-lg sm:text-xl font-bold text-slate-800 leading-tight">
@@ -224,8 +232,8 @@
                 const filters = reactive({
                     brand: "全部", location: "全部", prop: "全部",
                     model: "", plate: "", person: "", min_price: "", max_price: "",
-                    // 【修改】：這裡把 hide_sold 預設值改為 true
-                    sort_by: "預設", hide_no_price: false, hide_sold: true
+                    // 【修改】：預設隱藏已售與取證
+                    sort_by: "預設", hide_no_price: false, hide_sold: true, hide_cert: true
                 });
 
                 const fetchOptions = async () => {
@@ -278,8 +286,7 @@
                     Object.assign(filters, {
                         brand: "全部", location: "全部", prop: "全部",
                         model: "", plate: "", person: "", min_price: "", max_price: "", 
-                        // 【修改】：重置時一樣保持 hide_sold 為 true
-                        sort_by: "預設", hide_no_price: false, hide_sold: true
+                        sort_by: "預設", hide_no_price: false, hide_sold: true, hide_cert: true
                     });
                     searchCarsMobile();
                 };

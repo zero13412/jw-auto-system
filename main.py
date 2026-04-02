@@ -88,13 +88,6 @@ def load_and_clean_data():
         df_main['is_sold_sheet'] = False
         dfs.append(df_main)
     except: pass
-        
-    try:
-        ws_sold = doc.worksheet("E車源售出")
-        df_sold = pd.read_csv(f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={ws_sold.id}")
-        df_sold['is_sold_sheet'] = True
-        dfs.append(df_sold)
-    except: pass
 
     if not dfs:
         df = pd.read_csv(CSV_URL)
@@ -113,18 +106,18 @@ def load_and_clean_data():
     drop_cols = ['負責人', '車輛負責人', '採購人']
     df = df.drop(columns=[c for c in drop_cols if c in df.columns])
 
-    if '新編號' in df.columns or '舊編號' in df.columns:
-        def merge_ids(r):
-            n = r.get('新編號', '')
-            o = r.get('舊編號', '')
-            n_str = str(n).replace('.0', '').strip() if pd.notna(n) else ""
-            o_str = str(o).replace('.0', '').strip() if pd.notna(o) else ""
-            if n_str and n_str.lower() != 'nan' and o_str and o_str.lower() != 'nan': 
-                return f"{o_str} ({n_str})" 
-            if o_str and o_str.lower() != 'nan': return o_str
-            if n_str and n_str.lower() != 'nan': return n_str
-            return ""
-        df['編號'] = df.apply(merge_ids, axis=1)
+    # 安全地獲取新舊編號，即使舊編號欄位被刪除也不會當機
+    def merge_ids(r):
+        n = r.get('新編號', '')
+        o = r.get('舊編號', '')
+        n_str = str(n).replace('.0', '').strip() if pd.notna(n) else ""
+        o_str = str(o).replace('.0', '').strip() if pd.notna(o) else ""
+        if n_str and n_str.lower() != 'nan' and o_str and o_str.lower() != 'nan': 
+            return f"{o_str} ({n_str})" 
+        if o_str and o_str.lower() != 'nan': return o_str
+        if n_str and n_str.lower() != 'nan': return n_str
+        return ""
+    df['編號'] = df.apply(merge_ids, axis=1)
 
     if '網路' in df.columns:
         df['顯示價格'] = df['網路'].apply(clean_money)
@@ -182,10 +175,13 @@ def load_and_clean_data():
     
     df['filter_property'] = df.apply(normalize_property, axis=1)
     
+    # 狀態判定新增「取證」
     if '狀態' in df.columns:
         df['is_sold'] = df.apply(lambda r: True if '已售' in str(r.get('狀態', '')) or r.get('is_sold_sheet') else False, axis=1)
+        df['is_cert'] = df['狀態'].apply(lambda x: True if '取證' in str(x) else False)
     else:
         df['is_sold'] = df.get('is_sold_sheet', False)
+        df['is_cert'] = False
         
     if '收訂狀態' in df.columns:
         df['is_reserved'] = df['收訂狀態'].apply(lambda x: True if str(x).strip() == "已收訂" else False)
@@ -224,7 +220,7 @@ def get_cars(
     model: str = "", version: str = "", vin: str = "", plate: str = "",
     person: str = "", min_price: float = 0.0, max_price: float = 99999.0,
     sort_by: str = "預設", limit: int = 100, 
-    hide_no_price: str = "false", hide_sold: str = "false"
+    hide_no_price: str = "false", hide_sold: str = "false", hide_cert: str = "false"
 ):
     if cached_df is None: load_and_clean_data()
     res = cached_df.copy()
@@ -254,6 +250,8 @@ def get_cars(
     if hide_no_price.lower() == "true": res = res[res['顯示價格'] > 0]
     if hide_sold.lower() == "true" and 'is_sold' in res.columns: 
         res = res[res['is_sold'] == False]
+    if hide_cert.lower() == "true" and 'is_cert' in res.columns: 
+        res = res[res['is_cert'] == False]
 
     if sort_by == "價格低到高": res = res.sort_values(by='顯示價格', ascending=True)
     elif sort_by == "價格高到低": res = res.sort_values(by='顯示價格', ascending=False)
@@ -420,11 +418,8 @@ def process_excel_file(filename: str, contents: bytes):
             }
         }]
 
-        # ==========================================
-        # 🚨 雙核心分流引擎：依照檔名判斷使用哪套邏輯
-        # ==========================================
         if target_tab_name == "新竹車源":
-            # --- 🛡️ 懷舊核心：新竹店專屬舊格式 (底色代表已收訂，不分流已售) ---
+            # --- 🛡️ 新竹店專屬舊格式 ---
             col_model = headers_main.index("車型") if "車型" in headers_main else -1
             col_version = headers_main.index("版本") if "版本" in headers_main else -1
             
@@ -465,31 +460,16 @@ def process_excel_file(filename: str, contents: bytes):
                 target_gsheet_main.update(values=stringified_main, range_name='A1')
                 target_gsheet_main.update_acell('A2', '="共"&SUMPRODUCT(--(LEN(TRIM($C$5:$C$133))>0))&"台"')
                 doc.batch_update({"requests": color_requests_main})
-                messages.append(f"「新竹車源」更新成功({len(data_to_upload_main)-1}筆，已套用新竹專屬收訂規則)")
+                messages.append(f"「新竹車源」更新成功({len(data_to_upload_main)-1}筆)")
             except Exception as e: return {"status": "error", "message": f"新竹寫入失敗：{str(e)}"}
 
         else:
-            # --- 🚀 現代核心：會計部 E車源新格式 (底色代表已售，自動分流) ---
+            # --- 🚀 會計部 E車源新格式 ---
             if "狀態" not in headers_main:
                 headers_main.append("狀態")
             status_col_idx = headers_main.index("狀態")
             
             data_to_upload_main = [headers_main]
-            data_to_upload_sold = [headers_main]
-            
-            target_gsheet_sold = None
-            try: target_gsheet_sold = doc.worksheet("E車源售出")
-            except: pass
-
-            color_requests_sold = []
-            if target_gsheet_sold:
-                color_requests_sold.append({
-                    "repeatCell": {
-                        "range": { "sheetId": target_gsheet_sold.id, "startRowIndex": 1 },
-                        "cell": {"userEnteredFormat": {"backgroundColorStyle": {"rgbColor": { "red": 1.0, "green": 1.0, "blue": 1.0 }}}},
-                        "fields": "userEnteredFormat.backgroundColorStyle,userEnteredFormat.backgroundColor"
-                    }
-                })
 
             for row in ws_main.iter_rows(min_row=2):
                 row_values = [cell.value if cell.value is not None else "" for cell in row]
@@ -506,34 +486,27 @@ def process_excel_file(filename: str, contents: bytes):
 
                 status_val = str(row_values[status_col_idx]).strip()
                 
-                if has_color or "已售" in status_val:
+                # 【新增】：判定「取證」狀態
+                if "取證" in status_val:
+                    row_values[status_col_idx] = "取證"
+                elif has_color or "已售" in status_val:
                     row_values[status_col_idx] = "已售"
-                    target_row_idx = len(data_to_upload_sold) 
-                    data_to_upload_sold.append(row_values)
-                    if target_gsheet_sold:
-                        for c_idx, rgb in enumerate(row_colors):
-                            if rgb:
-                                color_requests_sold.append({
-                                    "repeatCell": {
-                                        "range": { "sheetId": target_gsheet_sold.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 },
-                                        "cell": {"userEnteredFormat": {"backgroundColorStyle": {"rgbColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}},
-                                        "fields": "userEnteredFormat.backgroundColorStyle"
-                                    }
-                                })
                 else:
                     if not status_val:
                         row_values[status_col_idx] = "在庫"
-                    target_row_idx = len(data_to_upload_main) 
-                    data_to_upload_main.append(row_values)
-                    for c_idx, rgb in enumerate(row_colors):
-                        if rgb:
-                            color_requests_main.append({
-                                "repeatCell": {
-                                    "range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 },
-                                    "cell": {"userEnteredFormat": {"backgroundColorStyle": {"rgbColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}},
-                                    "fields": "userEnteredFormat.backgroundColorStyle"
-                                }
-                            })
+                        
+                target_row_idx = len(data_to_upload_main) 
+                data_to_upload_main.append(row_values)
+                
+                for c_idx, rgb in enumerate(row_colors):
+                    if rgb:
+                        color_requests_main.append({
+                            "repeatCell": {
+                                "range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 },
+                                "cell": {"userEnteredFormat": {"backgroundColorStyle": {"rgbColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}},
+                                "fields": "userEnteredFormat.backgroundColorStyle"
+                            }
+                        })
 
             messages = []
             try:
@@ -543,15 +516,6 @@ def process_excel_file(filename: str, contents: bytes):
                 doc.batch_update({"requests": color_requests_main})
                 messages.append(f"「E車源」成功({len(data_to_upload_main)-1}筆)")
             except Exception as e: return {"status": "error", "message": f"主表寫入失敗：{str(e)}"}
-                
-            if len(data_to_upload_sold) > 1 and target_gsheet_sold:
-                try:
-                    target_gsheet_sold.clear()
-                    stringified_sold = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload_sold]
-                    target_gsheet_sold.update(values=stringified_sold, range_name='A1')
-                    if len(color_requests_sold) > 1: doc.batch_update({"requests": color_requests_sold})
-                    messages.append(f"「E車源售出」自動分流成功({len(data_to_upload_sold)-1}筆)")
-                except: messages.append("「E車源售出」寫入失敗")
 
         load_and_clean_data()
         return {"status": "success", "message": " ＆ ".join(messages)}
@@ -581,7 +545,7 @@ def handle_file_message(event):
     filename = event.message.file_name
     
     if not filename.endswith('.xlsx'):
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 請上傳 .xlsx 格式的 Excel 檔案喔！"))
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 老闆，請上傳 .xlsx 格式的 Excel 檔案喔！"))
         return
     
     reply_msg = "⏳ 收到檔案！正在幫您解析資料與精準同步底色，請稍候...\n(處理完成後會自動回報)"

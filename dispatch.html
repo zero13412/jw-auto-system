@@ -284,7 +284,7 @@
                     let check_receipt_msg = "";
                     if (settings.payMethod === "匯款" && settings.mode !== "order") {
                         last5_info = settings.last5 ? `(帳號後五碼：${settings.last5})` : "(帳號後五碼：未填)";
-                        check_receipt_msg = "\n煩請公司查收";
+                        check_receipt_msg = " 煩請公司查收";
                     }
 
                     const today = new Date();
@@ -298,9 +298,9 @@
                         const dDate = new Date(settings.viewDate);
                         if (!isNaN(dDate.getTime())) {
                             const daysOfWeek = ["日", "一", "二", "三", "四", "五", "六"];
-                            view_date_str = `${dDate.getMonth() + 1}/${dDate.getDate()}(${daysOfWeek[dDate.getDay()]}) `;
+                            view_date_str = `${dDate.getMonth() + 1}/${dDate.getDate()}(${daysOfWeek[dDate.getDay()]})`;
                         } else {
-                            view_date_str = `${settings.viewDate} `;
+                            view_date_str = `${settings.viewDate}`;
                         }
                     }
                     
@@ -312,32 +312,35 @@
                         else if (!car.company.includes("杰")) source_str = `(${car.company}車源)`;
                     }
 
+                    let clean_year = String(car.year).replace('年', '');
                     let text_out = "";
+
                     if (settings.mode === "order") {
                         text_out = `${today_str} ${settings.custSrc} ${settings.custName}\n`;
-                        text_out += `訂購${settings.locFrom} ${car.year}年 ${car.model} ${car.color}${source_str}\n`;
+                        text_out += `訂購${settings.locFrom} ${clean_year}年 ${car.model} ${car.color}${source_str}\n`;
                         text_out += `${settings.locTo}整備交車 再麻煩公司協助調度\n\n`;
                         text_out += `${route_str}\n`;
                         text_out += `${plate_str}\n`;
                         text_out += `里程：${car.mileage}萬公里`;
                         
                     } else if (settings.mode === "transfer") {
-                        text_out = `${today_str} ${settings.custSrc} ${settings.custName}\n`;
-                        text_out += `線上預約$${settings.amount} ${settings.payMethod} 調度賞車\n`;
-                        text_out += `${view_date_str}預約${settings.locTo}店賞車\n\n`;
+                        // 【修改】：完全比照您給的「付費調度」範例格式
+                        text_out = `${settings.custSrc} ${settings.custName}\n`;
+                        text_out += `${settings.payMethod} $${settings.amount} 預約${settings.locFrom}店${clean_year} ${car.model}\n`;
+                        text_out += `${settings.locTo}店賞車\n`;
+                        text_out += `預計${view_date_str}到${settings.locTo}店賞車\n\n`;
                         text_out += `${route_str}\n`;
-                        text_out += `${car.year}年${car.model} ${car.color}${source_str}\n`;
-                        text_out += `里程：${car.mileage}萬公里\n`;
+                        text_out += `${clean_year} ${car.model} 跑${car.mileage}萬\n`;
                         text_out += `${plate_str}\n`;
                         text_out += `麻煩公司安排調度\n`;
-                        text_out += `已告知客戶未購買需負擔$${settings.amount}`;
+                        text_out += `已告知客戶未購買需負擔${settings.amount}`;
                         if (settings.payMethod === "匯款") text_out += `\n${last5_info}${check_receipt_msg}`;
                         
                     } else if (settings.mode === "reserve") {
                         text_out = `${today_str} ${settings.custSrc} ${settings.custName}\n`;
                         text_out += `線上預約$${settings.amount} ${settings.payMethod} 保留優惠七天\n`;
                         text_out += `${view_date_str}直接到${settings.locTo}店賞車\n\n`;
-                        text_out += `${car.year}年${car.model} ${car.color}${source_str}\n`;
+                        text_out += `${clean_year}年${car.model} ${car.color}${source_str}\n`;
                         text_out += `里程：${car.mileage}萬公里\n`;
                         text_out += `${plate_str}`;
                         if (settings.payMethod === "匯款") text_out += `\n${last5_info}${check_receipt_msg}`;
@@ -350,8 +353,9 @@
                 const generatePitch = () => {
                     let fee = parseInt(settings.amount) || 0;
 
+                    // 【修改】：模式2 (不用調度/保留優惠) 對客話術更新
                     if (settings.mode === 'reserve') {
-                        const p1 = `您要直接到店賞車 看您有沒有意願線上預付賞車金${fee}元\n${fee} 元是賞車金 不是訂金\n(刷卡或匯款都可)\n因為我們車跑的速度蠻快\n您付賞車金之後 保留優惠 並且是購車的第一順位\n\n假設 您來看車之前\n有第二順位出現 他想直接付訂金\n(我們訂金是收 29000 元)\n會馬上告知您 您有3小時考慮時間 可馬上來看車\n如您有意願購買 就必須3小時內 補刷到 29000 元\n如您沒有意願 就會安排會計小姐 刷退 ${fee} 元\n那如果看完車不滿意 現場也沒有其他考慮的車款\n${fee}元可全退`;
+                        const p1 = `您要直接到${settings.locTo}店賞車 看您有沒有意願線上預付賞車金${fee}元\n${fee} 元是賞車金 不是訂金\n(刷卡或匯款都可)\n因為我們車跑的速度蠻快\n您付賞車金之後 保留優惠 並且是購車的第一順位\n\n假設 您來看車之前\n有第二順位出現 他想直接付訂金\n(我們訂金是收 29000 元)\n會馬上告知您 您有3小時考慮時間 可馬上來看車\n如您有意願購買 就必須3小時內 補刷到 29000 元\n如您沒有意願 就會安排會計小姐 刷退 ${fee} 元\n那如果看完車不滿意 現場也沒有其他考慮的車款\n${fee}元可全退`;
                         output.pitches = [p1];
                         return;
                     }
@@ -371,7 +375,8 @@
 
                     const p1 = `賞車有兩種方式\n\n您直接到「${settings.locFrom}」店賞車的話\n我們可以補貼您 單人單趟的高鐵費\n現場看過車覺得不喜歡 不買也有補貼\n\n缺點就是您要跑一趟 而且如果好幾個人一起去就划不來\n因為只有補貼一個人 去程 (自行開車沒有)`;
                     
-                    const p2 = `另一種方式是 您可線上預付 ${fee} 元賞車金 (刷卡或匯款都可)\n我們可幫您把車調度到「${settings.locTo}」店\n如果車到「${settings.locTo}」 您覺得OK 簽約\n${fee} 元可折抵車價 不用額外付調度費\n\n那如果車調度到「${settings.locTo}」後 您看過車不想買 也沒有其他考慮的車款\n${fee} 元就沒有退 當作您部分負擔調度費`;
+                    // 【修改】：模式1 (付費調度) 對客話術更新 (加入刷卡或匯款都可、動態綁定金額)
+                    const p2 = `另一種方式是 您可線上預付 ${fee} 元賞車金 (刷卡或匯款都可)\n我們可幫您把車調度到「${settings.locTo}」店\n如果車到「${settings.locTo}」 您覺得OK 簽約\n${fee} 可折抵車價 不用額外付調度費\n\n那如果車調度到「${settings.locTo}」後 您看過車不想買 也沒有其他考慮的車款\n${fee} 元就沒有退 當作您部分負擔調度費`;
                     
                     const p3 = `再跟您詳細說明\n${fee} 是賞車金 不是訂金 \n您預付 ${fee} 後 是第一順位\n\n因為我們車跑的速度蠻快\n車子調度需要排隊\n假設\n1. 車子還沒調度 \n2. 調度到了 您來看車之前\n有第二順位出現 想直接付訂金\n(我們訂金是收 29000 元)\n會馬上告知您 您有3小時考慮時間\n\n如您有意願購買 就必須3小時內 補付 ${deposit_balance} 元\n如您沒有意願 就會安排會計小姐 刷退 ${fee} 元`;
                     

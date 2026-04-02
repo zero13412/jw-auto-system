@@ -140,7 +140,7 @@
 
                 <div class="flex flex-col bg-white border rounded-lg shadow-sm shrink-0 mb-4">
                     <div class="bg-gray-100 p-2 sm:p-3 border-b rounded-t-lg sticky top-0 z-10 flex justify-between items-center">
-                        <span class="font-bold text-gray-700 text-sm sm:text-base">💬 對客說明話術 (四段分開複製)</span>
+                        <span class="font-bold text-gray-700 text-sm sm:text-base">💬 對客說明話術 (分開複製)</span>
                         <span class="text-xs text-gray-500 font-normal hidden sm:inline">可依對話節奏，一段一段發送給客人</span>
                     </div>
                     
@@ -346,15 +346,31 @@
                 };
 
                 const generatePitch = () => {
+                    let fee = parseInt(settings.amount) || 0;
+                    let deposit_balance = 29000 - fee;
+
+                    // 【新增】：模式2 (不用調度/保留優惠) 的專屬話術
+                    if (settings.mode === 'reserve') {
+                        const p1 = `您刷 ${fee} 元是賞車金 不是訂金\n因為我們車跑的速度蠻快\n您付 ${fee} 元賞車金之後 保留優惠 並且是購車的第一順位\n\n假設 您來看車之前\n有第二順位出現 想直接付訂金\n(我們訂金是收 29000 元)\n會馬上告知您 您有3小時考慮時間 可馬上來看車\n如您有意願購買 就必須3小時內 補刷到 29000 元\n如您沒有意願 就會安排會計小姐 刷退 ${fee} 元`;
+                        output.pitches = [p1];
+                        return;
+                    }
+
+                    // 模式3 (已訂購交車) 不產生對客話術
+                    if (settings.mode === 'order') {
+                        output.pitches = [];
+                        return;
+                    }
+
+                    // 模式1 (調度賞車)
                     if (settings.locFrom === settings.locTo) {
                         output.pitches = [`車輛目前已在「${settings.locTo}」店，可以直接邀請客戶來店賞車！\n無需收取調度費。`];
                         return;
                     }
 
-                    let fee = parseInt(settings.amount) || priceMatrix[settings.locFrom]?.[settings.locTo] || 0;
-                    let deposit_balance = 29000 - fee;
+                    fee = parseInt(settings.amount) || priceMatrix[settings.locFrom]?.[settings.locTo] || 0;
+                    deposit_balance = 29000 - fee;
 
-                    // 【修改】：將對客話術中的「調度金」全數改為「賞車金」
                     const p1 = `賞車有兩種方式\n\n您直接到「${settings.locFrom}」店賞車的話\n我們可以補貼您 單人單趟的高鐵費\n現場看過車覺得不喜歡 不買也有補貼\n\n缺點就是您要跑一趟 而且如果好幾個人一起去就划不來\n因為只有補貼一個人 去程 (自行開車沒有)`;
                     
                     const p2 = `另一種方式是 您可線上預刷 ${fee} 元賞車金\n我們可幫您把車調度到「${settings.locTo}」店\n如果車到「${settings.locTo}」 您覺得OK 簽約\n${fee} 可折抵車價 不用額外付調度費\n\n那如果車調度到「${settings.locTo}」後 您看過車不想買 也沒有其他考慮的車款\n${fee} 元就沒有退 當作您部分負擔調度費`;

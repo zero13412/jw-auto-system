@@ -192,7 +192,6 @@
                 const output = reactive({ deal: "", tech: "", admin: "" });
                 const heights = reactive({ deal: 300, tech: 150, admin: 150 });
 
-                // 【新增】：低於15萬鎖定折扣的判斷邏輯
                 const isDiscountDisabled = computed(() => {
                     let p = parseFloat(car.list_price) || 0;
                     return p > 0 && p < 15;
@@ -235,7 +234,6 @@
                             car.brand = d['廠牌'] || '';
                             car.model = d['車型'] || '';
                             
-                            // 【升級】：年份格式智慧轉換 (202411 -> 2024年11月)
                             let raw_year = (d['年份'] || d['clean_year'] || '').toString().replace('.0', '').trim();
                             if (raw_year.length === 6) {
                                 car.year = `${raw_year.substring(0, 4)}年${raw_year.substring(4, 6)}月`;
@@ -251,7 +249,6 @@
                             car.vin = d['車身'] || '';
                             car.list_price = String(d['顯示價格'] || '0');
                             
-                            // 【升級】：完美套用大腦過濾後的產權
                             car.company = d['filter_property'] || ((d['產權'] && d['產權'] !== 'nan') ? d['產權'] : ((d['公司'] && d['公司'] !== 'nan') ? d['公司'] : ''));
                             if (car.company === '其他') car.company = '';
                             
@@ -276,11 +273,11 @@
                     if (settings.subsidy === "折3264") {
                         car.deal_price = Math.round(current_price_yuan).toString();
                     } else {
-                        car.deal_price = (current_price_yuan / 10000).toFixed(2).replace(/\.00$/, '');
+                        // 【修改】：使用 Number() 轉換，自動去掉 73.80萬 後面多餘的 0
+                        car.deal_price = Number((current_price_yuan / 10000).toFixed(2)).toString();
                     }
                 };
 
-                // 【新增】：監聽價格變動，如果價格小於15萬，自動切換為不能折
                 watch(() => car.list_price, (newPrice) => {
                     let price = parseFloat(newPrice) || 0;
                     if (price > 0 && price < 15) {
@@ -328,7 +325,6 @@
                         source_header = "租車車源";
                     }
 
-                    // 【升級】：里程單位智慧判斷 (大於1000用公里，小於用萬)
                     let m_val = parseFloat(car.mileage) || 0;
                     let m_str = "";
                     if (m_val > 1000) {
@@ -336,7 +332,7 @@
                     } else if (m_val > 0) {
                         m_str = `${car.mileage}萬`;
                     } else {
-                        m_str = `${car.mileage}`; // 處理空白或無法解析的情況
+                        m_str = `${car.mileage}`; 
                     }
 
                     let dealLines = [
@@ -373,9 +369,9 @@
                     let calcStrLines = [
                         "【金額試算明細】",
                         `售價 (網路)： ${list_price_wan} 萬`,
-                        settings.discount === "折1.1萬" ? `折1.1萬後 ： ${(price_after_11k/10000)} 萬` : "",
+                        settings.discount === "折1.1萬" ? `折1.1萬後 ： ${Number((price_after_11k/10000).toFixed(2))} 萬` : "",
                         has_subsidy ? "貸款補貼息： 有 (折3264)" : "",
-                        `合約總價  ： ${has_subsidy ? Math.round(price_after_subsidy) + '元' : (price_after_subsidy/10000) + '萬'}`,
+                        `合約總價  ： ${has_subsidy ? Math.round(price_after_subsidy) + '元' : Number((price_after_subsidy/10000).toFixed(2)) + '萬'}`,
                         `訂金 (${deposit_wan}萬) 後尾款： ${Math.round(final_balance)} 元`
                     ];
                     let calcStr = "\n\n\n\n" + calcStrLines.filter(line => line !== "").join("\n");

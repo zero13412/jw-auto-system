@@ -251,12 +251,20 @@
                             
                             car.company = (d['產權'] && d['產權'] !== 'nan') ? d['產權'] : ((d['公司'] && d['公司'] !== 'nan') ? d['公司'] : '');
                             
-                            let dbLoc = (d['車輛位置'] || '').replace('店', '');
-                            if (dbLoc.includes('北投') || dbLoc.includes('立賢')) dbLoc = '台北';
-                            if (dbLoc.includes('濱江')) dbLoc = '濱江';
-                            
-                            if (locations.includes(dbLoc)) {
-                                settings.locFrom = dbLoc;
+                            // 【升級】更強大的車輛所在地判斷 (完全相容各種縣市寫法)
+                            let dbLoc = String(d['車輛位置'] || '');
+                            if (dbLoc.includes('北投') || dbLoc.includes('立賢') || dbLoc.includes('台北')) {
+                                settings.locFrom = '台北';
+                            } else if (dbLoc.includes('濱江')) {
+                                settings.locFrom = '濱江';
+                            } else if (dbLoc.includes('桃園')) {
+                                settings.locFrom = '桃園';
+                            } else if (dbLoc.includes('新竹')) {
+                                settings.locFrom = '新竹';
+                            } else if (dbLoc.includes('台中')) {
+                                settings.locFrom = '台中';
+                            } else if (dbLoc.includes('高雄')) {
+                                settings.locFrom = '高雄';
                             }
                             
                             updateStatus(`✅ 找到車輛：${car.model} (產權: ${car.company || '無'})`, "text-green-300 font-bold");
@@ -329,7 +337,6 @@
                         text_out += `${settings.locTo}店賞車\n`;
                         text_out += `預計${view_date_str}到${settings.locTo}店賞車\n\n`;
                         text_out += `${route_str}\n`;
-                        // 【修改】：將「跑XXX萬」替換為「里程: XXX」
                         text_out += `${clean_year} ${car.model} 里程: ${car.mileage}\n`;
                         text_out += `${plate_str}\n`;
                         text_out += `麻煩公司安排調度\n`;
@@ -374,7 +381,7 @@
 
                     const p1 = `賞車有兩種方式\n\n您直接到「${settings.locFrom}」店賞車的話\n我們可以補貼您 單人單趟的高鐵費\n現場看過車覺得不喜歡 不買也有補貼\n\n缺點就是您要跑一趟 而且如果好幾個人一起去就划不來\n因為只有補貼一個人 去程 (自行開車沒有)`;
                     
-                    const p2 = `另一種方式是 您可線上預付 ${fee} 元賞車金 (刷卡或匯款都可)\n我們可幫您把車調度到「${settings.locTo}」店\n如果車到「${settings.locTo}」 您覺得OK 簽約\n${fee} 可折抵車價 不用額外付調度費\n\n那如果車調度到「${settings.locTo}」後 您看過車不想買 也沒有其他考慮的車款\n${fee} 元就沒有退 當作您部分負擔調度費`;
+                    const p2 = `另一種方式是 您可線上預付 ${fee} 元賞車金 (刷卡或匯款都可)\n我們可幫您把車調度到「${settings.locTo}」店\n如果車到「${settings.locTo}」 您覺得OK 簽約\n${fee} 元可折抵車價 不用額外付調度費\n\n那如果車調度到「${settings.locTo}」後 您看過車不想買 也沒有其他考慮的車款\n${fee} 元就沒有退 當作您部分負擔調度費`;
                     
                     const p3 = `再跟您詳細說明\n${fee} 是賞車金 不是訂金 \n您預付 ${fee} 後 是第一順位\n\n因為我們車跑的速度蠻快\n車子調度需要排隊\n假設\n1. 車子還沒調度 \n2. 調度到了 您來看車之前\n有第二順位出現 想直接付訂金\n(我們訂金是收 29000 元)\n會馬上告知您 您有3小時考慮時間\n\n如您有意願購買 就必須3小時內 補付 ${deposit_balance} 元\n如您沒有意願 就會安排會計小姐 刷退 ${fee} 元`;
                     

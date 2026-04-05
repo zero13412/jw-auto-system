@@ -63,6 +63,21 @@
                     </div>
                 </section>
 
+                <section>
+                    <h2 class="text-xl font-bold text-gray-700 mb-4 border-b-2 border-teal-200 pb-2 flex items-center gap-2 sticky top-0 bg-gray-100 pt-2 z-10">
+                        📍 分店地址與導航
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div v-for="(item, index) in locations" :key="'loc-'+index" class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex flex-col hover:shadow-md transition">
+                            <h3 class="font-bold text-teal-800 mb-2">{{ item.title }}</h3>
+                            <pre class="flex-1 bg-gray-50 p-3 rounded text-sm text-gray-700 font-sans whitespace-pre-wrap overflow-y-auto max-h-40 no-scrollbar mb-3 border border-gray-100 leading-relaxed">{{ item.text }}</pre>
+                            <button @click="copyText(item.text)" class="w-full bg-teal-100 hover:bg-teal-200 text-teal-800 font-bold py-2 sm:py-3 rounded-lg transition active:scale-95 text-sm sm:text-base">
+                                📋 一鍵複製
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
             </div>
         </main>
     </div>
@@ -147,6 +162,42 @@
                     }
                 ];
 
+                // ================= 分店地址資料 =================
+                const locations = [
+                    {
+                        title: "📍 濱江店 (展帆/禾迪)",
+                        text: `杰運汽車-濱江店（展帆、禾迪汽車）\n臺北市中山區濱江街278號\nhttps://maps.app.goo.gl/xFy61Q6yTuaS4smA8`
+                    },
+                    {
+                        title: "📍 北投店",
+                        text: `杰運汽車-北投店\n臺北市北投區大度路一段21號\nhttps://maps.app.goo.gl/6nzkdcke2kVnLjaU8`
+                    },
+                    {
+                        title: "📍 立賢店",
+                        text: `杰運汽車-立賢店\n112臺北市北投區立賢路61號\nhttps://maps.app.goo.gl/tGQnxF2rs9aSk2Z3A`
+                    },
+                    {
+                        title: "📍 桃園店",
+                        text: `杰運汽車-桃園店\n337桃園市大園區高鐵北路二段208號\nhttps://maps.app.goo.gl/VpDLx44ho3GtyW6BA`
+                    },
+                    {
+                        title: "📍 新竹店",
+                        text: `杰運汽車新竹店\n新竹縣竹北市高鐵五路10號\nhttps://maps.app.goo.gl/CC5CmXtKnY54FArAA`
+                    },
+                    {
+                        title: "📍 台中朝馬店",
+                        text: `杰運汽車-台中朝馬店\n臺中市西屯區朝馬七街40號1樓\nhttps://maps.app.goo.gl/ABgdSgxRM3iuZ57B8`
+                    },
+                    {
+                        title: "📍 台中環中店",
+                        text: `杰運汽車-台中環中店\n臺中市西屯區環中路二段1388-16號\nhttps://maps.app.goo.gl/ZiLdFGtHPmr5Nuda7`
+                    },
+                    {
+                        title: "📍 高雄店",
+                        text: `杰運汽車-高雄店\n高雄市仁武區高楠公路28號\nhttps://maps.app.goo.gl/TeuEUZpWofgyN36p9`
+                    }
+                ];
+
                 const copyText = (text) => {
                     navigator.clipboard.writeText(text).then(() => {
                         statusMessage.value = "✅ 已成功複製到剪貼簿！可以去 LINE 貼上了！";
@@ -160,7 +211,7 @@
                     });
                 };
 
-                return { statusMessage, statusColor, links, texts, copyText };
+                return { statusMessage, statusColor, links, texts, locations, copyText };
             }
         }).mount('#app');
     </script>

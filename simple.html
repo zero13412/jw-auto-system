@@ -85,13 +85,9 @@
                             </div>
 
                             <div class="flex justify-between items-end border-t pt-3 mt-2">
-                                <div class="flex flex-col">
+                                <div class="flex flex-col w-full text-right">
                                     <span class="text-xs text-gray-400 font-bold">網路價</span>
                                     <span class="text-2xl font-extrabold text-red-600">${{ row.price }}</span>
-                                </div>
-                                <div>
-                                    <span v-if="isCode3(row.code)" class="text-red-600 font-extrabold bg-red-100 px-3 py-1 rounded shadow-sm text-lg border border-red-200">{{ row.code }}</span>
-                                    <span v-else-if="row.code" class="text-gray-400 font-bold px-2 text-lg">{{ row.code }}</span>
                                 </div>
                             </div>
                         </div>
@@ -108,7 +104,6 @@
                                 <th class="px-3 py-3 font-bold border border-gray-300 w-16 text-center">顏色</th>
                                 <th class="px-3 py-3 font-bold border border-gray-300 w-28 text-center">車號</th>
                                 <th class="px-3 py-3 font-bold border border-red-300 bg-yellow-50 text-red-800 text-right w-24">網路價格</th>
-                                <th class="px-3 py-3 font-bold border border-red-300 bg-yellow-50 text-red-800 text-center w-16">代碼</th>
                                 <th class="px-3 py-3 font-bold border border-gray-300 w-20 text-center">里程</th>
                                 <th class="px-3 py-3 font-bold border border-gray-300">狀況</th>
                             </tr>
@@ -132,10 +127,6 @@
                                 </td>
 
                                 <td class="px-3 py-2 border border-gray-200 font-extrabold text-red-600 text-lg text-right">${{ row.price }}</td>
-                                <td class="px-3 py-2 border border-gray-200 text-center">
-                                    <span v-if="isCode3(row.code)" class="text-red-600 font-bold bg-red-100 px-2 py-1 rounded shadow-sm text-base border border-red-200">{{ row.code }}</span>
-                                    <span v-else class="text-gray-500 font-bold">{{ row.code }}</span>
-                                </td>
                                 <td class="px-3 py-2 border border-gray-200 text-gray-700 text-center">{{ row.mileage }}</td>
                                 
                                 <td class="px-3 py-2 border border-gray-200 whitespace-normal min-w-[200px] text-xs font-bold" 
@@ -211,10 +202,6 @@
                     return map[cat] || map['default'];
                 }
 
-                const isCode3 = (code) => {
-                    return code === '3.1' || code === '3' || String(code).startsWith('3');
-                };
-
                 // 將「原鈑件」三個字變成灰色
                 const formatCondition = (cond) => {
                     if (!cond) return '';
@@ -253,35 +240,9 @@
                     colMap.price = findCol(['價', '網', '售']);
                     colMap.mileage = findCol(['里程']);
                     colMap.condition = findCol(['車況', '狀況']); 
-                    colMap.start = findCol(['起算']); 
 
                     return rawData.map((row, i) => {
                         let priceVal = String(row[colMap.price] || '').trim();
-                        let startVal = String(row[colMap.start] || '').trim();
-                        
-                        let pNum = parseFloat(priceVal.replace(/[^\d.-]/g, ''));
-                        let sNum = parseFloat(startVal.replace(/[^\d.-]/g, ''));
-                        
-                        let finalCode = "";
-
-                        if (!isNaN(pNum) && !isNaN(sNum) && sNum > 0) {
-                            let diff = pNum - sNum;
-                            if (Math.abs(diff - 1.9) < 0.05) {
-                                finalCode = "3.1";
-                            } else {
-                                finalCode = "2";
-                            }
-                        } 
-                        else {
-                            let possibleCodeCol = rawCols.find(c => {
-                                if (Object.values(colMap).includes(c)) return false;
-                                let val = String(row[c]).trim();
-                                return val === '3.1' || val === '3' || val === '2';
-                            });
-                            if (possibleCodeCol) {
-                                finalCode = String(row[possibleCodeCol]).trim();
-                            }
-                        }
 
                         return {
                             plate: row[colMap.plate] || '', 
@@ -291,8 +252,7 @@
                             color: row[colMap.color] || '',
                             price: priceVal,
                             mileage: row[colMap.mileage] || '',
-                            condition: row[colMap.condition] || '',
-                            code: finalCode
+                            condition: row[colMap.condition] || ''
                         };
                     });
                 };
@@ -328,7 +288,7 @@
 
                 return {
                     loading, statusMessage, statusColor, dataList, 
-                    fetchData, getRowBg, getLocationColor, getCardBorderColor, isCode3,
+                    fetchData, getRowBg, getLocationColor, getCardBorderColor,
                     formatCondition, copyPlate
                 };
             }

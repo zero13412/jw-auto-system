@@ -6,3 +6,4 @@ openpyxl
 gspread
 google-auth
 line-bot-sdk==2.4.2
+pdfplumber

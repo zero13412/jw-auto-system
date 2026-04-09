@@ -106,7 +106,6 @@ def load_and_clean_data():
     drop_cols = ['負責人', '車輛負責人', '採購人']
     df = df.drop(columns=[c for c in drop_cols if c in df.columns])
 
-    # 安全地獲取新舊編號，即使舊編號欄位被刪除也不會當機
     def merge_ids(r):
         n = r.get('新編號', '')
         o = r.get('舊編號', '')
@@ -175,7 +174,6 @@ def load_and_clean_data():
     
     df['filter_property'] = df.apply(normalize_property, axis=1)
     
-    # 狀態判定新增「取證」
     if '狀態' in df.columns:
         df['is_sold'] = df.apply(lambda r: True if '已售' in str(r.get('狀態', '')) or r.get('is_sold_sheet') else False, axis=1)
         df['is_cert'] = df['狀態'].apply(lambda x: True if '取證' in str(x) else False)
@@ -364,6 +362,91 @@ async def add_customer(request: Request):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+
+# ================= 📄 PDF 解析核心 =================
+def process_pdf_file(filename: str, contents: bytes):
+    try:
+        import pdfplumber
+    except ImportError:
+        return {"status": "error", "message": "伺服器缺少 pdfplumber 套件，請至 GitHub 於 requirements.txt 新增 'pdfplumber'。"}
+
+    try:
+        target_tab_name = "E車源"
+        if "新竹" in filename:
+            target_tab_name = "新竹車源"
+
+        client = get_gspread_client()
+        doc = client.open_by_key(SHEET_ID)
+        try: 
+            target_gsheet = doc.worksheet(target_tab_name)
+        except gspread.exceptions.WorksheetNotFound: 
+            return {"status": "error", "message": f"找不到 Google Sheet 分頁「{target_tab_name}」"}
+
+        all_rows = []
+        headers = []
+
+        # 開啟 PDF 並提取表格
+        with pdfplumber.open(io.BytesIO(contents)) as pdf:
+            for page in pdf.pages:
+                table = page.extract_table()
+                if table:
+                    for row in table:
+                        cleaned_row = [str(cell).replace('\n', ' ').strip() if cell is not None else "" for cell in row]
+                        # 略過全空行
+                        if not any(cleaned_row): continue
+                        
+                        # 尋找標題列
+                        if not headers and any(kw in str(cleaned_row) for kw in ["車牌", "廠牌", "年份", "新編號"]):
+                            headers = cleaned_row
+                            continue
+                        
+                        # 收集資料列
+                        if headers:
+                            all_rows.append(cleaned_row)
+
+        if not headers:
+            return {"status": "error", "message": "無法從 PDF 解析出表格，請確認此 PDF 是否包含明顯格線，或是由系統直接匯出。"}
+
+        # 強制加入「狀態」欄位
+        if "狀態" not in headers:
+            headers.append("狀態")
+        status_col_idx = headers.index("狀態")
+
+        data_to_upload = [headers]
+        for row in all_rows:
+            # 防呆：確保列長度足夠
+            while len(row) <= status_col_idx:
+                row.append("")
+            # 👉 核心邏輯：PDF 上傳的車輛，無條件全部標記為「在庫」
+            row[status_col_idx] = "在庫" 
+            data_to_upload.append(row)
+
+        # 準備清除背景顏色（以免被舊 Excel 的底色影響）
+        color_requests = [{
+            "repeatCell": {
+                "range": { "sheetId": target_gsheet.id, "startRowIndex": 1 },
+                "cell": {"userEnteredFormat": {"backgroundColorStyle": {"rgbColor": { "red": 1.0, "green": 1.0, "blue": 1.0 }}}},
+                "fields": "userEnteredFormat.backgroundColorStyle,userEnteredFormat.backgroundColor"
+            }
+        }]
+
+        # 寫入 Google Sheet
+        target_gsheet.clear()
+        stringified_main = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload]
+        target_gsheet.update(values=stringified_main, range_name='A1')
+        doc.batch_update({"requests": color_requests})
+        
+        # 觸發快取更新
+        load_and_clean_data()
+        
+        return {"status": "success", "message": f"📄 PDF 解析成功！\n共更新 {len(data_to_upload)-1} 筆車輛，已自動全數標記為「在庫」！"}
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": f"PDF 處理失敗：{str(e)}"}
+
+
 # ================= Excel 解析與上傳 =================
 def get_color_rgb(cell):
     try:
@@ -432,7 +515,12 @@ def process_excel_file(filename: str, contents: bytes):
             for row in ws_main.iter_rows(min_row=2):
                 row_values = [cell.value if cell.value is not None else "" for cell in row]
                 if not any(str(v).strip() for v in row_values): continue
-                while len(row_values) < len(headers_main): row_values.append("")
+                
+                # 🚨 極致防呆：確保每一行的長度絕對足夠
+                while len(row_values) <= status_idx:
+                    row_values.append("")
+                while len(row_values) < len(headers_main): 
+                    row_values.append("")
                 
                 is_reserved = False
                 target_row_idx = len(data_to_upload_main)
@@ -474,7 +562,12 @@ def process_excel_file(filename: str, contents: bytes):
             for row in ws_main.iter_rows(min_row=2):
                 row_values = [cell.value if cell.value is not None else "" for cell in row]
                 if not any(str(v).strip() for v in row_values): continue
-                while len(row_values) < len(headers_main): row_values.append("")
+                
+                # 🚨 極致防呆
+                while len(row_values) <= status_col_idx:
+                    row_values.append("")
+                while len(row_values) < len(headers_main): 
+                    row_values.append("")
                 
                 has_color = False
                 row_colors = []
@@ -486,7 +579,6 @@ def process_excel_file(filename: str, contents: bytes):
 
                 status_val = str(row_values[status_col_idx]).strip()
                 
-                # 【新增】：判定「取證」狀態
                 if "取證" in status_val:
                     row_values[status_col_idx] = "取證"
                 elif has_color or "已售" in status_val:
@@ -528,7 +620,10 @@ def process_excel_file(filename: str, contents: bytes):
 async def upload_excel(file: UploadFile = File(...)):
     filename = file.filename
     contents = await file.read()
-    return process_excel_file(filename, contents)
+    if filename.lower().endswith('.pdf'):
+        return process_pdf_file(filename, contents)
+    else:
+        return process_excel_file(filename, contents)
 
 @app.post("/callback")
 async def callback(request: Request):
@@ -544,21 +639,32 @@ def handle_file_message(event):
     message_id = event.message.id
     filename = event.message.file_name
     
-    if not filename.endswith('.xlsx'):
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 老闆，請上傳 .xlsx 格式的 Excel 檔案喔！"))
+    is_excel = filename.lower().endswith('.xlsx')
+    is_pdf = filename.lower().endswith('.pdf')
+    
+    if not (is_excel or is_pdf):
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 老闆，請上傳 .xlsx 或是 .pdf 格式的檔案喔！"))
         return
     
-    reply_msg = "⏳ 收到檔案！正在幫您解析資料與精準同步底色，請稍候...\n(處理完成後會自動回報)"
+    reply_msg = "⏳ 收到檔案！正在幫您解析資料與同步雲端，請稍候...\n(處理完成後會自動回報)"
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_msg))
     
     def process_and_notify():
         try:
             message_content = line_bot_api.get_message_content(message_id)
             contents = b"".join([chunk for chunk in message_content.iter_content()])
-            result = process_excel_file(filename, contents)
-            if result["status"] == "success": line_bot_api.push_message(event.source.user_id, TextSendMessage(text="✅ 處理完成！\n" + result["message"]))
-            else: line_bot_api.push_message(event.source.user_id, TextSendMessage(text="❌ 處理失敗：\n" + result["message"]))
-        except Exception as e: line_bot_api.push_message(event.source.user_id, TextSendMessage(text=f"❌ 發生系統錯誤：\n{str(e)}"))
+            
+            if is_pdf:
+                result = process_pdf_file(filename, contents)
+            else:
+                result = process_excel_file(filename, contents)
+                
+            if result["status"] == "success": 
+                line_bot_api.push_message(event.source.user_id, TextSendMessage(text="✅ 處理完成！\n" + result["message"]))
+            else: 
+                line_bot_api.push_message(event.source.user_id, TextSendMessage(text="❌ 處理失敗：\n" + result["message"]))
+        except Exception as e: 
+            line_bot_api.push_message(event.source.user_id, TextSendMessage(text=f"❌ 發生系統錯誤：\n{str(e)}"))
 
     threading.Thread(target=process_and_notify).start()
 
@@ -595,7 +701,7 @@ def handle_text_message(event):
 
     line_bot_api.reply_message(
         event.reply_token,
-        TextSendMessage(text="🤖 您好！我是自動上傳小幫手。\n請直接將 Excel 檔案傳到這裡，我就會幫您自動同步！\n\n📝 記客資請輸入：\n客資 / 姓名 / 電話 / 找什麼車 / 備註")
+        TextSendMessage(text="🤖 您好！我是自動上傳小幫手。\n請直接將 Excel 或 PDF 檔案傳到這裡，我就會幫您自動同步！\n\n📝 記客資請輸入：\n客資 / 姓名 / 電話 / 找什麼車 / 備註")
     )
 
 # ================= 網頁路由區塊 =================

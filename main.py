@@ -181,10 +181,8 @@ def load_and_clean_data():
         df['is_sold'] = df.get('is_sold_sheet', False)
         df['is_cert'] = False
         
-    if '收訂狀態' in df.columns:
-        df['is_reserved'] = df['收訂狀態'].apply(lambda x: True if str(x).strip() == "已收訂" else False)
-    else:
-        df['is_reserved'] = False 
+    # 【修改】：精準抓取「狀態」欄位或「收訂狀態」欄位裡的 "已收訂"
+    df['is_reserved'] = df.apply(lambda r: True if '已收訂' in str(r.get('狀態', '')) or '已收訂' in str(r.get('收訂狀態', '')) else False, axis=1)
     
     if '入庫日期' in df.columns:
         df['入庫_dt'] = df['入庫日期'].apply(parse_roc_date)
@@ -218,7 +216,7 @@ def get_cars(
     model: str = "", version: str = "", vin: str = "", plate: str = "",
     person: str = "", min_price: float = 0.0, max_price: float = 99999.0,
     sort_by: str = "預設", limit: int = 100, 
-    hide_no_price: str = "false", hide_sold: str = "false", hide_cert: str = "false"
+    hide_no_price: str = "false", hide_sold: str = "false", hide_cert: str = "false", hide_reserved: str = "false"
 ):
     if cached_df is None: load_and_clean_data()
     res = cached_df.copy()
@@ -250,6 +248,9 @@ def get_cars(
         res = res[res['is_sold'] == False]
     if hide_cert.lower() == "true" and 'is_cert' in res.columns: 
         res = res[res['is_cert'] == False]
+    # 【新增】：隱藏已收訂功能
+    if hide_reserved.lower() == "true" and 'is_reserved' in res.columns:
+        res = res[res['is_reserved'] == False]
 
     if sort_by == "價格低到高": res = res.sort_values(by='顯示價格', ascending=True)
     elif sort_by == "價格高到低": res = res.sort_values(by='顯示價格', ascending=False)
@@ -362,7 +363,6 @@ async def add_customer(request: Request):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-
 # ================= 📄 PDF 解析核心 =================
 def process_pdf_file(filename: str, contents: bytes):
     try:
@@ -385,43 +385,35 @@ def process_pdf_file(filename: str, contents: bytes):
         all_rows = []
         headers = []
 
-        # 開啟 PDF 並提取表格
         with pdfplumber.open(io.BytesIO(contents)) as pdf:
             for page in pdf.pages:
                 table = page.extract_table()
                 if table:
                     for row in table:
                         cleaned_row = [str(cell).replace('\n', ' ').strip() if cell is not None else "" for cell in row]
-                        # 略過全空行
                         if not any(cleaned_row): continue
                         
-                        # 尋找標題列
                         if not headers and any(kw in str(cleaned_row) for kw in ["車牌", "廠牌", "年份", "新編號"]):
                             headers = cleaned_row
                             continue
                         
-                        # 收集資料列
                         if headers:
                             all_rows.append(cleaned_row)
 
         if not headers:
             return {"status": "error", "message": "無法從 PDF 解析出表格，請確認此 PDF 是否包含明顯格線，或是由系統直接匯出。"}
 
-        # 強制加入「狀態」欄位
         if "狀態" not in headers:
             headers.append("狀態")
         status_col_idx = headers.index("狀態")
 
         data_to_upload = [headers]
         for row in all_rows:
-            # 防呆：確保列長度足夠
             while len(row) <= status_col_idx:
                 row.append("")
-            # 👉 核心邏輯：PDF 上傳的車輛，無條件全部標記為「在庫」
             row[status_col_idx] = "在庫" 
             data_to_upload.append(row)
 
-        # 準備清除背景顏色（以免被舊 Excel 的底色影響）
         color_requests = [{
             "repeatCell": {
                 "range": { "sheetId": target_gsheet.id, "startRowIndex": 1 },
@@ -430,13 +422,11 @@ def process_pdf_file(filename: str, contents: bytes):
             }
         }]
 
-        # 寫入 Google Sheet
         target_gsheet.clear()
         stringified_main = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload]
         target_gsheet.update(values=stringified_main, range_name='A1')
         doc.batch_update({"requests": color_requests})
         
-        # 觸發快取更新
         load_and_clean_data()
         
         return {"status": "success", "message": f"📄 PDF 解析成功！\n共更新 {len(data_to_upload)-1} 筆車輛，已自動全數標記為「在庫」！"}
@@ -445,7 +435,6 @@ def process_pdf_file(filename: str, contents: bytes):
         import traceback
         traceback.print_exc()
         return {"status": "error", "message": f"PDF 處理失敗：{str(e)}"}
-
 
 # ================= Excel 解析與上傳 =================
 def get_color_rgb(cell):
@@ -516,7 +505,6 @@ def process_excel_file(filename: str, contents: bytes):
                 row_values = [cell.value if cell.value is not None else "" for cell in row]
                 if not any(str(v).strip() for v in row_values): continue
                 
-                # 🚨 極致防呆：確保每一行的長度絕對足夠
                 while len(row_values) <= status_idx:
                     row_values.append("")
                 while len(row_values) < len(headers_main): 
@@ -563,7 +551,6 @@ def process_excel_file(filename: str, contents: bytes):
                 row_values = [cell.value if cell.value is not None else "" for cell in row]
                 if not any(str(v).strip() for v in row_values): continue
                 
-                # 🚨 極致防呆
                 while len(row_values) <= status_col_idx:
                     row_values.append("")
                 while len(row_values) < len(headers_main): 
@@ -579,8 +566,11 @@ def process_excel_file(filename: str, contents: bytes):
 
                 status_val = str(row_values[status_col_idx]).strip()
                 
+                # 【修改】：確保「已收訂」優先被保留，不會被底色誤判成「已售」
                 if "取證" in status_val:
                     row_values[status_col_idx] = "取證"
+                elif "已收訂" in status_val:
+                    row_values[status_col_idx] = "已收訂"
                 elif has_color or "已售" in status_val:
                     row_values[status_col_idx] = "已售"
                 else:

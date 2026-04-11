@@ -185,10 +185,11 @@
                     "高雄": {"台北": 2500, "濱江": 2500, "桃園": 2000, "新竹": 2000, "台中": 2000, "高雄": 0}
                 };
 
+                // 將預設 locTo 改為 '新竹'
                 const settings = reactive({
                     custSrc: "網路客", custName: "先生小姐", viewDate: "",
-                    locFrom: "桃園", locTo: "台北",
-                    mode: "reserve", amount: 1500,
+                    locFrom: "桃園", locTo: "新竹",
+                    mode: "transfer", amount: 1000,
                     payMethod: "匯款", last5: ""
                 });
 
@@ -251,7 +252,6 @@
                             
                             car.company = (d['產權'] && d['產權'] !== 'nan') ? d['產權'] : ((d['公司'] && d['公司'] !== 'nan') ? d['公司'] : '');
                             
-                            // 【升級】更強大的車輛所在地判斷 (完全相容各種縣市寫法)
                             let dbLoc = String(d['車輛位置'] || '');
                             if (dbLoc.includes('北投') || dbLoc.includes('立賢') || dbLoc.includes('台北')) {
                                 settings.locFrom = '台北';

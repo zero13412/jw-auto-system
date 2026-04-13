@@ -222,10 +222,11 @@
                 const statusMessage = ref("系統準備就緒");
                 const showMobileFilters = ref(false);
 
+                // 這裡將預設排序改為最新入庫
                 const filters = reactive({
                     brand: "全部", location: "全部", prop: "全部",
                     model: "", plate: "", person: "", min_price: "", max_price: "",
-                    sort_by: "預設", hide_no_price: false, hide_reserved: false
+                    sort_by: "最新入庫", hide_no_price: false, hide_reserved: false
                 });
 
                 const fetchOptions = async () => {
@@ -278,7 +279,7 @@
                     Object.assign(filters, {
                         brand: "全部", location: "全部", prop: "全部",
                         model: "", plate: "", person: "", min_price: "", max_price: "", 
-                        sort_by: "預設", hide_no_price: false, hide_reserved: false
+                        sort_by: "最新入庫", hide_no_price: false, hide_reserved: false
                     });
                     searchCarsMobile();
                 };

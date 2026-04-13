@@ -64,14 +64,14 @@
                     <div class="flex items-center justify-between gap-1 mt-2 bg-gray-50 p-2 rounded border">
                         <div class="flex flex-col flex-1">
                             <label class="text-xs font-bold text-gray-500">車輛所在地</label>
-                            <select v-model="settings.locFrom" :disabled="settings.mode === 'reserve'" class="border rounded p-1 text-sm bg-white mt-1 focus:ring-1 focus:ring-cyan-400 focus:outline-none">
+                            <select v-model="settings.locFrom" :disabled="settings.mode === 'reserve' || settings.mode === 'universal'" class="border rounded p-1 text-sm bg-white mt-1 focus:ring-1 focus:ring-cyan-400 focus:outline-none">
                                 <option v-for="l in locations" :value="l">{{ l }}</option>
                             </select>
                         </div>
                         <div class="text-gray-400 font-bold px-1 mt-4">➜</div>
                         <div class="flex flex-col flex-1">
                             <label class="text-xs font-bold text-red-600">客戶賞車地</label>
-                            <select v-model="settings.locTo" :disabled="settings.mode === 'reserve'" class="border rounded p-1 text-sm bg-white mt-1 focus:ring-1 focus:ring-cyan-400 focus:outline-none">
+                            <select v-model="settings.locTo" :disabled="settings.mode === 'reserve' || settings.mode === 'universal'" class="border rounded p-1 text-sm bg-white mt-1 focus:ring-1 focus:ring-cyan-400 focus:outline-none">
                                 <option v-for="l in locations" :value="l">{{ l }}</option>
                             </select>
                         </div>
@@ -85,24 +85,25 @@
                         <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="reserve" class="text-cyan-600 focus:ring-cyan-500"> <span class="font-bold text-cyan-900">[模式1] 不用調度 保留優惠</span></label>
                         <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="transfer" class="text-cyan-600 focus:ring-cyan-500"> <span class="font-bold text-cyan-900">[模式2] 付費調度 (賞車)</span></label>
                         <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="order" class="text-cyan-600 focus:ring-cyan-500"> <span class="text-gray-700">[模式3] 已訂購整備 (交車)</span></label>
+                        <label class="flex items-center gap-2 cursor-pointer"><input type="radio" v-model="settings.mode" value="universal" class="text-purple-600 focus:ring-purple-500"> <span class="font-bold text-purple-700">[模式4] 通用話術 (不指定金額地點)</span></label>
                     </div>
 
                     <div class="flex items-center gap-2 mt-2">
                         <label class="text-sm font-bold text-gray-700 w-12">金額:</label>
-                        <input v-model="settings.amount" :disabled="settings.mode === 'order'" type="number" class="w-24 border rounded p-1.5 font-bold text-red-600 focus:ring-1 focus:ring-cyan-400 focus:outline-none">
+                        <input v-model="settings.amount" :disabled="settings.mode === 'order' || settings.mode === 'universal'" type="number" class="w-24 border rounded p-1.5 font-bold text-red-600 focus:ring-1 focus:ring-cyan-400 focus:outline-none">
                         <span class="text-xs text-gray-500">{{ amountHint }}</span>
                     </div>
 
                     <div class="flex items-center gap-2">
                         <label class="text-sm font-bold text-gray-700 w-12">付款:</label>
                         <div class="flex gap-3 text-sm">
-                            <label class="flex items-center gap-1 cursor-pointer"><input type="radio" v-model="settings.payMethod" value="現金" :disabled="settings.mode === 'order'"> 現金</label>
-                            <label class="flex items-center gap-1 cursor-pointer"><input type="radio" v-model="settings.payMethod" value="刷卡" :disabled="settings.mode === 'order'"> 刷卡</label>
-                            <label class="flex items-center gap-1 cursor-pointer"><input type="radio" v-model="settings.payMethod" value="匯款" :disabled="settings.mode === 'order'"> 匯款</label>
+                            <label class="flex items-center gap-1 cursor-pointer"><input type="radio" v-model="settings.payMethod" value="現金" :disabled="settings.mode === 'order' || settings.mode === 'universal'"> 現金</label>
+                            <label class="flex items-center gap-1 cursor-pointer"><input type="radio" v-model="settings.payMethod" value="刷卡" :disabled="settings.mode === 'order' || settings.mode === 'universal'"> 刷卡</label>
+                            <label class="flex items-center gap-1 cursor-pointer"><input type="radio" v-model="settings.payMethod" value="匯款" :disabled="settings.mode === 'order' || settings.mode === 'universal'"> 匯款</label>
                         </div>
                     </div>
 
-                    <div v-if="settings.payMethod === '匯款' && settings.mode !== 'order'" class="flex items-center gap-2">
+                    <div v-if="settings.payMethod === '匯款' && settings.mode !== 'order' && settings.mode !== 'universal'" class="flex items-center gap-2">
                         <label class="text-sm font-bold text-gray-700 w-20">後五碼:</label>
                         <input v-model="settings.last5" type="text" class="flex-1 border rounded p-1.5 focus:ring-1 focus:ring-cyan-400 focus:outline-none" placeholder="輸入帳號後五碼">
                     </div>
@@ -132,7 +133,7 @@
                 <div class="flex flex-col bg-white border rounded-lg shadow-sm shrink-0">
                     <div class="bg-gray-100 p-2 sm:p-3 border-b flex justify-between items-center rounded-t-lg sticky top-0 z-10">
                         <span class="font-bold text-gray-700 text-sm sm:text-base">🏢 公司內部回報</span>
-                        <button v-if="output.report" @click="copyContent(output.report)" class="bg-cyan-100 hover:bg-cyan-200 text-cyan-800 font-bold px-3 py-1 rounded text-sm transition shadow-sm active:scale-95">📋 複製回報</button>
+                        <button v-if="output.report && settings.mode !== 'universal'" @click="copyContent(output.report)" class="bg-cyan-100 hover:bg-cyan-200 text-cyan-800 font-bold px-3 py-1 rounded text-sm transition shadow-sm active:scale-95">📋 複製回報</button>
                     </div>
                     <div v-if="!output.report" class="p-8 text-center text-gray-400 text-sm">請先點擊左下角生成按鈕...</div>
                     <textarea v-else id="reportArea" v-model="output.report" class="w-full p-3 sm:p-4 resize-none focus:outline-none text-sm sm:text-base leading-relaxed font-mono bg-white min-h-[200px]" readonly></textarea>
@@ -185,7 +186,6 @@
                     "高雄": {"台北": 2500, "濱江": 2500, "桃園": 2000, "新竹": 2000, "台中": 2000, "高雄": 0}
                 };
 
-                // 將預設 locTo 改為 '新竹'
                 const settings = reactive({
                     custSrc: "網路客", custName: "先生小姐", viewDate: "",
                     locFrom: "桃園", locTo: "新竹",
@@ -218,6 +218,7 @@
 
                 const amountHint = computed(() => {
                     if (settings.mode === 'order') return "";
+                    if (settings.mode === 'universal') return "(通用模式不需設定金額)";
                     if (settings.mode === 'reserve') return "(請自行輸入金額)";
                     
                     let fee = priceMatrix[settings.locFrom]?.[settings.locTo] || 0;
@@ -288,6 +289,12 @@
                 };
 
                 const generateReport = () => {
+                    if (settings.mode === 'universal') {
+                        output.report = "【模式 4】為提供給客人的「通用款」制式說明話術，無需填寫公司內部回報。請直接複製下方的「對客說明話術」發送給客人即可。";
+                        autoResizeReport();
+                        return;
+                    }
+
                     let last5_info = "";
                     let check_receipt_msg = "";
                     if (settings.payMethod === "匯款" && settings.mode !== "order") {
@@ -359,6 +366,19 @@
 
                 const generatePitch = () => {
                     let fee = parseInt(settings.amount) || 0;
+
+                    if (settings.mode === 'universal') {
+                        const p1 = `賞車有兩種方式\n\n您直接到車輛所在店賞車的話\n我們可以補貼您 單人單趟的高鐵費\n現場看過車覺得不喜歡 不買也有補貼\n\n缺點就是您要跑一趟 而且如果好幾個人一起去就划不來\n因為只有補貼一個人 去程 (自行開車沒有)`;
+                        
+                        const p2 = `另一種方式是 您可線上預付賞車金 \n我們可幫您把車調度到您覺得賞車最方便的店\n($1000-$2500 依照距離收費 刷卡或匯款都可)\n\n如果車調度到了 您看完車覺得OK 簽約\n賞車金可折抵車價 不用額外付調度費\n\n那如果車調度到之後 您看過車不想買 也沒有其他考慮的車款\n賞車金就沒有退 當作您部分負擔調度費`;
+                        
+                        const p3 = `再跟您詳細說明\n賞車金 不是訂金 \n您預付賞車金後 是第一順位\n\n因為我們車跑的速度蠻快\n車子調度需要排隊\n假設\n1. 車子還沒調度 \n2. 調度到了 您來看車之前\n有第二順位出現 想直接付訂金\n(我們訂金是收 29000 元)\n會馬上告知您 您有3小時考慮時間\n\n如您有意願購買 就必須3小時內 補付到 29000 元\n如您沒有意願 就會安排會計小姐 退款您預付的賞車金`;
+                        
+                        const p4 = `但如果 您決定要直接到 車輛所在店賞車 還是建議您 先預付賞車金\n\n直接過去 就沒有拖車 不買需部分負擔調度費的問題\n不滿意 也不考慮其他車款  賞車金可全退\n而且您就是第一順位 如有其他人想買 您可考慮3小時\n\n因為我們常常發生 客人在路上 結果車被現場客人買走`;
+                        
+                        output.pitches = [p1, p2, p3, p4];
+                        return;
+                    }
 
                     if (settings.mode === 'reserve') {
                         const p1 = `您要直接到${settings.locTo}店賞車 看您有沒有意願線上預付賞車金${fee}元\n${fee} 元是賞車金 不是訂金\n(刷卡或匯款都可)\n因為我們車跑的速度蠻快\n您付賞車金之後 保留優惠 並且是購車的第一順位\n\n假設 您來看車之前\n有第二順位出現 他想直接付訂金\n(我們訂金是收 29000 元)\n會馬上告知您 您有3小時考慮時間 可馬上來看車\n如您有意願購買 就必須3小時內 補刷到 29000 元\n如您沒有意願 就會安排會計小姐 退款 ${fee} 元\n那如果看完車不滿意 現場也沒有其他考慮的車款\n${fee}元可全退`;

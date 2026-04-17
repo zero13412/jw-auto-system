@@ -108,9 +108,9 @@
                                 <span class="text-sm font-bold text-gray-800">⛔ 隱藏「已售」車輛</span>
                             </label>
 
-                            <label class="flex items-center gap-2 cursor-pointer bg-blue-100 border border-blue-200 px-3 py-2 rounded-lg w-full hover:bg-blue-200 transition shadow-sm">
-                                <input v-model="filters.hide_cert" @change="searchCars" type="checkbox" class="w-5 h-5 text-blue-700 rounded">
-                                <span class="text-sm font-bold text-blue-700">📜 隱藏「取證」車輛</span>
+                            <label class="flex items-center gap-2 cursor-pointer bg-gray-200 border border-gray-300 px-3 py-2 rounded-lg w-full hover:bg-gray-300 transition shadow-sm">
+                                <input v-model="filters.hide_cert" @change="searchCars" type="checkbox" class="w-5 h-5 text-gray-800 rounded">
+                                <span class="text-sm font-bold text-gray-800">📜 隱藏「取證」車輛</span>
                             </label>
 
                             <label class="flex items-center gap-2 cursor-pointer bg-red-50 border border-red-200 px-3 py-2 rounded-lg w-full hover:bg-red-100 transition shadow-sm">
@@ -144,9 +144,8 @@
                     <div v-for="(car, index) in cars" :key="index" 
                          class="bg-white p-4 sm:p-5 rounded-lg shadow border transition relative"
                          :class="{
-                             'border-gray-400 bg-gray-200 opacity-70': car.is_sold,
-                             'border-blue-400 bg-blue-50': car.is_cert,
-                             'border-red-300 bg-red-50': car.is_reserved,
+                             'border-gray-400 bg-gray-200 opacity-70': car.is_sold || car.is_cert,
+                             'border-red-300 bg-red-50': car.is_reserved && !car.is_sold && !car.is_cert,
                              'border-gray-200 hover:shadow-md': !car.is_sold && !car.is_cert && !car.is_reserved
                          }">
                          
@@ -156,7 +155,7 @@
                                 <div v-if="car.is_sold" class="bg-gray-800 text-white font-bold px-2 py-1 rounded shadow-sm inline-block mb-1 text-xs sm:text-sm border border-gray-900">
                                     ⛔ 此車已售出
                                 </div>
-                                <div v-else-if="car.is_cert" class="bg-blue-600 text-white font-bold px-2 py-1 rounded shadow-sm inline-block mb-1 text-xs sm:text-sm border border-blue-700">
+                                <div v-else-if="car.is_cert" class="bg-gray-800 text-white font-bold px-2 py-1 rounded shadow-sm inline-block mb-1 text-xs sm:text-sm border border-gray-900">
                                     📜 注意：此車取證中
                                 </div>
                                 <div v-else-if="car.is_reserved" class="bg-yellow-200 text-red-700 font-bold px-2 py-1 rounded shadow-sm inline-block mb-1 text-xs sm:text-sm border border-red-300">

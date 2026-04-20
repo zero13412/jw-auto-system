@@ -9,6 +9,7 @@ import re
 import os
 import io
 import threading
+import uuid
 from datetime import datetime, timedelta
 
 # LINE Bot 官方套件
@@ -181,7 +182,6 @@ def load_and_clean_data():
         df['is_sold'] = df.get('is_sold_sheet', False)
         df['is_cert'] = False
         
-    # 【修改】：精準抓取「狀態」欄位或「收訂狀態」欄位裡的 "已收訂"
     df['is_reserved'] = df.apply(lambda r: True if '已收訂' in str(r.get('狀態', '')) or '已收訂' in str(r.get('收訂狀態', '')) else False, axis=1)
     
     if '入庫日期' in df.columns:
@@ -248,7 +248,6 @@ def get_cars(
         res = res[res['is_sold'] == False]
     if hide_cert.lower() == "true" and 'is_cert' in res.columns: 
         res = res[res['is_cert'] == False]
-    # 【新增】：隱藏已收訂功能
     if hide_reserved.lower() == "true" and 'is_reserved' in res.columns:
         res = res[res['is_reserved'] == False]
 
@@ -566,7 +565,6 @@ def process_excel_file(filename: str, contents: bytes):
 
                 status_val = str(row_values[status_col_idx]).strip()
                 
-                # 【修改】：確保「已收訂」優先被保留，不會被底色誤判成「已售」
                 if "取證" in status_val:
                     row_values[status_col_idx] = "取證"
                 elif "已收訂" in status_val:
@@ -597,6 +595,61 @@ def process_excel_file(filename: str, contents: bytes):
                 target_gsheet_main.update(values=stringified_main, range_name='A1')
                 doc.batch_update({"requests": color_requests_main})
                 messages.append(f"「E車源」成功({len(data_to_upload_main)-1}筆)")
+                
+                # 🚀 核心升級：自動分流非在庫車輛至「E車源售出」
+                try:
+                    sold_gsheet = doc.worksheet("E車源售出")
+                    try: 
+                        old_records = sold_gsheet.get_all_records()
+                    except Exception: 
+                        old_records = []
+                except gspread.exceptions.WorksheetNotFound:
+                    sold_gsheet = doc.add_worksheet(title="E車源售出", rows="1000", cols="30")
+                    old_records = []
+                    
+                new_records = []
+                for row in data_to_upload_main[1:]:
+                    st = str(row[status_col_idx]).strip()
+                    # 只要不是在庫且不為空，就抓出來備份
+                    if st and st != "在庫":
+                        padded = list(row)
+                        while len(padded) < len(headers_main): 
+                            padded.append("")
+                        new_records.append(dict(zip(headers_main, padded)))
+                        
+                if new_records or old_records:
+                    merged_dict = {}
+                    
+                    # 先載入舊資料
+                    for rec in old_records:
+                        pk = str(rec.get("車牌", "")).strip() or str(rec.get("新編號", "")).strip() or str(rec.get("車身", "")).strip()
+                        if pk: merged_dict[pk] = rec
+                        
+                    # 用新資料進行覆蓋與追加（無縫合併）
+                    for rec in new_records:
+                        pk = str(rec.get("車牌", "")).strip() or str(rec.get("新編號", "")).strip() or str(rec.get("車身", "")).strip()
+                        if pk: 
+                            merged_dict[pk] = rec
+                        else: 
+                            merged_dict[str(uuid.uuid4())] = rec
+                        
+                    # 重新整理標題列，確保舊欄位跟新欄位都不會消失
+                    final_headers = list(headers_main)
+                    for rec in merged_dict.values():
+                        for k in rec.keys():
+                            if k not in final_headers and str(k).strip(): 
+                                final_headers.append(k)
+                            
+                    # 轉換回寫入格式
+                    final_data = [final_headers]
+                    for rec in merged_dict.values():
+                        final_data.append([str(rec.get(h, "")) for h in final_headers])
+                        
+                    # 寫入「E車源售出」分頁
+                    sold_gsheet.clear()
+                    sold_gsheet.update(values=final_data, range_name='A1')
+                    messages.append("並已同步備份至「E車源售出」")
+                
             except Exception as e: return {"status": "error", "message": f"主表寫入失敗：{str(e)}"}
 
         load_and_clean_data()

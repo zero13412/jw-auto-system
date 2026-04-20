@@ -410,12 +410,13 @@ def process_crm_excel(filename: str, contents: bytes):
             elif "戰敗" in tags or "放棄" in tags or "暫緩" in tags: status = "戰敗"
             elif "賞車" in tags or "看車" in tags: status = "安排賞車"
             
-            # 4. 抓取負責業務
-            sales = ""
-            for k, v in r_dict.items():
-                if "負責" in k and v and "@" not in v: # 避開 Email
-                    sales = v
-                    break
+            # 4. 抓取負責業務 (精準對齊 Excel 欄位)
+            sales = r_dict.get("客戶擴充欄位-銷售業務", "")
+            if not sales:
+                for k, v in r_dict.items():
+                    if ("業務" in k or "負責" in k) and v and "@" not in v: # 避開 Email
+                        sales = v
+                        break
             
             # 5. 抓取需求車款 (尋找任何疑似車款的欄位)
             needs = ""
@@ -468,7 +469,7 @@ def process_crm_excel(filename: str, contents: bytes):
                 update_count += 1
                 existing = merged_dict[p]
                 if nc["需求車款"]: existing["需求車款"] = nc["需求車款"]
-                if nc["負責業務"]: existing["負責業務"] = nc["負責業務"]
+                if nc["負責業務"]: existing["負責業務"] = nc["負責業務"]  # 🔥 這裡會把新抓到的名字更新上去！
                 if nc["狀態"] and nc["狀態"] != "新客詢問": existing["狀態"] = nc["狀態"]
                 if nc["備註"]: existing["備註"] = nc["備註"]
                 merged_dict[p] = existing

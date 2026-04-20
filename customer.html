@@ -179,7 +179,8 @@
             setup() {
                 const customers = ref([]);
                 const loading = ref(false);
-                const filterSalesperson = ref('全部');
+                // 🚀 修改 1：預設選中「邢士鍇」
+                const filterSalesperson = ref('邢士鍇');
 
                 const fetchCustomers = async () => {
                     loading.value = true;
@@ -203,13 +204,30 @@
                         let p = (c['負責業務'] || '').trim();
                         if (p) persons.add(p);
                     });
+                    // 確保下拉選單一定有邢士鍇，避免初期無資料時選單空掉
+                    if (!persons.has('邢士鍇')) persons.add('邢士鍇');
                     return Array.from(persons).sort();
                 });
 
-                // 先依照業務篩選客資
+                // 🚀 修改 2：先依照業務篩選，再依照日期排序 (最新 -> 最舊)
                 const filteredCustomers = computed(() => {
-                    if (filterSalesperson.value === '全部') return customers.value;
-                    return customers.value.filter(c => (c['負責業務'] || '').trim() === filterSalesperson.value);
+                    let result = customers.value;
+                    
+                    // 業務篩選
+                    if (filterSalesperson.value !== '全部') {
+                        result = result.filter(c => (c['負責業務'] || '').trim() === filterSalesperson.value);
+                    }
+                    
+                    // 日期排序 (降冪排列)
+                    return result.sort((a, b) => {
+                        // 處理可能為空的日期字串，無法解析時以 0 計算
+                        const dateA = new Date(a['日期'] || 0).getTime();
+                        const dateB = new Date(b['日期'] || 0).getTime();
+                        // 避免 Invalid Date 產生 NaN 影響排序
+                        const numA = isNaN(dateA) ? 0 : dateA;
+                        const numB = isNaN(dateB) ? 0 : dateB;
+                        return numB - numA; 
+                    });
                 });
 
                 // 將客資分配到對應的狀態直列中

@@ -371,13 +371,15 @@ async def add_customer(request: Request):
 def process_crm_excel(filename: str, contents: bytes):
     wb = None
     try:
-        wb = openpyxl.load_workbook(filename=io.BytesIO(contents), data_only=True)
+        # 🚀【省記憶體終極密技】加上 read_only=True，讓超大客資表不會撐爆記憶體！
+        wb = openpyxl.load_workbook(filename=io.BytesIO(contents), data_only=True, read_only=True)
         ws = wb[wb.sheetnames[0]]
         headers = [str(cell.value).strip() if cell.value is not None else "" for cell in ws[1]]
         
         new_customers = []
         
         for row in ws.iter_rows(min_row=2, values_only=True):
+            # 【防呆升級 1】防止 Excel 欄位與標題長度不一致導致當機
             r_dict = {}
             for i in range(min(len(headers), len(row))):
                 val = row[i]
@@ -386,6 +388,7 @@ def process_crm_excel(filename: str, contents: bytes):
             name = r_dict.get("姓名", "")
             if not name: continue
             
+            # 1. 抓取手機號碼
             phone = ""
             for k, v in r_dict.items():
                 if ("手機" in k or "電話" in k) and v:
@@ -393,24 +396,28 @@ def process_crm_excel(filename: str, contents: bytes):
                     if clean_p.startswith("09") and len(clean_p) >= 10:
                         phone = clean_p[:10]
                         break
-            if not phone: continue 
+            if not phone: continue # 沒手機視為無效資料
             
+            # 2. 抓取其他欄位
             date_val = r_dict.get("生效日", "") or r_dict.get("建立時間", "")
             memo = r_dict.get("附註", "")
             tags = r_dict.get("標籤", "")
             
+            # 3. 智慧狀態判斷
             status = "新客詢問"
             if "成交" in tags: status = "已成交"
             elif "收訂" in tags: status = "已收訂"
             elif "戰敗" in tags or "放棄" in tags or "暫緩" in tags: status = "戰敗"
             elif "賞車" in tags or "看車" in tags: status = "安排賞車"
             
+            # 4. 抓取負責業務
             sales = ""
             for k, v in r_dict.items():
-                if "負責" in k and v and "@" not in v: 
+                if "負責" in k and v and "@" not in v: # 避開 Email
                     sales = v
                     break
             
+            # 5. 抓取需求車款 (尋找任何疑似車款的欄位)
             needs = ""
             for k, v in r_dict.items():
                 if ("車" in k or "需求" in k) and "車牌" not in k and "車身" not in k and v:
@@ -420,16 +427,18 @@ def process_crm_excel(filename: str, contents: bytes):
             new_customers.append({
                 "日期": date_val,
                 "姓名": name,
-                "電話": f"'{phone}", 
+                "電話": f"'{phone}", # 加上單引號防止 Google Sheet 吃掉 0
                 "需求車款": needs,
                 "負責業務": sales,
                 "狀態": status,
                 "備註": memo
             })
             
+        # --- 進入 Upsert (比對與更新) 階段 ---
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)
         
+        # 【防呆升級 2】避免 get_all_records() 因為空白標題當機
         try:
             sheet = doc.worksheet("客資紀錄")
             raw_values = sheet.get_all_values()
@@ -455,6 +464,7 @@ def process_crm_excel(filename: str, contents: bytes):
         for nc in new_customers:
             p = nc["電話"].replace("'", "")
             if p in merged_dict:
+                # 🟡 舊客更新
                 update_count += 1
                 existing = merged_dict[p]
                 if nc["需求車款"]: existing["需求車款"] = nc["需求車款"]
@@ -463,9 +473,11 @@ def process_crm_excel(filename: str, contents: bytes):
                 if nc["備註"]: existing["備註"] = nc["備註"]
                 merged_dict[p] = existing
             else:
+                # 🟢 新客加入
                 add_count += 1
                 merged_dict[p] = nc
                 
+        # 寫回 Google Sheet
         headers_crm = ["日期", "姓名", "電話", "需求車款", "負責業務", "狀態", "備註"]
         final_data = [headers_crm]
         for p, rec in merged_dict.items():

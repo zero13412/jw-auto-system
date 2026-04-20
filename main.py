@@ -10,6 +10,7 @@ import os
 import io
 import threading
 import uuid
+import gc  # 🚀 引入強制垃圾回收套件 (釋放記憶體)
 from datetime import datetime, timedelta
 
 # LINE Bot 官方套件
@@ -189,6 +190,8 @@ def load_and_clean_data():
         
     df = df.fillna("")
     cached_df = df
+    
+    gc.collect() # 🚀 清理記憶體
     return df
 
 # ================= 🚀 API 區塊 =================
@@ -307,6 +310,8 @@ def get_simple_data():
         
         df_simple = df_simple.dropna(axis=1, how='all')
         df_simple = df_simple.fillna("")
+        
+        gc.collect() # 🚀 清理記憶體
         return {"status": "success", "data": df_simple.to_dict(orient="records")}
     except Exception as e:
         import traceback
@@ -364,6 +369,7 @@ async def add_customer(request: Request):
 
 # ================= 🚀 客資 Excel 智慧解析 =================
 def process_crm_excel(filename: str, contents: bytes):
+    wb = None
     try:
         wb = openpyxl.load_workbook(filename=io.BytesIO(contents), data_only=True)
         ws = wb[wb.sheetnames[0]]
@@ -372,7 +378,6 @@ def process_crm_excel(filename: str, contents: bytes):
         new_customers = []
         
         for row in ws.iter_rows(min_row=2, values_only=True):
-            # 【防呆升級 1】防止 Excel 欄位與標題長度不一致導致當機
             r_dict = {}
             for i in range(min(len(headers), len(row))):
                 val = row[i]
@@ -381,7 +386,6 @@ def process_crm_excel(filename: str, contents: bytes):
             name = r_dict.get("姓名", "")
             if not name: continue
             
-            # 1. 抓取手機號碼
             phone = ""
             for k, v in r_dict.items():
                 if ("手機" in k or "電話" in k) and v:
@@ -389,28 +393,24 @@ def process_crm_excel(filename: str, contents: bytes):
                     if clean_p.startswith("09") and len(clean_p) >= 10:
                         phone = clean_p[:10]
                         break
-            if not phone: continue # 沒手機視為無效資料
+            if not phone: continue 
             
-            # 2. 抓取其他欄位
             date_val = r_dict.get("生效日", "") or r_dict.get("建立時間", "")
             memo = r_dict.get("附註", "")
             tags = r_dict.get("標籤", "")
             
-            # 3. 智慧狀態判斷
             status = "新客詢問"
             if "成交" in tags: status = "已成交"
             elif "收訂" in tags: status = "已收訂"
             elif "戰敗" in tags or "放棄" in tags or "暫緩" in tags: status = "戰敗"
             elif "賞車" in tags or "看車" in tags: status = "安排賞車"
             
-            # 4. 抓取負責業務
             sales = ""
             for k, v in r_dict.items():
-                if "負責" in k and v and "@" not in v: # 避開 Email
+                if "負責" in k and v and "@" not in v: 
                     sales = v
                     break
             
-            # 5. 抓取需求車款 (尋找任何疑似車款的欄位)
             needs = ""
             for k, v in r_dict.items():
                 if ("車" in k or "需求" in k) and "車牌" not in k and "車身" not in k and v:
@@ -420,18 +420,16 @@ def process_crm_excel(filename: str, contents: bytes):
             new_customers.append({
                 "日期": date_val,
                 "姓名": name,
-                "電話": f"'{phone}", # 加上單引號防止 Google Sheet 吃掉 0
+                "電話": f"'{phone}", 
                 "需求車款": needs,
                 "負責業務": sales,
                 "狀態": status,
                 "備註": memo
             })
             
-        # --- 進入 Upsert (比對與更新) 階段 ---
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)
         
-        # 【防呆升級 2】避免 get_all_records() 因為空白標題當機
         try:
             sheet = doc.worksheet("客資紀錄")
             raw_values = sheet.get_all_values()
@@ -457,7 +455,6 @@ def process_crm_excel(filename: str, contents: bytes):
         for nc in new_customers:
             p = nc["電話"].replace("'", "")
             if p in merged_dict:
-                # 🟡 舊客更新
                 update_count += 1
                 existing = merged_dict[p]
                 if nc["需求車款"]: existing["需求車款"] = nc["需求車款"]
@@ -466,11 +463,9 @@ def process_crm_excel(filename: str, contents: bytes):
                 if nc["備註"]: existing["備註"] = nc["備註"]
                 merged_dict[p] = existing
             else:
-                # 🟢 新客加入
                 add_count += 1
                 merged_dict[p] = nc
                 
-        # 寫回 Google Sheet
         headers_crm = ["日期", "姓名", "電話", "需求車款", "負責業務", "狀態", "備註"]
         final_data = [headers_crm]
         for p, rec in merged_dict.items():
@@ -488,6 +483,10 @@ def process_crm_excel(filename: str, contents: bytes):
         import traceback
         traceback.print_exc()
         return {"status": "error", "message": f"客資處理失敗：{str(e)}"}
+    finally:
+        if wb: wb.close()
+        del wb
+        gc.collect() # 🚀 強制釋放記憶體
 
 # ================= 📄 PDF 解析核心 =================
 def process_pdf_file(filename: str, contents: bytes):
@@ -561,6 +560,8 @@ def process_pdf_file(filename: str, contents: bytes):
         import traceback
         traceback.print_exc()
         return {"status": "error", "message": f"PDF 處理失敗：{str(e)}"}
+    finally:
+        gc.collect() # 🚀 強制釋放記憶體
 
 # ================= Excel 解析與上傳 =================
 def get_color_rgb(cell):
@@ -592,6 +593,7 @@ def get_color_rgb(cell):
     return None
 
 def process_excel_file(filename: str, contents: bytes):
+    wb = None
     try:
         target_tab_name = "E車源"
         if "新竹" in filename:
@@ -617,7 +619,6 @@ def process_excel_file(filename: str, contents: bytes):
         }]
 
         if target_tab_name == "新竹車源":
-            # --- 🛡️ 新竹店專屬舊格式 ---
             col_model = headers_main.index("車型") if "車型" in headers_main else -1
             col_version = headers_main.index("版本") if "版本" in headers_main else -1
             
@@ -666,7 +667,6 @@ def process_excel_file(filename: str, contents: bytes):
             except Exception as e: return {"status": "error", "message": f"新竹寫入失敗：{str(e)}"}
 
         else:
-            # --- 🚀 會計部 E車源新格式 ---
             if "狀態" not in headers_main:
                 headers_main.append("狀態")
             status_col_idx = headers_main.index("狀態")
@@ -723,7 +723,6 @@ def process_excel_file(filename: str, contents: bytes):
                 doc.batch_update({"requests": color_requests_main})
                 messages.append(f"「E車源」成功({len(data_to_upload_main)-1}筆)")
                 
-                # 自動分流非在庫車輛至「E車源售出」
                 try:
                     sold_gsheet = doc.worksheet("E車源售出")
                     try: 
@@ -779,6 +778,10 @@ def process_excel_file(filename: str, contents: bytes):
         import traceback
         traceback.print_exc()
         return {"status": "error", "message": f"處理失敗：{str(e)}"}
+    finally:
+        if wb: wb.close()
+        del wb
+        gc.collect() # 🚀 強制釋放記憶體
 
 @app.post("/api/upload_excel")
 async def upload_excel(file: UploadFile = File(...)):
@@ -833,6 +836,8 @@ def handle_file_message(event):
                 line_bot_api.push_message(event.source.user_id, TextSendMessage(text="❌ 處理失敗：\n" + result["message"]))
         except Exception as e: 
             line_bot_api.push_message(event.source.user_id, TextSendMessage(text=f"❌ 發生系統錯誤：\n{str(e)}"))
+        finally:
+            gc.collect() # 🚀 LINE 回應結束後再次執行終極清理
 
     threading.Thread(target=process_and_notify).start()
 

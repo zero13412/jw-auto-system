@@ -372,7 +372,11 @@ def process_crm_excel(filename: str, contents: bytes):
         new_customers = []
         
         for row in ws.iter_rows(min_row=2, values_only=True):
-            r_dict = {headers[i]: (str(row[i]).strip() if row[i] is not None else "") for i in range(len(headers))}
+            # 【防呆升級 1】防止 Excel 欄位與標題長度不一致導致當機
+            r_dict = {}
+            for i in range(min(len(headers), len(row))):
+                val = row[i]
+                r_dict[headers[i]] = str(val).strip() if val is not None else ""
             
             name = r_dict.get("姓名", "")
             if not name: continue
@@ -426,9 +430,18 @@ def process_crm_excel(filename: str, contents: bytes):
         # --- 進入 Upsert (比對與更新) 階段 ---
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)
+        
+        # 【防呆升級 2】避免 get_all_records() 因為空白標題當機
         try:
             sheet = doc.worksheet("客資紀錄")
-            old_records = sheet.get_all_records()
+            raw_values = sheet.get_all_values()
+            old_records = []
+            if raw_values and len(raw_values) > 1:
+                hdrs = [str(h).strip() for h in raw_values[0]]
+                for r in raw_values[1:]:
+                    padded = list(r)
+                    while len(padded) < len(hdrs): padded.append("")
+                    old_records.append(dict(zip(hdrs, padded)))
         except Exception:
             sheet = doc.add_worksheet("客資紀錄", 1000, 10)
             old_records = []

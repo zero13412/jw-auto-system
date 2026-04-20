@@ -124,7 +124,7 @@
     </div>
 
     <script type="text/x-template" id="customer-card-template">
-        <div class="bg-white p-3 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition cursor-pointer group">
+        <div class="bg-white p-3 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition cursor-pointer group flex flex-col h-full">
             <div class="flex justify-between items-start mb-2">
                 <h3 class="font-bold text-gray-800 text-base group-hover:text-indigo-600 transition">{{ cust['姓名'] || '未知客戶' }}</h3>
                 <span class="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{{ formatDate(cust['日期']) }}</span>
@@ -134,7 +134,7 @@
                 📞 <a :href="'tel:' + formatPhone(cust['電話'])" class="text-blue-600 hover:underline font-mono">{{ formatPhone(cust['電話']) }}</a>
             </div>
             
-            <div class="text-sm font-bold text-slate-700 bg-slate-50 p-2 rounded border border-slate-100 mb-2 line-clamp-2">
+            <div class="text-sm font-bold text-slate-700 bg-slate-50 p-2 rounded border border-slate-100 mb-2 flex-1">
                 🚗 {{ cust['需求車款'] || cust['需求'] || '未填寫需求' }}
             </div>
             
@@ -142,9 +142,9 @@
                 📝 {{ cust['備註'] }}
             </div>
             
-            <div class="flex justify-between items-center border-t border-gray-100 pt-2 mt-1">
-                <span class="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">
-                    👤 {{ cust['負責業務'] || '未指定' }}
+            <div class="flex justify-end items-center border-t border-gray-100 pt-2 mt-auto">
+                <span class="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded-full flex items-center gap-1">
+                    👤 {{ cust['負責業務'] || '未指派' }}
                 </span>
             </div>
         </div>
@@ -187,7 +187,6 @@
                         const res = await fetch(API_URL);
                         const result = await res.json();
                         if (result.status === "success") {
-                            // 給每筆資料加一個唯一 ID 方便 Vue 渲染
                             customers.value = result.data.map((c, i) => ({ ...c, uid: i }));
                         }
                     } catch (e) {
@@ -218,12 +217,10 @@
                     return filteredCustomers.value.filter(c => {
                         let s = (c['狀態'] || '').trim();
                         
-                        // 防呆邏輯：如果沒填狀態，或是亂填，統統歸類到「新客詢問」
                         if (statusName === '新客詢問') {
                             return s === '' || s === '新客詢問' || (!['安排賞車', '已收訂', '已成交', '戰敗'].includes(s));
                         }
                         
-                        // 處理戰敗與暫緩的模糊比對
                         if (statusName === '戰敗') {
                             return s.includes('戰敗') || s.includes('放棄') || s.includes('暫緩');
                         }

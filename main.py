@@ -10,8 +10,10 @@ import os
 import io
 import threading
 import uuid
-import gc  # 🚀 引入強制垃圾回收套件 (釋放記憶體)
+import gc
 from datetime import datetime, timedelta
+import requests
+from bs4 import BeautifulSoup
 
 # LINE Bot 官方套件
 from linebot import LineBotApi, WebhookHandler
@@ -191,7 +193,7 @@ def load_and_clean_data():
     df = df.fillna("")
     cached_df = df
     
-    gc.collect() # 🚀 清理記憶體
+    gc.collect() 
     return df
 
 # ================= 🚀 API 區塊 =================
@@ -311,7 +313,7 @@ def get_simple_data():
         df_simple = df_simple.dropna(axis=1, how='all')
         df_simple = df_simple.fillna("")
         
-        gc.collect() # 🚀 清理記憶體
+        gc.collect() 
         return {"status": "success", "data": df_simple.to_dict(orient="records")}
     except Exception as e:
         import traceback
@@ -371,7 +373,6 @@ async def add_customer(request: Request):
 def process_crm_excel(filename: str, contents: bytes):
     wb = None
     try:
-        # 🚀【省記憶體終極密技】加上 read_only=True，讓超大客資表不會撐爆記憶體！
         wb = openpyxl.load_workbook(filename=io.BytesIO(contents), data_only=True, read_only=True)
         ws = wb[wb.sheetnames[0]]
         headers = [str(cell.value).strip() if cell.value is not None else "" for cell in ws[1]]
@@ -379,7 +380,6 @@ def process_crm_excel(filename: str, contents: bytes):
         new_customers = []
         
         for row in ws.iter_rows(min_row=2, values_only=True):
-            # 【防呆升級 1】防止 Excel 欄位與標題長度不一致導致當機
             r_dict = {}
             for i in range(min(len(headers), len(row))):
                 val = row[i]
@@ -388,7 +388,6 @@ def process_crm_excel(filename: str, contents: bytes):
             name = r_dict.get("姓名", "")
             if not name: continue
             
-            # 1. 抓取手機號碼
             phone = ""
             for k, v in r_dict.items():
                 if ("手機" in k or "電話" in k) and v:
@@ -396,29 +395,25 @@ def process_crm_excel(filename: str, contents: bytes):
                     if clean_p.startswith("09") and len(clean_p) >= 10:
                         phone = clean_p[:10]
                         break
-            if not phone: continue # 沒手機視為無效資料
+            if not phone: continue 
             
-            # 2. 抓取其他欄位
             date_val = r_dict.get("生效日", "") or r_dict.get("建立時間", "")
             memo = r_dict.get("附註", "")
             tags = r_dict.get("標籤", "")
             
-            # 3. 智慧狀態判斷
             status = "新客詢問"
             if "成交" in tags: status = "已成交"
             elif "收訂" in tags: status = "已收訂"
             elif "戰敗" in tags or "放棄" in tags or "暫緩" in tags: status = "戰敗"
             elif "賞車" in tags or "看車" in tags: status = "安排賞車"
             
-            # 4. 抓取負責業務 (精準對齊 Excel 欄位)
             sales = r_dict.get("客戶擴充欄位-銷售業務", "")
             if not sales:
                 for k, v in r_dict.items():
-                    if ("業務" in k or "負責" in k) and v and "@" not in v: # 避開 Email
+                    if ("業務" in k or "負責" in k) and v and "@" not in v: 
                         sales = v
                         break
             
-            # 5. 抓取需求車款 (尋找任何疑似車款的欄位)
             needs = ""
             for k, v in r_dict.items():
                 if ("車" in k or "需求" in k) and "車牌" not in k and "車身" not in k and v:
@@ -428,18 +423,16 @@ def process_crm_excel(filename: str, contents: bytes):
             new_customers.append({
                 "日期": date_val,
                 "姓名": name,
-                "電話": f"'{phone}", # 加上單引號防止 Google Sheet 吃掉 0
+                "電話": f"'{phone}", 
                 "需求車款": needs,
                 "負責業務": sales,
                 "狀態": status,
                 "備註": memo
             })
             
-        # --- 進入 Upsert (比對與更新) 階段 ---
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)
         
-        # 【防呆升級 2】避免 get_all_records() 因為空白標題當機
         try:
             sheet = doc.worksheet("客資紀錄")
             raw_values = sheet.get_all_values()
@@ -465,20 +458,17 @@ def process_crm_excel(filename: str, contents: bytes):
         for nc in new_customers:
             p = nc["電話"].replace("'", "")
             if p in merged_dict:
-                # 🟡 舊客更新
                 update_count += 1
                 existing = merged_dict[p]
                 if nc["需求車款"]: existing["需求車款"] = nc["需求車款"]
-                if nc["負責業務"]: existing["負責業務"] = nc["負責業務"]  # 🔥 這裡會把新抓到的名字更新上去！
+                if nc["負責業務"]: existing["負責業務"] = nc["負責業務"] 
                 if nc["狀態"] and nc["狀態"] != "新客詢問": existing["狀態"] = nc["狀態"]
                 if nc["備註"]: existing["備註"] = nc["備註"]
                 merged_dict[p] = existing
             else:
-                # 🟢 新客加入
                 add_count += 1
                 merged_dict[p] = nc
                 
-        # 寫回 Google Sheet
         headers_crm = ["日期", "姓名", "電話", "需求車款", "負責業務", "狀態", "備註"]
         final_data = [headers_crm]
         for p, rec in merged_dict.items():
@@ -499,7 +489,7 @@ def process_crm_excel(filename: str, contents: bytes):
     finally:
         if wb: wb.close()
         del wb
-        gc.collect() # 🚀 強制釋放記憶體
+        gc.collect()
 
 # ================= 📄 PDF 解析核心 =================
 def process_pdf_file(filename: str, contents: bytes):
@@ -574,7 +564,7 @@ def process_pdf_file(filename: str, contents: bytes):
         traceback.print_exc()
         return {"status": "error", "message": f"PDF 處理失敗：{str(e)}"}
     finally:
-        gc.collect() # 🚀 強制釋放記憶體
+        gc.collect()
 
 # ================= Excel 解析與上傳 =================
 def get_color_rgb(cell):
@@ -794,7 +784,166 @@ def process_excel_file(filename: str, contents: bytes):
     finally:
         if wb: wb.close()
         del wb
-        gc.collect() # 🚀 強制釋放記憶體
+        gc.collect()
+
+# ================= 🚀 終極外掛：自動化爬取公司後台車源表 =================
+@app.get("/api/sync_car_source")
+def sync_car_source_from_backend():
+    try:
+        # 1. 模擬登入
+        login_url = "https://www.jwincar.com.tw/manage/login/index.php"
+        data_url = "https://www.jwincar.com.tw/manage/accounting/accounting_car_list.php?stock=all"
+        
+        session = requests.Session()
+        login_payload = {
+            "strID": "Admin02",
+            "strPW": "Eric740625",
+            "Submit": "送出"
+        }
+        
+        # 登入請求
+        login_res = session.post(login_url, data=login_payload)
+        
+        # 2. 爬取第一頁，找出總頁數
+        res = session.get(data_url + "&page=1")
+        res.encoding = 'utf-8'
+        soup = BeautifulSoup(res.text, "html.parser")
+        
+        # 找尋包含 "第 X / Y 頁" 的文字來決定爬幾頁
+        total_pages = 1
+        page_info = soup.find(string=re.compile(r"第 \d+ / \d+ 頁"))
+        if page_info:
+            match = re.search(r"/ (\d+) 頁", page_info)
+            if match:
+                total_pages = int(match.group(1))
+
+        all_cars = []
+        headers = []
+
+        # 3. 逐頁爬取資料
+        for p in range(1, total_pages + 1):
+            if p > 1:
+                res = session.get(data_url + f"&page={p}")
+                res.encoding = 'utf-8'
+                soup = BeautifulSoup(res.text, "html.parser")
+                
+            table = soup.find("table", {"id": "carTable"})
+            if not table: continue
+            
+            rows = table.find_all("tr")
+            if not rows: continue
+            
+            # 抓表頭 (只在第一頁抓一次)
+            if p == 1:
+                th_elements = rows[0].find_all("th")
+                headers = [th.text.replace("⇅", "").strip() for th in th_elements]
+                
+            # 抓資料
+            for row in rows[1:]:
+                tds = row.find_all("td")
+                if not tds: continue
+                
+                row_data = []
+                for idx, td in enumerate(tds):
+                    val = td.text.strip()
+                    if val == "—" or val == "-": val = ""
+                    
+                    # 處理隱藏在 title 的完整車況與車身號碼
+                    if td.has_attr("title"):
+                        val = td["title"].strip()
+                    
+                    # 處理狀態 Badge (在庫、已售)
+                    if headers[idx] == "狀態":
+                        if td.find("span", class_="sold-badge") or td.find("span", string="已售"): val = "已售"
+                        elif td.find("span", class_="in-stock-badge"): val = "在庫"
+                        elif td.find("span", class_="deposit-badge"): val = "已收訂"
+                        
+                    row_data.append(val)
+                all_cars.append(row_data)
+
+        # 4. 轉換為我們系統熟悉的格式，並捨棄不需要的欄位 (例如「操作」)
+        if not headers or not all_cars:
+            return {"status": "error", "message": "爬取失敗：找不到表格資料。"}
+            
+        df_crawled = pd.DataFrame(all_cars, columns=headers)
+        if "操作" in df_crawled.columns:
+            df_crawled = df_crawled.drop(columns=["操作"])
+            
+        # 把所有的 NaN 轉換成空字串
+        df_crawled = df_crawled.fillna("")
+
+        # 5. 寫入 Google Sheet (無縫對接原本的邏輯)
+        client = get_gspread_client()
+        doc = client.open_by_key(SHEET_ID)
+        
+        # 寫入主表 (E車源)
+        target_gsheet_main = doc.worksheet("E車源")
+        
+        # 整理要寫入的資料格式 (加入表頭)
+        final_headers = list(df_crawled.columns)
+        data_to_upload_main = [final_headers] + df_crawled.values.tolist()
+        
+        target_gsheet_main.clear()
+        target_gsheet_main.update(values=data_to_upload_main, range_name='A1')
+        
+        # --- 自動分流非在庫車輛至「E車源售出」 ---
+        status_col_idx = final_headers.index("狀態") if "狀態" in final_headers else -1
+        
+        if status_col_idx != -1:
+            try:
+                sold_gsheet = doc.worksheet("E車源售出")
+                try: 
+                    old_records = sold_gsheet.get_all_records()
+                except Exception: 
+                    old_records = []
+            except gspread.exceptions.WorksheetNotFound:
+                sold_gsheet = doc.add_worksheet(title="E車源售出", rows="1000", cols="30")
+                old_records = []
+                
+            new_records = []
+            for row in data_to_upload_main[1:]:
+                st = str(row[status_col_idx]).strip()
+                if st and st != "在庫":
+                    padded = list(row)
+                    while len(padded) < len(final_headers): padded.append("")
+                    new_records.append(dict(zip(final_headers, padded)))
+                    
+            if new_records or old_records:
+                merged_dict = {}
+                
+                for rec in old_records:
+                    pk = str(rec.get("車牌", "")).strip() or str(rec.get("新編號", "")).strip() or str(rec.get("車身", "")).strip()
+                    if pk: merged_dict[pk] = rec
+                    
+                for rec in new_records:
+                    pk = str(rec.get("車牌", "")).strip() or str(rec.get("新編號", "")).strip() or str(rec.get("車身", "")).strip()
+                    if pk: merged_dict[pk] = rec
+                    else: merged_dict[str(uuid.uuid4())] = rec
+                    
+                sold_headers = list(final_headers)
+                for rec in merged_dict.values():
+                    for k in rec.keys():
+                        if k not in sold_headers and str(k).strip(): 
+                            sold_headers.append(k)
+                        
+                final_sold_data = [sold_headers]
+                for rec in merged_dict.values():
+                    final_sold_data.append([str(rec.get(h, "")) for h in sold_headers])
+                    
+                sold_gsheet.clear()
+                sold_gsheet.update(values=final_sold_data, range_name='A1')
+                
+        # 更新系統記憶體快取
+        load_and_clean_data()
+        
+        return {"status": "success", "message": f"🤖 爬蟲任務完成！共成功抓取 {len(all_cars)} 筆車輛資料，並已同步至 Google Sheet。"}
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": f"爬蟲執行失敗：{str(e)}"}
+    finally:
+        gc.collect()
 
 @app.post("/api/upload_excel")
 async def upload_excel(file: UploadFile = File(...)):
@@ -815,6 +964,58 @@ async def callback(request: Request):
     try: handler.handle(body_str, signature)
     except InvalidSignatureError: raise HTTPException(status_code=400, detail="Invalid signature")
     return "OK"
+
+@handler.add(MessageEvent, message=TextMessage)
+def handle_text_message(event):
+    text = event.message.text.strip()
+    
+    # 🚀 觸發自動爬蟲的暗號
+    if text == "更新車源" or text == "抓取車源":
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🤖 收到指令！正在連線公司後台爬取最新車源資料，這大約需要 30 秒，請稍候..."))
+        
+        def run_crawler():
+            try:
+                res = sync_car_source_from_backend()
+                if res["status"] == "success":
+                    line_bot_api.push_message(event.source.user_id, TextSendMessage(text=res["message"]))
+                else:
+                    line_bot_api.push_message(event.source.user_id, TextSendMessage(text="❌ " + res["message"]))
+            except Exception as e:
+                line_bot_api.push_message(event.source.user_id, TextSendMessage(text=f"❌ 發生系統錯誤：\n{str(e)}"))
+        
+        threading.Thread(target=run_crawler).start()
+        return
+    
+    if text.startswith("客資") or text.startswith("記客資"):
+        try:
+            parts = [p.strip() for p in text.split('/')]
+            if len(parts) >= 4:
+                name = parts[1]
+                phone = parts[2].strip()
+                needs = parts[3]
+                memo = parts[4] if len(parts) > 4 else ""
+                
+                phone_val = f"'{phone}" if phone.startswith("0") else phone
+                
+                tw_time = datetime.utcnow() + timedelta(hours=8)
+                date_str = tw_time.strftime("%Y/%m/%d %H:%M")
+                
+                client = get_gspread_client()
+                sheet = client.open_by_key(SHEET_ID).worksheet("客資紀錄")
+                sheet.append_row([date_str, name, phone_val, needs, memo], value_input_option='USER_ENTERED')
+                
+                reply = f"✅ 客資建檔成功！\n姓名：{name}\n電話：{phone}\n需求：{needs}"
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
+            else:
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 格式錯誤！請輸入：\n客資 / 姓名 / 電話 / 需求 / 備註"))
+        except Exception as e:
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"❌ 寫入失敗：{str(e)}"))
+        return
+
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text="🤖 您好！我是自動小幫手。\n\n▶️ 【車源更新】請對我說：「更新車源」\n▶️ 【客資上傳】請直接傳送 Excel 檔案\n▶️ 【手動記客】客資 / 姓名 / 電話 / 需求 / 備註")
+    )
 
 @handler.add(MessageEvent, message=FileMessage)
 def handle_file_message(event):
@@ -850,45 +1051,9 @@ def handle_file_message(event):
         except Exception as e: 
             line_bot_api.push_message(event.source.user_id, TextSendMessage(text=f"❌ 發生系統錯誤：\n{str(e)}"))
         finally:
-            gc.collect() # 🚀 LINE 回應結束後再次執行終極清理
+            gc.collect()
 
     threading.Thread(target=process_and_notify).start()
-
-# ================= 🚀 LINE Bot 秒記客資功能 =================
-@handler.add(MessageEvent, message=TextMessage)
-def handle_text_message(event):
-    text = event.message.text.strip()
-    
-    if text.startswith("客資") or text.startswith("記客資"):
-        try:
-            parts = [p.strip() for p in text.split('/')]
-            if len(parts) >= 4:
-                name = parts[1]
-                phone = parts[2].strip()
-                needs = parts[3]
-                memo = parts[4] if len(parts) > 4 else ""
-                
-                phone_val = f"'{phone}" if phone.startswith("0") else phone
-                
-                tw_time = datetime.utcnow() + timedelta(hours=8)
-                date_str = tw_time.strftime("%Y/%m/%d %H:%M")
-                
-                client = get_gspread_client()
-                sheet = client.open_by_key(SHEET_ID).worksheet("客資紀錄")
-                sheet.append_row([date_str, name, phone_val, needs, memo], value_input_option='USER_ENTERED')
-                
-                reply = f"✅ 客資建檔成功！\n姓名：{name}\n電話：{phone}\n需求：{needs}"
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
-            else:
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 格式錯誤！請輸入：\n客資 / 姓名 / 電話 / 需求 / 備註"))
-        except Exception as e:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"❌ 寫入失敗：{str(e)}"))
-        return
-
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text="🤖 您好！我是自動上傳小幫手。\n請直接將 Excel 或 PDF 檔案傳到這裡，我就會幫您自動同步！\n\n📝 記客資請輸入：\n客資 / 姓名 / 電話 / 找什麼車 / 備註")
-    )
 
 # ================= 網頁路由區塊 =================
 @app.get("/")

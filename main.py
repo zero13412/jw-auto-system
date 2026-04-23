@@ -801,7 +801,6 @@ def sync_car_source_from_backend():
             "Submit": "送出"
         }
         
-        # 登入請求
         login_res = session.post(login_url, data=login_payload)
         
         # 2. 爬取第一頁，找出總頁數
@@ -809,7 +808,11 @@ def sync_car_source_from_backend():
         res.encoding = 'utf-8'
         soup = BeautifulSoup(res.text, "html.parser")
         
-        # 找尋包含 "第 X / Y 頁" 的文字來決定爬幾頁
+        # 【防呆防線 1】檢查是否真的有登入成功並看到表格
+        table = soup.find("table", {"id": "carTable"})
+        if not table:
+            return {"status": "error", "message": "🚨 系統警告：找不到後台的車源表格！可能網頁格式已更改或登入失效。為保護資料，已停止更新，請暫時改用「上傳 Excel 或 PDF」的方式更新車源。"}
+        
         total_pages = 1
         page_info = soup.find(string=re.compile(r"第 \d+ / \d+ 頁"))
         if page_info:
@@ -838,6 +841,10 @@ def sync_car_source_from_backend():
                 th_elements = rows[0].find_all("th")
                 headers = [th.text.replace("⇅", "").strip() for th in th_elements]
                 
+                # 【防呆防線 2】檢查核心欄位是否還在
+                if "狀態" not in headers or "新編號" not in headers or "廠牌" not in headers:
+                    return {"status": "error", "message": "🚨 系統警告：後台表格的「核心欄位(狀態/新編號/廠牌)」遺失！網頁結構可能已大改，為保護資料，已停止更新。"}
+                
             # 抓資料
             for row in rows[1:]:
                 tds = row.find_all("td")
@@ -848,11 +855,9 @@ def sync_car_source_from_backend():
                     val = td.text.strip()
                     if val == "—" or val == "-": val = ""
                     
-                    # 處理隱藏在 title 的完整車況與車身號碼
                     if td.has_attr("title"):
                         val = td["title"].strip()
                     
-                    # 處理狀態 Badge (在庫、已售)
                     if headers[idx] == "狀態":
                         if td.find("span", class_="sold-badge") or td.find("span", string="已售"): val = "已售"
                         elif td.find("span", class_="in-stock-badge"): val = "在庫"
@@ -861,25 +866,23 @@ def sync_car_source_from_backend():
                     row_data.append(val)
                 all_cars.append(row_data)
 
-        # 4. 轉換為我們系統熟悉的格式，並捨棄不需要的欄位 (例如「操作」)
-        if not headers or not all_cars:
-            return {"status": "error", "message": "爬取失敗：找不到表格資料。"}
-            
+        # 【防呆防線 3】數量異常檢查 (假設正常情況至少要有 50 台車)
+        if len(all_cars) < 50:
+            return {"status": "error", "message": f"🚨 系統警告：抓取到的車輛數量異常少 (僅 {len(all_cars)} 台)！網頁可能載入不完全，為避免清空現有資料，已停止更新。"}
+
+        # 4. 轉換為 DataFrame 格式
         df_crawled = pd.DataFrame(all_cars, columns=headers)
         if "操作" in df_crawled.columns:
             df_crawled = df_crawled.drop(columns=["操作"])
             
-        # 把所有的 NaN 轉換成空字串
         df_crawled = df_crawled.fillna("")
 
-        # 5. 寫入 Google Sheet (無縫對接原本的邏輯)
+        # 5. 寫入 Google Sheet (無縫對接)
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)
         
-        # 寫入主表 (E車源)
         target_gsheet_main = doc.worksheet("E車源")
         
-        # 整理要寫入的資料格式 (加入表頭)
         final_headers = list(df_crawled.columns)
         data_to_upload_main = [final_headers] + df_crawled.values.tolist()
         
@@ -1014,7 +1017,7 @@ def handle_text_message(event):
 
     line_bot_api.reply_message(
         event.reply_token,
-        TextSendMessage(text="🤖 您好！我是自動小幫手。\n\n▶️ 【車源更新】請對我說：「更新車源」\n▶️ 【客資上傳】請直接傳送 Excel 檔案\n▶️ 【手動記客】客資 / 姓名 / 電話 / 需求 / 備註")
+        TextSendMessage(text="🤖 您好！我是自動小幫手。\n\n▶️ 【車源更新】請對我說：「更新車源」\n▶️ 【客資上傳】請直接傳送 Excel 檔案\n▶️ 【手動記客】客資 / 姓名 / 電話 / 找什麼車 / 備註")
     )
 
 @handler.add(MessageEvent, message=FileMessage)

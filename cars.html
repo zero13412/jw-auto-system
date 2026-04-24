@@ -296,7 +296,7 @@
                     } catch (e) { statusMessage.value = "同步失敗"; }
                 };
 
-                // 🚀 新增的：呼叫後台爬蟲的快捷按鈕功能
+                // 🚀 呼叫後台爬蟲，跑完會彈出訊息視窗回報
                 const syncBackend = async () => {
                     statusMessage.value = "連線後台抓取中...";
                     loading.value = true;
@@ -305,8 +305,10 @@
                         const res = await fetch(`${API_URL}/sync_car_source`);
                         const data = await res.json();
                         if (data.status === 'success') {
-                            statusMessage.value = "✅ 抓取完成，正在重新整理畫面...";
-                            await refreshData(); // 抓完自動重新讀取 Google Sheet
+                            statusMessage.value = "✅ 抓取完成！";
+                            // 🔥 這裡會直接把後端算好的「新增了幾台」訊息變成彈窗顯示
+                            alert(data.message);
+                            await refreshData();
                         } else {
                             statusMessage.value = "❌ 抓取失敗：" + data.message;
                             alert(data.message);

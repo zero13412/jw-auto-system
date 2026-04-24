@@ -622,14 +622,29 @@ def process_excel_file(filename: str, contents: bytes):
         }]
 
         if target_tab_name == "新竹車源":
+            # 🚀 尋找舊車牌，用來比對新車
+            old_plates = set()
+            try:
+                old_values = target_gsheet_main.get_all_values()
+                if old_values and len(old_values) > 1:
+                    old_hdrs = [str(x).strip() for x in old_values[0]]
+                    if "車牌" in old_hdrs:
+                        p_idx = old_hdrs.index("車牌")
+                        old_plates = set([str(row[p_idx]).strip() for row in old_values[1:] if len(row) > p_idx and str(row[p_idx]).strip()])
+            except Exception:
+                pass
+                
             col_model = headers_main.index("車型") if "車型" in headers_main else -1
             col_version = headers_main.index("版本") if "版本" in headers_main else -1
+            plate_idx = headers_main.index("車牌") if "車牌" in headers_main else -1
+            year_idx = headers_main.index("年份") if "年份" in headers_main else -1
             
             if "收訂狀態" not in headers_main: 
                 headers_main.append("收訂狀態")
             status_idx = headers_main.index("收訂狀態")
             
             data_to_upload_main = [headers_main]
+            new_hsinchu_cars = []
             
             for row in ws_main.iter_rows(min_row=2):
                 row_values = [cell.value if cell.value is not None else "" for cell in row]
@@ -639,6 +654,21 @@ def process_excel_file(filename: str, contents: bytes):
                     row_values.append("")
                 while len(row_values) < len(headers_main): 
                     row_values.append("")
+                
+                # 🚀 抓出新車，並轉換成 "YYYY年MM月 車型 #車牌" 格式
+                if plate_idx != -1:
+                    p_val = str(row_values[plate_idx]).strip()
+                    if p_val and p_val not in old_plates:
+                        y_val = str(row_values[year_idx]).strip() if year_idx != -1 else ""
+                        if len(y_val) == 6 and y_val.replace(".0", "").isdigit():
+                            y_val = y_val.replace(".0", "")
+                            y_val = f"{y_val[:4]}年{y_val[4:]}月"
+                        elif len(y_val) == 4 and y_val.isdigit():
+                            y_val = f"{y_val}年"
+                            
+                        m_val = str(row_values[col_model]).strip() if col_model != -1 else ""
+                        new_hsinchu_cars.append(f"{y_val} {m_val} #{p_val}")
+                        old_plates.add(p_val)
                 
                 is_reserved = False
                 target_row_idx = len(data_to_upload_main)
@@ -666,7 +696,15 @@ def process_excel_file(filename: str, contents: bytes):
                 target_gsheet_main.update(values=stringified_main, range_name='A1')
                 target_gsheet_main.update_acell('A2', '="共"&SUMPRODUCT(--(LEN(TRIM($C$5:$C$133))>0))&"台"')
                 doc.batch_update({"requests": color_requests_main})
-                messages.append(f"「新竹車源」更新成功({len(data_to_upload_main)-1}筆)")
+                
+                # 組合回報訊息
+                msg = f"「新竹車源」更新成功({len(data_to_upload_main)-1}筆)"
+                if new_hsinchu_cars:
+                    msg += f"\n✨ 新增 {len(new_hsinchu_cars)} 台車輛：\n" + "\n".join(new_hsinchu_cars[:10])
+                    if len(new_hsinchu_cars) > 10:
+                        msg += f"\n...等共 {len(new_hsinchu_cars)} 台"
+                messages.append(msg)
+                
             except Exception as e: return {"status": "error", "message": f"新竹寫入失敗：{str(e)}"}
 
         else:
@@ -789,6 +827,7 @@ def process_excel_file(filename: str, contents: bytes):
 # ================= 🚀 終極外掛：自動化爬取公司後台車源表 =================
 @app.get("/api/sync_car_source")
 def sync_car_source_from_backend():
+    global cached_df
     try:
         # 1. 模擬登入
         login_url = "https://www.jwincar.com.tw/manage/login/index.php"
@@ -808,7 +847,6 @@ def sync_car_source_from_backend():
         res.encoding = 'utf-8'
         soup = BeautifulSoup(res.text, "html.parser")
         
-        # 【防呆防線 1】檢查是否真的有登入成功並看到表格
         table = soup.find("table", {"id": "carTable"})
         if not table:
             return {"status": "error", "message": "🚨 系統警告：找不到後台的車源表格！可能網頁格式已更改或登入失效。為保護資料，已停止更新，請暫時改用「上傳 Excel 或 PDF」的方式更新車源。"}
@@ -836,16 +874,13 @@ def sync_car_source_from_backend():
             rows = table.find_all("tr")
             if not rows: continue
             
-            # 抓表頭 (只在第一頁抓一次)
             if p == 1:
                 th_elements = rows[0].find_all("th")
                 headers = [th.text.replace("⇅", "").strip() for th in th_elements]
                 
-                # 【防呆防線 2】檢查核心欄位是否還在
                 if "狀態" not in headers or "新編號" not in headers or "廠牌" not in headers:
                     return {"status": "error", "message": "🚨 系統警告：後台表格的「核心欄位(狀態/新編號/廠牌)」遺失！網頁結構可能已大改，為保護資料，已停止更新。"}
                 
-            # 抓資料
             for row in rows[1:]:
                 tds = row.find_all("td")
                 if not tds: continue
@@ -866,18 +901,41 @@ def sync_car_source_from_backend():
                     row_data.append(val)
                 all_cars.append(row_data)
 
-        # 【防呆防線 3】數量異常檢查 (假設正常情況至少要有 50 台車)
         if len(all_cars) < 50:
             return {"status": "error", "message": f"🚨 系統警告：抓取到的車輛數量異常少 (僅 {len(all_cars)} 台)！網頁可能載入不完全，為避免清空現有資料，已停止更新。"}
 
-        # 4. 轉換為 DataFrame 格式
         df_crawled = pd.DataFrame(all_cars, columns=headers)
         if "操作" in df_crawled.columns:
             df_crawled = df_crawled.drop(columns=["操作"])
             
         df_crawled = df_crawled.fillna("")
 
-        # 5. 寫入 Google Sheet (無縫對接)
+        # 🚀 尋找舊的編號，準備比對新車數量
+        old_ids = set()
+        if cached_df is not None and '新編號' in cached_df.columns:
+            old_ids = set(cached_df['新編號'].astype(str).str.strip().tolist())
+
+        new_count = 0
+        new_cars_list = []
+        
+        # 進行比對，抓出新增車輛
+        if "新編號" in df_crawled.columns:
+            for idx, row in df_crawled.iterrows():
+                cid = str(row.get("新編號", "")).strip()
+                if cid and cid not in old_ids:
+                    new_count += 1
+                    y = str(row.get("年份", "")).strip()
+                    if len(y) == 6 and y.isdigit():
+                        y = f"{y[:4]}年{y[4:]}月"
+                    elif len(y) == 4 and y.isdigit():
+                        y = f"{y}年"
+                        
+                    m = str(row.get("車型", "")).strip()
+                    p_val = str(row.get("車牌", "")).strip()
+                    new_cars_list.append(f"{y} {m} #{p_val}")
+                    old_ids.add(cid)
+
+        # 5. 寫入 Google Sheet
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)
         
@@ -889,7 +947,6 @@ def sync_car_source_from_backend():
         target_gsheet_main.clear()
         target_gsheet_main.update(values=data_to_upload_main, range_name='A1')
         
-        # --- 自動分流非在庫車輛至「E車源售出」 ---
         status_col_idx = final_headers.index("狀態") if "狀態" in final_headers else -1
         
         if status_col_idx != -1:
@@ -936,10 +993,20 @@ def sync_car_source_from_backend():
                 sold_gsheet.clear()
                 sold_gsheet.update(values=final_sold_data, range_name='A1')
                 
-        # 更新系統記憶體快取
         load_and_clean_data()
         
-        return {"status": "success", "message": f"🤖 爬蟲任務完成！共成功抓取 {len(all_cars)} 筆車輛資料，並已同步至 Google Sheet。"}
+        # 🚀 組合最終的回報訊息 (含新增數量與明細)
+        msg = f"🤖 爬蟲任務完成！共成功抓取 {len(all_cars)} 筆車源。"
+        if new_count > 0:
+            msg += f"\n✨ 這次自動發現了 {new_count} 台新車！"
+            if new_cars_list:
+                msg += "\n" + "\n".join(new_cars_list[:10])
+                if len(new_cars_list) > 10:
+                    msg += f"\n...等共 {new_count} 台"
+        else:
+            msg += "\n🔄 資料已同步，本次無新增車輛。"
+            
+        return {"status": "success", "message": msg}
 
     except Exception as e:
         import traceback
@@ -972,7 +1039,6 @@ async def callback(request: Request):
 def handle_text_message(event):
     text = event.message.text.strip()
     
-    # 🚀 觸發自動爬蟲的暗號
     if text == "更新車源" or text == "抓取車源":
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🤖 收到指令！正在連線公司後台爬取最新車源資料，這大約需要 30 秒，請稍候..."))
         

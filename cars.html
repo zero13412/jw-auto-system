@@ -272,7 +272,7 @@
                     sort_by: "最新入庫", hide_no_price: false, hide_sold: false, hide_cert: false, hide_reserved: false
                 });
 
-                // 🛡️ LINE LIFF 登入驗證流程
+                // 🛡️ LINE LIFF 登入驗證流程 (已修復無限輪迴問題)
                 const initAuth = async () => {
                     try {
                         // 初始化您的 LIFF 門禁鑰匙
@@ -280,7 +280,8 @@
                         
                         // 檢查是否已登入 LINE
                         if (!liff.isLoggedIn()) {
-                            liff.login();
+                            // 🚀 加入這行精準導航：強制 LINE 登入後，一定要跳回現在這個網址，避免輪迴
+                            liff.login({ redirectUri: window.location.href });
                             return;
                         }
                         

@@ -11,7 +11,7 @@ import io
 import threading
 import uuid
 import gc
-from datetime import datetime, timedelta
+from datetime import timedelta, datetime
 import requests
 from bs4 import BeautifulSoup
 
@@ -52,22 +52,21 @@ def get_gspread_client():
     creds = Credentials.from_service_account_file(key_path, scopes=scopes)
     return gspread.authorize(creds)
 
-# 🛡️ 權限檢查函數
-def check_permission(line_user_id):
+# 🛡️ 權限檢查函數 (單一權限)
+def check_permission(line_user_id, action):
     try:
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)
         try:
             ws = doc.worksheet("權限管理")
             records = ws.get_all_records()
-            if not records: return True 
+            if not records: return True
             for r in records:
                 if str(r.get("LINE ID", "")).strip() == line_user_id:
-                    return str(r.get("管理權限", "")).strip().upper() == "V"
-        except:
-            return True 
-    except:
-        return False
+                    if str(r.get("最高管理員", "")).strip().upper() == "V": return True
+                    return str(r.get(action, "")).strip().upper() == "V"
+        except: return True
+    except: return False
     return False
 
 def clean_money(val):
@@ -211,12 +210,26 @@ def load_and_clean_data():
 
 # ================= 🚀 API 區塊 =================
 
-# 🛡️ 新增：網頁權限驗證 API
+# 🛡️ 取得使用者的「全部權限」 (給首頁大門用的)
+@app.get("/api/my_permissions")
+def get_my_permissions(user_id: str = ""):
+    if not user_id: return {"status": "error", "permissions": {}}
+    try:
+        client = get_gspread_client()
+        doc = client.open_by_key(SHEET_ID)
+        ws = doc.worksheet("權限管理")
+        records = ws.get_all_records()
+        for r in records:
+            if str(r.get("LINE ID", "")).strip() == user_id:
+                return {"status": "success", "permissions": r}
+        return {"status": "success", "permissions": {}} # 找不到這個人
+    except Exception as e:
+        return {"status": "error", "permissions": {}}
+
 @app.get("/api/check_auth")
-def check_auth(user_id: str = ""):
-    if not user_id:
-        return {"authorized": False}
-    return {"authorized": check_permission(user_id)}
+def check_auth(user_id: str = "", action: str = ""):
+    if not user_id or not action: return {"authorized": False}
+    return {"authorized": check_permission(user_id, action)}
 
 @app.get("/api/refresh")
 def refresh_data():
@@ -850,21 +863,19 @@ async def upload_excel(file: UploadFile = File(...)):
     elif "customer" in filename.lower() or "客資" in filename: return process_crm_excel(filename, contents)
     else: return process_excel_file(filename, contents)
 
-# ================= 🚀 LINE 機器人 (加入權限攔截) =================
+# ================= 🚀 LINE 機器人 =================
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
     user_id = event.source.user_id
     text = event.message.text.strip()
     
-    # 🔑 1. 取得 ID 指令 (永遠開放)
     if text == "我的ID" or text.lower() == "my id":
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"👤 您的 LINE ID 為：\n{user_id}\n\n(請將此 ID 貼入 Google Sheet 的「權限管理」分頁，C 欄打 V 即可開通)"))
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"👤 您的 LINE ID 為：\n{user_id}\n\n(請將此 ID 貼入 Google Sheet，對應欄位打 V 即可開通)"))
         return
 
-    # 🚨 2. 車源更新 (限權限)
     if text in ["更新車源", "抓取車源"]:
-        if not check_permission(user_id):
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 抱歉，您沒有執行此功能的權限，請聯繫管理員。"))
+        if not check_permission(user_id, "更新車源"):
+            line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 抱歉，您沒有執行「更新車源」的權限，請聯繫阿鍇。"))
             return
             
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🤖 身份確認！正在連線後台抓取車源..."))
@@ -877,7 +888,6 @@ def handle_text_message(event):
         threading.Thread(target=run_task).start()
         return
 
-    # 📝 3. 手動記客
     if text.startswith("客資") or text.startswith("記客"):
         try:
             parts = [p.strip() for p in text.split('/')]
@@ -896,7 +906,6 @@ def handle_text_message(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"❌ 寫入錯誤：{str(e)}"))
         return
 
-    # 預設回覆
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🤖 您好！我是自動小幫手。\n\n▶️ 【車源更新】請說：「更新車源」\n▶️ 【我的權限】請說：「我的ID」\n▶️ 【手動記客】客資 / 姓名 / 電話 / 需求"))
 
 @handler.add(MessageEvent, message=FileMessage)
@@ -905,9 +914,8 @@ def handle_file_message(event):
     message_id = event.message.id
     filename = event.message.file_name
     
-    # 🚨 檔案上傳也需要權限鎖
-    if not check_permission(user_id):
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 抱歉，您目前沒有權限上傳檔案至系統。"))
+    if not check_permission(user_id, "上傳檔案"):
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 抱歉，您目前沒有「上傳檔案」的權限。"))
         return
 
     is_excel = filename.lower().endswith('.xlsx')

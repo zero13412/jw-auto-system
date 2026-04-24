@@ -6,6 +6,7 @@
     <title>🚗 杰運汽車 - E車源系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <style>
         body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
         .flash-text { animation: flash 1.5s infinite alternate; }
@@ -18,6 +19,25 @@
 </head>
 <body>
     <div id="app" class="flex flex-col h-screen" v-cloak>
+        
+        <div v-if="!isAuthorized" class="fixed inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center text-white px-4">
+            <div v-if="authLoading" class="text-xl sm:text-2xl font-bold animate-pulse flex items-center gap-3">
+                <span class="text-4xl">🛡️</span> 正在透過 LINE 驗證您的身分...
+            </div>
+            <div v-else class="text-center bg-slate-800 p-8 rounded-xl shadow-2xl max-w-md w-full border border-slate-700">
+                <div class="text-6xl mb-4">⛔</div>
+                <h2 class="text-2xl font-bold mb-2 text-red-400">存取被拒絕</h2>
+                <p class="text-gray-300 mb-4">抱歉，您的帳號尚未開通此系統的瀏覽權限。</p>
+                <div class="bg-black/30 p-4 rounded-lg border border-slate-700 mb-6">
+                    <p class="text-xs text-gray-500 mb-1">請將以下 ID 傳送給管理員開通：</p>
+                    <p class="text-sm font-mono text-yellow-400 break-all select-all">{{ lineUserId }}</p>
+                </div>
+                <button @click="liffLogout" class="w-full bg-slate-700 hover:bg-slate-600 text-white font-bold py-3 rounded transition shadow-sm border border-slate-600">
+                    🔄 切換帳號 / 重新驗證
+                </button>
+            </div>
+        </div>
+
         <header class="bg-slate-800 text-white p-3 sm:p-4 shadow-md flex flex-wrap justify-between items-center gap-2 z-20 relative">
             <h1 class="text-lg sm:text-xl font-bold w-full sm:w-auto text-center sm:text-left">🚗 杰運汽車</h1>
             <div class="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
@@ -234,11 +254,16 @@
 
         createApp({
             setup() {
+                // 🛡️ 權限驗證相關變數
+                const isAuthorized = ref(false);
+                const authLoading = ref(true);
+                const lineUserId = ref("");
+
                 const cars = ref([]);
                 const options = reactive({ brands: [], locations: [], properties: [] });
                 const loading = ref(false);
                 const loadingText = ref("");
-                const statusMessage = ref("系統準備就緒");
+                const statusMessage = ref("等待驗證中...");
                 const showMobileFilters = ref(false);
 
                 const filters = reactive({
@@ -246,6 +271,47 @@
                     model: "", plate: "", person: "", min_price: "", max_price: "",
                     sort_by: "最新入庫", hide_no_price: false, hide_sold: false, hide_cert: false, hide_reserved: false
                 });
+
+                // 🛡️ LINE LIFF 登入驗證流程
+                const initAuth = async () => {
+                    try {
+                        // 初始化您的 LIFF 門禁鑰匙
+                        await liff.init({ liffId: "2009888743-q1JdQOEa" });
+                        
+                        // 檢查是否已登入 LINE
+                        if (!liff.isLoggedIn()) {
+                            liff.login();
+                            return;
+                        }
+                        
+                        // 取得使用者 LINE ID
+                        const profile = await liff.getProfile();
+                        lineUserId.value = profile.userId;
+                        
+                        // 呼叫後端 API，問他這個 ID 可不可以進來
+                        const res = await fetch(`${API_URL}/check_auth?user_id=${profile.userId}`);
+                        const data = await res.json();
+                        
+                        if (data.authorized) {
+                            // 驗證成功，解鎖黑幕並開始抓取車源資料
+                            isAuthorized.value = true;
+                            statusMessage.value = "系統準備就緒";
+                            fetchOptions().then(searchCars);
+                        } else {
+                            // 驗證失敗，卡在黑幕
+                            authLoading.value = false;
+                        }
+                    } catch (err) {
+                        console.error("LIFF 初始化或驗證失敗", err);
+                        authLoading.value = false;
+                    }
+                };
+
+                // 登出或切換帳號
+                const liffLogout = () => {
+                    liff.logout();
+                    window.location.reload();
+                };
 
                 const fetchOptions = async () => {
                     try {
@@ -296,7 +362,6 @@
                     } catch (e) { statusMessage.value = "同步失敗"; }
                 };
 
-                // 🚀 呼叫後台爬蟲，跑完會彈出訊息視窗回報
                 const syncBackend = async () => {
                     statusMessage.value = "連線後台抓取中...";
                     loading.value = true;
@@ -306,7 +371,6 @@
                         const data = await res.json();
                         if (data.status === 'success') {
                             statusMessage.value = "✅ 抓取完成！";
-                            // 🔥 這裡會直接把後端算好的「新增了幾台」訊息變成彈窗顯示
                             alert(data.message);
                             await refreshData();
                         } else {
@@ -350,12 +414,17 @@
                     return s !== 'V'; 
                 };
 
-                onMounted(() => { fetchOptions().then(searchCars); });
+                // 🚀 當網頁載入時，第一時間呼叫驗證功能
+                onMounted(() => { 
+                    initAuth(); 
+                });
 
                 return { 
                     cars, options, filters, loading, loadingText, statusMessage, showMobileFilters,
                     searchCars, searchCarsMobile, resetFilters, refreshData, syncBackend, copyPlate, formatCondition,
-                    isWarning
+                    isWarning,
+                    // 導出授權相關變數供畫面使用
+                    isAuthorized, authLoading, lineUserId, liffLogout
                 };
             }
         }).mount('#app');

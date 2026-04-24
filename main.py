@@ -60,12 +60,12 @@ def check_permission(line_user_id):
         try:
             ws = doc.worksheet("權限管理")
             records = ws.get_all_records()
-            if not records: return True # 若表是空的，暫時讓大家都能用
+            if not records: return True 
             for r in records:
                 if str(r.get("LINE ID", "")).strip() == line_user_id:
                     return str(r.get("管理權限", "")).strip().upper() == "V"
         except:
-            return True # 如果還沒建立權限表，暫不鎖死
+            return True 
     except:
         return False
     return False
@@ -210,6 +210,14 @@ def load_and_clean_data():
     return df
 
 # ================= 🚀 API 區塊 =================
+
+# 🛡️ 新增：網頁權限驗證 API
+@app.get("/api/check_auth")
+def check_auth(user_id: str = ""):
+    if not user_id:
+        return {"authorized": False}
+    return {"authorized": check_permission(user_id)}
+
 @app.get("/api/refresh")
 def refresh_data():
     load_and_clean_data()

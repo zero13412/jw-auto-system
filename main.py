@@ -621,58 +621,67 @@ def process_excel_file(filename: str, contents: bytes):
             }
         }]
 
-        if target_tab_name == "新竹車源":
-            # 🚀 尋找舊車牌，用來比對新車
-            old_plates = set()
-            try:
-                old_values = target_gsheet_main.get_all_values()
-                if old_values and len(old_values) > 1:
-                    old_hdrs = [str(x).strip() for x in old_values[0]]
-                    if "車牌" in old_hdrs:
-                        p_idx = old_hdrs.index("車牌")
-                        old_plates = set([str(row[p_idx]).strip() for row in old_values[1:] if len(row) > p_idx and str(row[p_idx]).strip()])
-            except Exception:
-                pass
+        # 🚀 尋找舊的車輛資料，準備比對新增了幾台車
+        old_keys = set()
+        try:
+            old_values = target_gsheet_main.get_all_values()
+            if old_values and len(old_values) > 1:
+                old_hdrs = [str(x).strip() for x in old_values[0]]
+                p_idx = old_hdrs.index("車牌") if "車牌" in old_hdrs else -1
+                v_idx = old_hdrs.index("車身") if "車身" in old_hdrs else -1
+                n_idx = old_hdrs.index("新編號") if "新編號" in old_hdrs else -1
+                m_idx = old_hdrs.index("車型") if "車型" in old_hdrs else -1
                 
-            col_model = headers_main.index("車型") if "車型" in headers_main else -1
-            col_version = headers_main.index("版本") if "版本" in headers_main else -1
-            plate_idx = headers_main.index("車牌") if "車牌" in headers_main else -1
-            year_idx = headers_main.index("年份") if "年份" in headers_main else -1
-            
-            if "收訂狀態" not in headers_main: 
-                headers_main.append("收訂狀態")
+                for row in old_values[1:]:
+                    key = ""
+                    if n_idx != -1 and len(row) > n_idx and str(row[n_idx]).strip(): key = str(row[n_idx]).strip()
+                    elif p_idx != -1 and len(row) > p_idx and str(row[p_idx]).strip(): key = str(row[p_idx]).strip()
+                    elif v_idx != -1 and len(row) > v_idx and str(row[v_idx]).strip(): key = str(row[v_idx]).strip()
+                    
+                    if not key and m_idx != -1 and len(row) > m_idx: key = "M_" + str(row[m_idx]).strip()
+                    if key: old_keys.add(key)
+        except Exception:
+            pass
+
+        col_model = headers_main.index("車型") if "車型" in headers_main else -1
+        col_version = headers_main.index("版本") if "版本" in headers_main else -1
+        plate_idx = headers_main.index("車牌") if "車牌" in headers_main else -1
+        vin_idx = headers_main.index("車身") if "車身" in headers_main else -1
+        no_idx = headers_main.index("新編號") if "新編號" in headers_main else -1
+        year_idx = headers_main.index("年份") if "年份" in headers_main else -1
+        
+        new_cars_list = []
+
+        if target_tab_name == "新竹車源":
+            if "收訂狀態" not in headers_main: headers_main.append("收訂狀態")
             status_idx = headers_main.index("收訂狀態")
-            
             data_to_upload_main = [headers_main]
-            new_hsinchu_cars = []
             
             for row in ws_main.iter_rows(min_row=2):
                 row_values = [cell.value if cell.value is not None else "" for cell in row]
                 if not any(str(v).strip() for v in row_values): continue
                 
-                while len(row_values) <= status_idx:
-                    row_values.append("")
-                while len(row_values) < len(headers_main): 
-                    row_values.append("")
+                while len(row_values) <= status_idx: row_values.append("")
+                while len(row_values) < len(headers_main): row_values.append("")
                 
-                # 🚀 抓出新車，並轉換成 "YYYY年MM月 車型 #車牌" 格式
-                if plate_idx != -1:
-                    p_val = str(row_values[plate_idx]).strip()
-                    if p_val and p_val not in old_plates:
-                        y_val = str(row_values[year_idx]).strip() if year_idx != -1 else ""
-                        if len(y_val) == 6 and y_val.replace(".0", "").isdigit():
-                            y_val = y_val.replace(".0", "")
-                            y_val = f"{y_val[:4]}年{y_val[4:]}月"
-                        elif len(y_val) == 4 and y_val.isdigit():
-                            y_val = f"{y_val}年"
-                            
-                        m_val = str(row_values[col_model]).strip() if col_model != -1 else ""
-                        new_hsinchu_cars.append(f"{y_val} {m_val} #{p_val}")
-                        old_plates.add(p_val)
+                # 🚀 判斷是否為新車，並格式化為 YYYY年MM月
+                p_val = str(row_values[plate_idx]).strip() if plate_idx != -1 else ""
+                v_val = str(row_values[vin_idx]).strip() if vin_idx != -1 else ""
+                n_val = str(row_values[no_idx]).strip() if no_idx != -1 else ""
+                m_val = str(row_values[col_model]).strip() if col_model != -1 else ""
+                
+                row_key = n_val if n_val else (p_val if p_val else (v_val if v_val else ("M_" + m_val if m_val else "")))
+                
+                if row_key and row_key not in old_keys:
+                    y_val = str(row_values[year_idx]).strip() if year_idx != -1 else ""
+                    if len(y_val) == 6 and y_val.replace(".0", "").isdigit(): y_val = f"{y_val[:4]}年{y_val[4:]}月"
+                    elif len(y_val) == 4 and y_val.isdigit(): y_val = f"{y_val}年"
+                    disp_plate = p_val if p_val else "(無車牌)"
+                    new_cars_list.append(f"{y_val} {m_val} #{disp_plate}")
+                    old_keys.add(row_key)
                 
                 is_reserved = False
                 target_row_idx = len(data_to_upload_main)
-                
                 for c_idx, cell in enumerate(row):
                     rgb = get_color_rgb(cell)
                     if rgb:
@@ -683,8 +692,7 @@ def process_excel_file(filename: str, contents: bytes):
                                 "fields": "userEnteredFormat.backgroundColorStyle"
                             }
                         })
-                        if c_idx == col_model or c_idx == col_version:
-                            is_reserved = True
+                        if c_idx == col_model or c_idx == col_version: is_reserved = True
                             
                 row_values[status_idx] = "已收訂" if is_reserved else ""
                 data_to_upload_main.append(row_values)
@@ -697,51 +705,57 @@ def process_excel_file(filename: str, contents: bytes):
                 target_gsheet_main.update_acell('A2', '="共"&SUMPRODUCT(--(LEN(TRIM($C$5:$C$133))>0))&"台"')
                 doc.batch_update({"requests": color_requests_main})
                 
-                # 組合回報訊息
                 msg = f"「新竹車源」更新成功({len(data_to_upload_main)-1}筆)"
-                if new_hsinchu_cars:
-                    msg += f"\n✨ 新增 {len(new_hsinchu_cars)} 台車輛：\n" + "\n".join(new_hsinchu_cars[:10])
-                    if len(new_hsinchu_cars) > 10:
-                        msg += f"\n...等共 {len(new_hsinchu_cars)} 台"
+                if new_cars_list:
+                    msg += f"\n✨ 新增 {len(new_cars_list)} 台車輛：\n" + "\n".join(new_cars_list[:10])
+                    if len(new_cars_list) > 10: msg += f"\n...等共 {len(new_cars_list)} 台"
+                else:
+                    msg += "\n🔄 資料已同步，本次無新增車輛。"
                 messages.append(msg)
                 
             except Exception as e: return {"status": "error", "message": f"新竹寫入失敗：{str(e)}"}
 
         else:
-            if "狀態" not in headers_main:
-                headers_main.append("狀態")
+            if "狀態" not in headers_main: headers_main.append("狀態")
             status_col_idx = headers_main.index("狀態")
-            
             data_to_upload_main = [headers_main]
 
             for row in ws_main.iter_rows(min_row=2):
                 row_values = [cell.value if cell.value is not None else "" for cell in row]
                 if not any(str(v).strip() for v in row_values): continue
                 
-                while len(row_values) <= status_col_idx:
-                    row_values.append("")
-                while len(row_values) < len(headers_main): 
-                    row_values.append("")
+                while len(row_values) <= status_col_idx: row_values.append("")
+                while len(row_values) < len(headers_main): row_values.append("")
+                
+                # 🚀 判斷是否為新車，並格式化為 YYYY年MM月
+                p_val = str(row_values[plate_idx]).strip() if plate_idx != -1 else ""
+                v_val = str(row_values[vin_idx]).strip() if vin_idx != -1 else ""
+                n_val = str(row_values[no_idx]).strip() if no_idx != -1 else ""
+                m_val = str(row_values[col_model]).strip() if col_model != -1 else ""
+                
+                row_key = n_val if n_val else (p_val if p_val else (v_val if v_val else ("M_" + m_val if m_val else "")))
+                
+                if row_key and row_key not in old_keys:
+                    y_val = str(row_values[year_idx]).strip() if year_idx != -1 else ""
+                    if len(y_val) == 6 and y_val.replace(".0", "").isdigit(): y_val = f"{y_val[:4]}年{y_val[4:]}月"
+                    elif len(y_val) == 4 and y_val.isdigit(): y_val = f"{y_val}年"
+                    disp_plate = p_val if p_val else "(無車牌)"
+                    new_cars_list.append(f"{y_val} {m_val} #{disp_plate}")
+                    old_keys.add(row_key)
                 
                 has_color = False
                 row_colors = []
-                
                 for cell in row:
                     rgb = get_color_rgb(cell)
                     row_colors.append(rgb)
                     if rgb: has_color = True
 
                 status_val = str(row_values[status_col_idx]).strip()
-                
-                if "取證" in status_val:
-                    row_values[status_col_idx] = "取證"
-                elif "已收訂" in status_val:
-                    row_values[status_col_idx] = "已收訂"
-                elif has_color or "已售" in status_val:
-                    row_values[status_col_idx] = "已售"
+                if "取證" in status_val: row_values[status_col_idx] = "取證"
+                elif "已收訂" in status_val: row_values[status_col_idx] = "已收訂"
+                elif has_color or "已售" in status_val: row_values[status_col_idx] = "已售"
                 else:
-                    if not status_val:
-                        row_values[status_col_idx] = "在庫"
+                    if not status_val: row_values[status_col_idx] = "在庫"
                         
                 target_row_idx = len(data_to_upload_main) 
                 data_to_upload_main.append(row_values)
@@ -762,50 +776,46 @@ def process_excel_file(filename: str, contents: bytes):
                 stringified_main = [[str(cell) if cell is not None else "" for cell in row] for row in data_to_upload_main]
                 target_gsheet_main.update(values=stringified_main, range_name='A1')
                 doc.batch_update({"requests": color_requests_main})
-                messages.append(f"「E車源」成功({len(data_to_upload_main)-1}筆)")
                 
-                try:
-                    sold_gsheet = doc.worksheet("E車源售出")
-                    try: 
-                        old_records = sold_gsheet.get_all_records()
-                    except Exception: 
-                        old_records = []
-                except gspread.exceptions.WorksheetNotFound:
-                    sold_gsheet = doc.add_worksheet(title="E車源售出", rows="1000", cols="30")
-                    old_records = []
-                    
+                msg = f"「E車源」成功({len(data_to_upload_main)-1}筆)"
+                if new_cars_list:
+                    msg += f"\n✨ 新增 {len(new_cars_list)} 台車輛：\n" + "\n".join(new_cars_list[:10])
+                    if len(new_cars_list) > 10: msg += f"\n...等共 {len(new_cars_list)} 台"
+                else:
+                    msg += "\n🔄 資料已同步，本次無新增車輛。"
+                messages.append(msg)
+                
+                # 自動備份售出清單
+                try: sold_gsheet = doc.worksheet("E車源售出")
+                except gspread.exceptions.WorksheetNotFound: sold_gsheet = doc.add_worksheet(title="E車源售出", rows="1000", cols="30")
+                try: old_records = sold_gsheet.get_all_records()
+                except Exception: old_records = []
+                
                 new_records = []
                 for row in data_to_upload_main[1:]:
                     st = str(row[status_col_idx]).strip()
                     if st and st != "在庫":
                         padded = list(row)
-                        while len(padded) < len(headers_main): 
-                            padded.append("")
+                        while len(padded) < len(headers_main): padded.append("")
                         new_records.append(dict(zip(headers_main, padded)))
                         
                 if new_records or old_records:
                     merged_dict = {}
-                    
                     for rec in old_records:
                         pk = str(rec.get("車牌", "")).strip() or str(rec.get("新編號", "")).strip() or str(rec.get("車身", "")).strip()
                         if pk: merged_dict[pk] = rec
-                        
                     for rec in new_records:
                         pk = str(rec.get("車牌", "")).strip() or str(rec.get("新編號", "")).strip() or str(rec.get("車身", "")).strip()
-                        if pk: 
-                            merged_dict[pk] = rec
-                        else: 
-                            merged_dict[str(uuid.uuid4())] = rec
+                        if pk: merged_dict[pk] = rec
+                        else: merged_dict[str(uuid.uuid4())] = rec
                         
                     final_headers = list(headers_main)
                     for rec in merged_dict.values():
                         for k in rec.keys():
-                            if k not in final_headers and str(k).strip(): 
-                                final_headers.append(k)
+                            if k not in final_headers and str(k).strip(): final_headers.append(k)
                             
                     final_data = [final_headers]
-                    for rec in merged_dict.values():
-                        final_data.append([str(rec.get(h, "")) for h in final_headers])
+                    for rec in merged_dict.values(): final_data.append([str(rec.get(h, "")) for h in final_headers])
                         
                     sold_gsheet.clear()
                     sold_gsheet.update(values=final_data, range_name='A1')
@@ -829,7 +839,6 @@ def process_excel_file(filename: str, contents: bytes):
 def sync_car_source_from_backend():
     global cached_df
     try:
-        # 1. 模擬登入
         login_url = "https://www.jwincar.com.tw/manage/login/index.php"
         data_url = "https://www.jwincar.com.tw/manage/accounting/accounting_car_list.php?stock=all"
         
@@ -842,7 +851,6 @@ def sync_car_source_from_backend():
         
         login_res = session.post(login_url, data=login_payload)
         
-        # 2. 爬取第一頁，找出總頁數
         res = session.get(data_url + "&page=1")
         res.encoding = 'utf-8'
         soup = BeautifulSoup(res.text, "html.parser")
@@ -861,7 +869,6 @@ def sync_car_source_from_backend():
         all_cars = []
         headers = []
 
-        # 3. 逐頁爬取資料
         for p in range(1, total_pages + 1):
             if p > 1:
                 res = session.get(data_url + f"&page={p}")
@@ -870,14 +877,12 @@ def sync_car_source_from_backend():
                 
             table = soup.find("table", {"id": "carTable"})
             if not table: continue
-            
             rows = table.find_all("tr")
             if not rows: continue
             
             if p == 1:
                 th_elements = rows[0].find_all("th")
                 headers = [th.text.replace("⇅", "").strip() for th in th_elements]
-                
                 if "狀態" not in headers or "新編號" not in headers or "廠牌" not in headers:
                     return {"status": "error", "message": "🚨 系統警告：後台表格的「核心欄位(狀態/新編號/廠牌)」遺失！網頁結構可能已大改，為保護資料，已停止更新。"}
                 
@@ -889,9 +894,7 @@ def sync_car_source_from_backend():
                 for idx, td in enumerate(tds):
                     val = td.text.strip()
                     if val == "—" or val == "-": val = ""
-                    
-                    if td.has_attr("title"):
-                        val = td["title"].strip()
+                    if td.has_attr("title"): val = td["title"].strip()
                     
                     if headers[idx] == "狀態":
                         if td.find("span", class_="sold-badge") or td.find("span", string="已售"): val = "已售"
@@ -905,9 +908,7 @@ def sync_car_source_from_backend():
             return {"status": "error", "message": f"🚨 系統警告：抓取到的車輛數量異常少 (僅 {len(all_cars)} 台)！網頁可能載入不完全，為避免清空現有資料，已停止更新。"}
 
         df_crawled = pd.DataFrame(all_cars, columns=headers)
-        if "操作" in df_crawled.columns:
-            df_crawled = df_crawled.drop(columns=["操作"])
-            
+        if "操作" in df_crawled.columns: df_crawled = df_crawled.drop(columns=["操作"])
         df_crawled = df_crawled.fillna("")
 
         # 🚀 尋找舊的編號，準備比對新車數量
@@ -918,29 +919,24 @@ def sync_car_source_from_backend():
         new_count = 0
         new_cars_list = []
         
-        # 進行比對，抓出新增車輛
         if "新編號" in df_crawled.columns:
             for idx, row in df_crawled.iterrows():
                 cid = str(row.get("新編號", "")).strip()
                 if cid and cid not in old_ids:
                     new_count += 1
                     y = str(row.get("年份", "")).strip()
-                    if len(y) == 6 and y.isdigit():
-                        y = f"{y[:4]}年{y[4:]}月"
-                    elif len(y) == 4 and y.isdigit():
-                        y = f"{y}年"
+                    if len(y) == 6 and y.isdigit(): y = f"{y[:4]}年{y[4:]}月"
+                    elif len(y) == 4 and y.isdigit(): y = f"{y}年"
                         
                     m = str(row.get("車型", "")).strip()
                     p_val = str(row.get("車牌", "")).strip()
                     new_cars_list.append(f"{y} {m} #{p_val}")
                     old_ids.add(cid)
 
-        # 5. 寫入 Google Sheet
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)
         
         target_gsheet_main = doc.worksheet("E車源")
-        
         final_headers = list(df_crawled.columns)
         data_to_upload_main = [final_headers] + df_crawled.values.tolist()
         
@@ -948,17 +944,11 @@ def sync_car_source_from_backend():
         target_gsheet_main.update(values=data_to_upload_main, range_name='A1')
         
         status_col_idx = final_headers.index("狀態") if "狀態" in final_headers else -1
-        
         if status_col_idx != -1:
-            try:
-                sold_gsheet = doc.worksheet("E車源售出")
-                try: 
-                    old_records = sold_gsheet.get_all_records()
-                except Exception: 
-                    old_records = []
-            except gspread.exceptions.WorksheetNotFound:
-                sold_gsheet = doc.add_worksheet(title="E車源售出", rows="1000", cols="30")
-                old_records = []
+            try: sold_gsheet = doc.worksheet("E車源售出")
+            except gspread.exceptions.WorksheetNotFound: sold_gsheet = doc.add_worksheet(title="E車源售出", rows="1000", cols="30")
+            try: old_records = sold_gsheet.get_all_records()
+            except Exception: old_records = []
                 
             new_records = []
             for row in data_to_upload_main[1:]:
@@ -970,11 +960,9 @@ def sync_car_source_from_backend():
                     
             if new_records or old_records:
                 merged_dict = {}
-                
                 for rec in old_records:
                     pk = str(rec.get("車牌", "")).strip() or str(rec.get("新編號", "")).strip() or str(rec.get("車身", "")).strip()
                     if pk: merged_dict[pk] = rec
-                    
                 for rec in new_records:
                     pk = str(rec.get("車牌", "")).strip() or str(rec.get("新編號", "")).strip() or str(rec.get("車身", "")).strip()
                     if pk: merged_dict[pk] = rec
@@ -983,26 +971,22 @@ def sync_car_source_from_backend():
                 sold_headers = list(final_headers)
                 for rec in merged_dict.values():
                     for k in rec.keys():
-                        if k not in sold_headers and str(k).strip(): 
-                            sold_headers.append(k)
+                        if k not in sold_headers and str(k).strip(): sold_headers.append(k)
                         
                 final_sold_data = [sold_headers]
-                for rec in merged_dict.values():
-                    final_sold_data.append([str(rec.get(h, "")) for h in sold_headers])
+                for rec in merged_dict.values(): final_sold_data.append([str(rec.get(h, "")) for h in sold_headers])
                     
                 sold_gsheet.clear()
                 sold_gsheet.update(values=final_sold_data, range_name='A1')
                 
         load_and_clean_data()
         
-        # 🚀 組合最終的回報訊息 (含新增數量與明細)
         msg = f"🤖 爬蟲任務完成！共成功抓取 {len(all_cars)} 筆車源。"
         if new_count > 0:
             msg += f"\n✨ 這次自動發現了 {new_count} 台新車！"
             if new_cars_list:
                 msg += "\n" + "\n".join(new_cars_list[:10])
-                if len(new_cars_list) > 10:
-                    msg += f"\n...等共 {new_count} 台"
+                if len(new_cars_list) > 10: msg += f"\n...等共 {new_count} 台"
         else:
             msg += "\n🔄 資料已同步，本次無新增車輛。"
             
@@ -1041,17 +1025,12 @@ def handle_text_message(event):
     
     if text == "更新車源" or text == "抓取車源":
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🤖 收到指令！正在連線公司後台爬取最新車源資料，這大約需要 30 秒，請稍候..."))
-        
         def run_crawler():
             try:
                 res = sync_car_source_from_backend()
-                if res["status"] == "success":
-                    line_bot_api.push_message(event.source.user_id, TextSendMessage(text=res["message"]))
-                else:
-                    line_bot_api.push_message(event.source.user_id, TextSendMessage(text="❌ " + res["message"]))
-            except Exception as e:
-                line_bot_api.push_message(event.source.user_id, TextSendMessage(text=f"❌ 發生系統錯誤：\n{str(e)}"))
-        
+                if res["status"] == "success": line_bot_api.push_message(event.source.user_id, TextSendMessage(text=res["message"]))
+                else: line_bot_api.push_message(event.source.user_id, TextSendMessage(text="❌ " + res["message"]))
+            except Exception as e: line_bot_api.push_message(event.source.user_id, TextSendMessage(text=f"❌ 發生系統錯誤：\n{str(e)}"))
         threading.Thread(target=run_crawler).start()
         return
     
@@ -1065,26 +1044,19 @@ def handle_text_message(event):
                 memo = parts[4] if len(parts) > 4 else ""
                 
                 phone_val = f"'{phone}" if phone.startswith("0") else phone
-                
                 tw_time = datetime.utcnow() + timedelta(hours=8)
                 date_str = tw_time.strftime("%Y/%m/%d %H:%M")
                 
                 client = get_gspread_client()
                 sheet = client.open_by_key(SHEET_ID).worksheet("客資紀錄")
                 sheet.append_row([date_str, name, phone_val, needs, memo], value_input_option='USER_ENTERED')
-                
                 reply = f"✅ 客資建檔成功！\n姓名：{name}\n電話：{phone}\n需求：{needs}"
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
-            else:
-                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 格式錯誤！請輸入：\n客資 / 姓名 / 電話 / 需求 / 備註"))
-        except Exception as e:
-            line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"❌ 寫入失敗：{str(e)}"))
+            else: line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 格式錯誤！請輸入：\n客資 / 姓名 / 電話 / 需求 / 備註"))
+        except Exception as e: line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"❌ 寫入失敗：{str(e)}"))
         return
 
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text="🤖 您好！我是自動小幫手。\n\n▶️ 【車源更新】請對我說：「更新車源」\n▶️ 【客資上傳】請直接傳送 Excel 檔案\n▶️ 【手動記客】客資 / 姓名 / 電話 / 找什麼車 / 備註")
-    )
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🤖 您好！我是自動小幫手。\n\n▶️ 【車源更新】請對我說：「更新車源」\n▶️ 【客資上傳】請直接傳送 Excel 檔案\n▶️ 【手動記客】客資 / 姓名 / 電話 / 找什麼車 / 備註"))
 
 @handler.add(MessageEvent, message=FileMessage)
 def handle_file_message(event):
@@ -1106,25 +1078,17 @@ def handle_file_message(event):
             message_content = line_bot_api.get_message_content(message_id)
             contents = b"".join([chunk for chunk in message_content.iter_content()])
             
-            if is_pdf:
-                result = process_pdf_file(filename, contents)
-            elif "customer" in filename.lower() or "客資" in filename:
-                result = process_crm_excel(filename, contents)
-            else:
-                result = process_excel_file(filename, contents)
+            if is_pdf: result = process_pdf_file(filename, contents)
+            elif "customer" in filename.lower() or "客資" in filename: result = process_crm_excel(filename, contents)
+            else: result = process_excel_file(filename, contents)
                 
-            if result["status"] == "success": 
-                line_bot_api.push_message(event.source.user_id, TextSendMessage(text="✅ 處理完成！\n" + result["message"]))
-            else: 
-                line_bot_api.push_message(event.source.user_id, TextSendMessage(text="❌ 處理失敗：\n" + result["message"]))
-        except Exception as e: 
-            line_bot_api.push_message(event.source.user_id, TextSendMessage(text=f"❌ 發生系統錯誤：\n{str(e)}"))
-        finally:
-            gc.collect()
+            if result["status"] == "success": line_bot_api.push_message(event.source.user_id, TextSendMessage(text="✅ 處理完成！\n" + result["message"]))
+            else: line_bot_api.push_message(event.source.user_id, TextSendMessage(text="❌ 處理失敗：\n" + result["message"]))
+        except Exception as e: line_bot_api.push_message(event.source.user_id, TextSendMessage(text=f"❌ 發生系統錯誤：\n{str(e)}"))
+        finally: gc.collect()
 
     threading.Thread(target=process_and_notify).start()
 
-# ================= 網頁路由區塊 =================
 @app.get("/")
 def serve_home(): return FileResponse("index.html")
 @app.head("/")

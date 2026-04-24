@@ -23,7 +23,7 @@
         <div class="text-center mb-8 relative">
             <h1 class="text-3xl md:text-4xl font-bold text-slate-800 mb-2">杰運汽車新竹店阿鍇專用 - 內部系統</h1>
             <p class="text-slate-500 font-bold">請選擇您要使用的工具</p>
-            <button onclick="liffLogout()" class="absolute right-0 top-0 text-xs bg-slate-200 text-slate-600 px-3 py-1 rounded hover:bg-slate-300 transition">登出切換帳號</button>
+            <button onclick="liffLogout()" class="absolute right-0 top-0 text-xs bg-slate-200 text-slate-600 px-3 py-1 rounded hover:bg-slate-300 transition shadow-sm font-bold">登出切換帳號</button>
         </div>
         
         <div class="grid md:grid-cols-3 gap-6">
@@ -110,35 +110,50 @@
     <script>
         let myPermissions = {};
 
-        // 1. 網頁載入時立刻驗證身分
         async function initAuth() {
+            // 1. 先翻找手機有沒有「記憶吐司」
+            const storedUserId = localStorage.getItem('jw_user_id');
+            const storedPerms = localStorage.getItem('jw_permissions');
+
+            if (storedUserId && storedPerms) {
+                // 🎉 VIP 快速通關！瞬間拿掉黑幕！
+                myPermissions = JSON.parse(storedPerms);
+                document.getElementById('loadingOverlay').style.display = 'none';
+                document.getElementById('mainContent').style.display = 'block';
+
+                // 背景悄悄更新權限，確保資料最新，不卡畫面
+                fetch(`/api/my_permissions?user_id=${storedUserId}`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if(data.status === "success") {
+                            myPermissions = data.permissions;
+                            localStorage.setItem('jw_permissions', JSON.stringify(myPermissions));
+                        }
+                    });
+                return; // 結束流程，不跑下面的 LINE 登入
+            }
+
+            // 2. 如果是第一次來，或是剛登出，才乖乖走 LINE 登入流程
             try {
                 await liff.init({ liffId: "2009888743-q1JdQOEa" });
                 
-                // 如果沒登入，強制導向 LINE 登入畫面
                 if (!liff.isLoggedIn()) {
                     liff.login({ redirectUri: window.location.href });
                     return;
                 }
                 
-                // 取得 LINE ID
                 const profile = await liff.getProfile();
                 const userId = profile.userId;
+                localStorage.setItem('jw_user_id', userId); // 發放記憶吐司
                 
-                // 把 ID 存入手機記憶體
-                localStorage.setItem('jw_user_id', userId);
-                
-                // 呼叫 API 取得此人的全部權限
                 const res = await fetch(`/api/my_permissions?user_id=${userId}`);
                 const data = await res.json();
                 
                 if (data.status === "success") {
                     myPermissions = data.permissions;
-                    // 將權限清單存入記憶體，讓其他子網頁可以快速取用
                     localStorage.setItem('jw_permissions', JSON.stringify(myPermissions));
                 }
                 
-                // 驗證通過，關閉黑幕，顯示主畫面
                 document.getElementById('loadingOverlay').style.display = 'none';
                 document.getElementById('mainContent').style.display = 'block';
                 
@@ -148,23 +163,21 @@
             }
         }
 
-        // 2. 點擊按鈕時檢查權限
+        // 點擊卡片時的權限檢查
         function goToPage(event, url, actionName) {
-            event.preventDefault(); // 阻止原本的跳轉
+            event.preventDefault(); 
             
             const isSuperAdmin = String(myPermissions['最高管理員'] || '').toUpperCase() === 'V';
             const hasAuth = String(myPermissions[actionName] || '').toUpperCase() === 'V';
             
             if (isSuperAdmin || hasAuth) {
-                // 有權限，放行
                 window.location.href = url;
             } else {
-                // 沒權限，擋下
                 alert(`⛔ 存取被拒絕！\n\n抱歉，您的帳號尚未開通【${actionName}】的權限。\n請聯繫阿鍇為您開通。`);
             }
         }
 
-        // 3. 登出功能
+        // 登出按鈕
         function liffLogout() {
             localStorage.removeItem('jw_user_id');
             localStorage.removeItem('jw_permissions');
@@ -172,7 +185,7 @@
             window.location.reload();
         }
 
-        // 4. 上傳 Excel (加上權限防護)
+        // 上傳 Excel 權限鎖
         async function uploadExcel() {
             const isSuperAdmin = String(myPermissions['最高管理員'] || '').toUpperCase() === 'V';
             const canUpload = String(myPermissions['上傳檔案'] || '').toUpperCase() === 'V';
@@ -222,7 +235,6 @@
             }
         }
 
-        // 網頁載入時立刻啟動驗證
         window.onload = initAuth;
     </script>
 </body>

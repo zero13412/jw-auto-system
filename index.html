@@ -219,7 +219,7 @@
                     localStorage.setItem('jw_permissions', JSON.stringify(myPermissions));
                     
                     if (data.is_new) {
-                        alert(`👋 歡迎 ${userName}！\n\n系統已自動在 Google Sheet 幫您「遞名片」登記囉！\n請連繫阿鍇幫您開通權限。`);
+                        alert(`👋 歡迎 ${userName}！\n\n系統已自動登記囉！\n請連繫阿鍇幫您開通權限。`);
                     }
                 }
                 
@@ -229,7 +229,7 @@
                 
             } catch (err) { 
                 console.error(err);
-                document.getElementById('loadingOverlay').innerHTML = "❌ 系統連線失敗，請重新整理";
+                document.getElementById('loadingOverlay').innerHTML = "❌ 系統連線異常，請重新整理";
             }
         }
 

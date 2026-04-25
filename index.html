@@ -16,7 +16,7 @@
         <div class="text-2xl sm:text-3xl font-bold animate-pulse mb-4 flex items-center gap-3">
             <span class="text-4xl">🛡️</span> 正在同步雲端權限...
         </div>
-        <p class="text-gray-400">請稍候，正在為您辦理入庫報到</p>
+        <p class="text-gray-400">請稍後 正在載入網頁</p>
     </div>
 
     <div id="loginModal" class="fixed inset-0 bg-slate-900 bg-opacity-80 z-[60] flex items-center justify-center hidden" style="backdrop-filter: blur(4px);">
@@ -50,14 +50,16 @@
         <div class="text-center mb-8 relative">
             <h1 class="text-3xl md:text-4xl font-bold text-slate-800 mb-2">杰運汽車新竹店阿鍇專用 - 內部系統</h1>
             <p class="text-slate-500 font-bold mb-4">請選擇您要使用的工具</p>
-            <button onclick="liffLogout()" class="absolute right-0 top-0 text-xs bg-slate-200 text-slate-600 px-3 py-1 rounded hover:bg-slate-300 transition shadow-sm font-bold">登出切換帳號</button>
             
-            <div id="userBadge" class="inline-flex items-center justify-center gap-2 text-sm bg-white border border-gray-200 text-slate-700 px-4 py-1.5 rounded-full shadow-sm font-bold mx-auto mt-2">
-                <span class="relative flex h-3 w-3">
-                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                </span>
-                驗證中...
+            <div class="flex items-center justify-center gap-3 mt-2">
+                <div id="userBadge" class="inline-flex items-center justify-center gap-2 text-sm bg-white border border-gray-200 text-slate-700 px-4 py-1.5 rounded-full shadow-sm font-bold">
+                    <span class="relative flex h-3 w-3">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                    </span>
+                    驗證中...
+                </div>
+                <button onclick="liffLogout()" class="text-xs bg-slate-200 text-slate-600 px-4 py-1.5 rounded-full hover:bg-slate-300 transition shadow-sm font-bold active:scale-95">登出</button>
             </div>
         </div>
         
@@ -227,7 +229,7 @@
                 
             } catch (err) { 
                 console.error(err);
-                document.getElementById('loadingOverlay').innerHTML = "❌ 系統連線異常，請重新整理";
+                document.getElementById('loadingOverlay').innerHTML = "❌ 系統連線失敗，請重新整理";
             }
         }
 

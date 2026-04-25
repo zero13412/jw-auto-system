@@ -44,11 +44,8 @@
                 <a href="/" class="bg-yellow-500 hover:bg-yellow-600 text-slate-900 font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm">
                     🏠 首頁
                 </a>
-                <button @click="syncBackend()" class="bg-red-600 hover:bg-red-700 px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm flex-1 sm:flex-none">
-                    🌐 更新車源表
-                </button>
                 <button @click="refreshData" class="bg-blue-600 hover:bg-blue-700 px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm flex-1 sm:flex-none">
-                    🔄 重新整理
+                    🔄 重新載入庫存
                 </button>
             </div>
             <div class="w-full text-center sm:text-right text-xs text-green-400 mt-1 sm:mt-0 sm:absolute sm:bottom-1 sm:right-4 pointer-events-none">
@@ -234,6 +231,10 @@
                             </div>
                         </div>
                     </div>
+                    
+                    <div v-if="cars.length === 0" class="text-center py-10 text-gray-500 text-lg border-2 border-dashed border-gray-300 rounded-lg bg-white">
+                        ❌ 找不到符合條件的車輛
+                    </div>
                 </div>
             </main>
         </div>
@@ -286,8 +287,9 @@
                 const searchCarsMobile = () => { searchCars(); showMobileFilters.value = false; };
 
                 const refreshData = async () => {
-                    statusMessage.value = "重新整理中...";
+                    statusMessage.value = "重新載入庫存中...";
                     loading.value = true;
+                    loadingText.value = "更新資料中...";
                     try {
                         await fetch(`${API_URL}/refresh`);
                         await fetchOptions();
@@ -295,43 +297,6 @@
                         statusMessage.value = "✅ 整理完成";
                     } catch (e) { statusMessage.value = "整理失敗"; }
                     finally { loading.value = false; }
-                };
-
-                const syncBackend = async (retryUser = null, retryPwd = null) => {
-                    statusMessage.value = "更新車源表中...";
-                    loading.value = true;
-                    loadingText.value = "正在更新車源表...";
-                    
-                    try {
-                        const curUserId = localStorage.getItem('jw_user_id') || "";
-                        let url = `${API_URL}/sync_car_source?user_id=${encodeURIComponent(curUserId)}`; 
-                        
-                        if (retryUser && retryPwd) {
-                            url += `&u=${encodeURIComponent(retryUser)}&p=${encodeURIComponent(retryPwd)}`;
-                        }
-                        
-                        const res = await fetch(url);
-                        const data = await res.json();
-                        
-                        if (data.status === 'success') {
-                            alert(data.message);
-                            await refreshData();
-                        } else if (data.status === 'need_login') {
-                            loading.value = false;
-                            let newUser = prompt(data.message + "\n\n請輸入最新的【公司後台帳號】:");
-                            if (!newUser) return;
-                            let newPwd = prompt("請輸入最新的【公司後台密碼】:");
-                            if (!newPwd) return;
-                            await syncBackend(newUser, newPwd);
-                        } else {
-                            alert(data.message);
-                        }
-                    } catch (e) { statusMessage.value = "更新連線失敗"; }
-                    finally { 
-                        if (statusMessage.value !== "更新車源表中...") {
-                            loading.value = false; 
-                        }
-                    }
                 };
 
                 const resetFilters = () => {
@@ -366,7 +331,7 @@
 
                 return { 
                     cars, options, filters, loading, loadingText, statusMessage, showMobileFilters,
-                    searchCars, searchCarsMobile, resetFilters, refreshData, syncBackend, copyPlate, formatCondition, isWarning
+                    searchCars, searchCarsMobile, resetFilters, refreshData, copyPlate, formatCondition, isWarning
                 };
             }
         }).mount('#app');

@@ -59,17 +59,28 @@
             <div id="uploadSection" class="md:col-span-3 bg-white rounded-xl shadow-lg border-2 border-indigo-100 p-6 sm:p-8" style="display: none;">
                 <div class="flex flex-col md:flex-row items-center justify-between gap-6">
                     <div class="text-center md:text-left flex-1">
-                        <h2 class="text-2xl font-bold text-indigo-700 mb-2">📥 總表自動同步 (管理員專用)</h2>
-                        <p class="text-gray-500 text-sm">請上傳 Excel/PDF，系統將自動分析數據並存入 Google Sheet。</p>
+                        <h2 class="text-2xl font-bold text-indigo-700 mb-2">📥 系統資料同步中心 (管理員專用)</h2>
+                        <p class="text-gray-500 text-sm">您可以自動抓取公司後台車源，或手動上傳 Excel/PDF 同步至系統資料庫。</p>
                     </div>
-                    <div class="w-full md:w-auto flex flex-col items-center gap-3">
-                        <label class="block w-full text-center bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg py-3 px-4 cursor-pointer hover:bg-indigo-100 transition font-bold">
-                            📂 選擇 Excel 檔案
-                            <input type="file" id="excelFile" accept=".xlsx,.pdf" class="hidden">
-                        </label>
-                        <button onclick="uploadExcel()" id="uploadBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition w-full">
-                            🚀 上傳並同步資料
+                    <div class="w-full md:w-auto flex flex-col items-center gap-3 md:min-w-[300px]">
+                        
+                        <button onclick="syncBackend()" id="syncBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition w-full flex items-center justify-center gap-2" style="display: none;">
+                            🌐 自動抓取後台車源
                         </button>
+
+                        <hr id="dividerLine" class="w-full border-indigo-100 my-1" style="display: none;">
+
+                        <div id="fileUploadBlock" class="w-full flex flex-col gap-3" style="display: none;">
+                            <label class="block w-full text-center bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg py-3 px-4 cursor-pointer hover:bg-indigo-100 transition font-bold">
+                                📂 選擇 Excel 檔案
+                                <input type="file" id="excelFile" accept=".xlsx,.pdf" class="hidden" onchange="document.getElementById('fileName').textContent = this.files[0]?.name || '未選擇檔案'">
+                            </label>
+                            <div id="fileName" class="text-xs text-gray-500 truncate w-full text-center">未選擇檔案</div>
+                            <button onclick="uploadExcel()" id="uploadBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition w-full">
+                                🚀 上傳並同步資料
+                            </button>
+                        </div>
+                        
                     </div>
                 </div>
                 <div id="uploadStatus" class="mt-4 text-center font-bold text-sm hidden p-3 rounded-lg"></div>
@@ -86,9 +97,15 @@
                 <span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span></span>
                 ${name} <span class="text-xs font-normal text-gray-400 ml-1">(登出)</span>`;
             
+            // 🚀 控制管理員區塊顯示
             const isSuper = String(perms['最高管理員'] || '').toUpperCase() === 'V';
             const canUpload = String(perms['上傳檔案'] || '').toUpperCase() === 'V';
-            document.getElementById('uploadSection').style.display = (isSuper || canUpload) ? 'block' : 'none';
+            const canSync = String(perms['更新車源'] || '').toUpperCase() === 'V';
+            
+            document.getElementById('uploadSection').style.display = (isSuper || canUpload || canSync) ? 'block' : 'none';
+            document.getElementById('syncBtn').style.display = (isSuper || canSync) ? 'flex' : 'none';
+            document.getElementById('fileUploadBlock').style.display = (isSuper || canUpload) ? 'flex' : 'none';
+            document.getElementById('dividerLine').style.display = ((isSuper || canSync) && (isSuper || canUpload)) ? 'block' : 'none';
         }
 
         async function initAuth() {
@@ -134,22 +151,91 @@
             window.location.reload();
         }
 
+        // 🚀 自動抓取後台車源功能
+        async function syncBackend(retryUser = null, retryPwd = null) {
+            const statusDiv = document.getElementById('uploadStatus');
+            const syncBtn = document.getElementById('syncBtn');
+            
+            statusDiv.textContent = "⏳ 正在連線公司後台更新車源表...";
+            statusDiv.style.display = "block";
+            statusDiv.className = "mt-4 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block";
+            syncBtn.disabled = true;
+            syncBtn.classList.add("opacity-50", "cursor-not-allowed");
+            
+            try {
+                const curUserId = localStorage.getItem('jw_user_id') || "";
+                let url = `/api/sync_car_source?user_id=${encodeURIComponent(curUserId)}`; 
+                
+                if (retryUser && retryPwd) {
+                    url += `&u=${encodeURIComponent(retryUser)}&p=${encodeURIComponent(retryPwd)}`;
+                }
+                
+                const res = await fetch(url);
+                const data = await res.json();
+                
+                if (data.status === 'success') {
+                    statusDiv.textContent = "✅ " + data.message;
+                    statusDiv.className = "mt-4 text-center font-bold text-sm bg-green-50 text-green-700 p-3 rounded-lg block";
+                    alert(data.message);
+                } else if (data.status === 'need_login') {
+                    statusDiv.style.display = "none";
+                    let newUser = prompt(data.message + "\n\n請輸入最新的【公司後台帳號】\n(如果帳號沒變照舊填):");
+                    if (!newUser) return;
+                    let newPwd = prompt("請輸入最新的【公司後台密碼】:");
+                    if (!newPwd) return;
+                    await syncBackend(newUser, newPwd);
+                } else {
+                    statusDiv.textContent = "❌ " + data.message;
+                    statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
+                    alert(data.message);
+                }
+            } catch (e) { 
+                statusDiv.textContent = "❌ 更新連線失敗";
+                statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
+            } finally { 
+                syncBtn.disabled = false;
+                syncBtn.classList.remove("opacity-50", "cursor-not-allowed");
+            }
+        }
+
+        // 手動上傳 Excel 功能
         async function uploadExcel() {
             const fileInput = document.getElementById('excelFile');
+            const statusDiv = document.getElementById('uploadStatus');
+            const btn = document.getElementById('uploadBtn');
+
             if (!fileInput.files[0]) { alert("請先選擇檔案"); return; }
+            
             const formData = new FormData();
             formData.append("file", fileInput.files[0]);
             
-            const statusDiv = document.getElementById('uploadStatus');
-            statusDiv.textContent = "⏳ 處理中...";
+            statusDiv.textContent = "⏳ 資料處理中...系統正在判斷檔名與解析底色...";
             statusDiv.style.display = "block";
+            statusDiv.className = "mt-4 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block";
+            btn.disabled = true;
+            btn.classList.add("opacity-50", "cursor-not-allowed");
 
             try {
                 const response = await fetch('/api/upload_excel', { method: 'POST', body: formData });
                 const result = await response.json();
-                alert(result.message);
-                statusDiv.style.display = "none";
-            } catch (error) { alert("上傳失敗"); }
+                
+                if (result.status === "success") {
+                    statusDiv.textContent = "✅ " + result.message;
+                    statusDiv.className = "mt-4 text-center font-bold text-sm bg-green-50 text-green-700 p-3 rounded-lg block";
+                    fileInput.value = ""; 
+                    document.getElementById('fileName').textContent = '未選擇檔案';
+                    alert(result.message);
+                } else {
+                    statusDiv.textContent = "❌ " + result.message;
+                    statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
+                }
+            } catch (error) { 
+                statusDiv.textContent = "❌ 上傳失敗，網路異常";
+                statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
+            } finally {
+                btn.disabled = false;
+                btn.classList.remove("opacity-50", "cursor-not-allowed");
+            }
         }
 
         window.onload = initAuth;

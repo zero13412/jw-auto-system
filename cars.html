@@ -159,7 +159,6 @@
             <main class="flex-1 overflow-y-auto p-3 sm:p-6 bg-gray-100 relative w-full">
                 <div v-if="loading" class="absolute inset-0 flex flex-col items-center justify-center bg-white/70 z-10">
                     <span class="text-2xl font-bold text-indigo-600 mb-2">⏳ {{ loadingText || '載入中...' }}</span>
-                    <span v-if="loadingText" class="text-gray-500 text-sm animate-pulse">大約需要 30 秒到 1 分鐘，請稍候</span>
                 </div>
 
                 <div v-else class="space-y-4 max-w-5xl mx-auto">
@@ -195,15 +194,11 @@
                                         產權: {{ car.filter_property }}
                                     </span>
                                     <span v-else class="text-green-700">公司: {{ car.公司 }}</span>
-                                    
                                     <span class="text-green-700">|</span>
-                                    
                                     <span :class="isWarning(car.KEY) ? 'flash-text px-1 rounded text-red-600' : 'text-green-700'">
                                         KEY: {{ (!car.KEY || String(car.KEY).trim() === 'nan') ? '無' : car.KEY }}
                                     </span>
-                                    
                                     <span class="text-green-700">|</span>
-                                    
                                     <span :class="isWarning(car.出廠) ? 'flash-text px-1 rounded text-red-600' : 'text-green-700'">
                                         出廠: {{ (!car.出廠 || String(car.出廠).trim() === 'nan') ? '無' : String(car.出廠).split(' ')[0] }}
                                     </span>
@@ -238,10 +233,6 @@
                                 </div>
                             </div>
                         </div>
-                    </div>
-                    
-                    <div v-if="cars.length === 0" class="text-center py-10 text-gray-500 text-lg border-2 border-dashed border-gray-300 rounded-lg bg-white">
-                        ❌ 找不到符合條件的車輛
                     </div>
                 </div>
             </main>
@@ -281,86 +272,64 @@
                     try {
                         const params = new URLSearchParams();
                         for (let key in filters) {
-                            if (filters[key] !== "" && filters[key] !== false) {
-                                params.append(key, filters[key]);
-                            }
+                            if (filters[key] !== "" && filters[key] !== false) params.append(key, filters[key]);
                         }
                         if (!filters.max_price) params.set('max_price', 99999);
-
                         const res = await fetch(`${API_URL}/cars?${params.toString()}`);
                         const data = await res.json();
                         cars.value = data.data;
                         statusMessage.value = `查詢成功，共 ${data.total} 筆`;
-                    } catch (e) {
-                        statusMessage.value = "連線失敗";
-                    } finally {
-                        loading.value = false;
-                        loadingText.value = "";
-                    }
+                    } catch (e) { statusMessage.value = "連線失敗"; }
+                    finally { loading.value = false; }
                 };
 
-                const searchCarsMobile = () => {
-                    searchCars();
-                    showMobileFilters.value = false;
-                };
+                const searchCarsMobile = () => { searchCars(); showMobileFilters.value = false; };
 
                 const refreshData = async () => {
-                    statusMessage.value = "同步資料中...";
+                    statusMessage.value = "重新整理中...";
                     loading.value = true;
-                    loadingText.value = "同步資料中...";
                     try {
                         await fetch(`${API_URL}/refresh`);
                         await fetchOptions();
                         await searchCars();
-                        statusMessage.value = "✅ 同步完成";
-                    } catch (e) { statusMessage.value = "同步失敗"; }
+                        statusMessage.value = "✅ 整理完成";
+                    } catch (e) { statusMessage.value = "整理失敗"; }
+                    finally { loading.value = false; }
                 };
 
-                // 💡 升級版：支援傳入新帳號密碼的自動重試功能
                 const syncBackend = async (retryUser = null, retryPwd = null) => {
                     statusMessage.value = "更新車源表中...";
                     loading.value = true;
-                    loadingText.value = "正在連線公司後台...";
+                    loadingText.value = "正在更新車源表...";
                     
                     try {
-                        let url = `${API_URL}/sync_car_source`;
+                        const curUserId = localStorage.getItem('jw_user_id') || "";
+                        let url = `${API_URL}/sync_car_source?user_id=${encodeURIComponent(curUserId)}`; 
+                        
                         if (retryUser && retryPwd) {
-                            url += `?u=${encodeURIComponent(retryUser)}&p=${encodeURIComponent(retryPwd)}`;
+                            url += `&u=${encodeURIComponent(retryUser)}&p=${encodeURIComponent(retryPwd)}`;
                         }
+                        
                         const res = await fetch(url);
                         const data = await res.json();
                         
                         if (data.status === 'success') {
-                            statusMessage.value = "✅ 抓取完成！";
                             alert(data.message);
                             await refreshData();
-                            
                         } else if (data.status === 'need_login') {
-                            // 遇到密碼錯誤，暫時解除 loading
                             loading.value = false;
-                            alert("🚨 " + data.message);
-                            
-                            // 跳出視窗要新帳密
-                            let newUser = prompt("請輸入最新的【公司後台帳號】\n(如果帳號沒變，請照填原來的帳號):");
-                            if (!newUser) { statusMessage.value = "已取消更新"; return; }
-                            
+                            let newUser = prompt(data.message + "\n\n請輸入最新的【公司後台帳號】:");
+                            if (!newUser) return;
                             let newPwd = prompt("請輸入最新的【公司後台密碼】:");
-                            if (!newPwd) { statusMessage.value = "已取消更新"; return; }
-                            
-                            // 拿到新密碼，重新呼叫自己一次！
+                            if (!newPwd) return;
                             await syncBackend(newUser, newPwd);
-                            
                         } else {
-                            statusMessage.value = "❌ 抓取失敗：" + data.message;
                             alert(data.message);
                         }
-                    } catch (e) { 
-                        statusMessage.value = "抓取連線失敗"; 
-                    } finally {
-                        // 確保如果不是正在重試，就把 loading 關掉
+                    } catch (e) { statusMessage.value = "更新連線失敗"; }
+                    finally { 
                         if (statusMessage.value !== "更新車源表中...") {
-                            loading.value = false;
-                            loadingText.value = "";
+                            loading.value = false; 
                         }
                     }
                 };
@@ -374,13 +343,13 @@
                     searchCarsMobile();
                 };
 
-                const copyPlate = (plate, model) => {
+                const copyPlate = (plate) => {
                     if (plate && plate !== 'nan') {
                         navigator.clipboard.writeText(plate).then(() => {
                             statusMessage.value = `📋 已複製 [${plate}]`;
                             setTimeout(() => statusMessage.value = "系統準備就緒", 3000);
                         });
-                    } else { alert("此車輛沒有車牌資料！"); }
+                    } else { alert("無車牌資料！"); }
                 };
 
                 const formatCondition = (cond) => {
@@ -390,18 +359,14 @@
 
                 const isWarning = (val) => {
                     if (!val || String(val).trim() === 'nan' || String(val).trim() === '') return true;
-                    let s = String(val).trim().toUpperCase();
-                    return s !== 'V'; 
+                    return String(val).trim().toUpperCase() !== 'V'; 
                 };
 
-                onMounted(() => { 
-                    fetchOptions().then(searchCars); 
-                });
+                onMounted(() => { fetchOptions().then(searchCars); });
 
                 return { 
                     cars, options, filters, loading, loadingText, statusMessage, showMobileFilters,
-                    searchCars, searchCarsMobile, resetFilters, refreshData, syncBackend, copyPlate, formatCondition,
-                    isWarning
+                    searchCars, searchCarsMobile, resetFilters, refreshData, syncBackend, copyPlate, formatCondition, isWarning
                 };
             }
         }).mount('#app');

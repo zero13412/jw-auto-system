@@ -6,6 +6,25 @@
     <title>🤝 恭喜成交系統 - 杰運汽車</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    
+    <script>
+        const userId = localStorage.getItem('jw_user_id');
+        const permsRaw = localStorage.getItem('jw_permissions');
+        
+        if (!userId || !permsRaw) {
+            window.location.href = "/";
+        } else {
+            const perms = JSON.parse(permsRaw);
+            const isSuperAdmin = String(perms['最高管理員']).toUpperCase() === 'V';
+            const hasAuth = String(perms['成交系統']).toUpperCase() === 'V'; // ⚠️ 專屬此頁的權限檢查
+            
+            if (!isSuperAdmin && !hasAuth) {
+                alert("⛔ 存取被拒絕！您沒有【成交系統】的使用權限。");
+                window.location.href = "/";
+            }
+        }
+    </script>
+
     <style>
         body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
         [v-cloak] { display: none !important; }
@@ -54,6 +73,14 @@
                             <label class="flex items-center gap-1 cursor-pointer">
                                 <input type="radio" v-model="settings.discount" value="不能折"> 不折
                             </label>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold text-rose-600 mb-1">發票設定 (買公司):</label>
+                        <div class="flex gap-4 text-sm">
+                            <label class="flex items-center gap-1 cursor-pointer"><input type="radio" v-model="settings.tax_2_percent" value="+2%"> +2% 稅金</label>
+                            <label class="flex items-center gap-1 cursor-pointer"><input type="radio" v-model="settings.tax_2_percent" value="不加"> 不加</label>
                         </div>
                     </div>
 
@@ -179,7 +206,7 @@
                 ];
 
                 const settings = reactive({
-                    discount: "折1.1萬", subsidy: "不折",
+                    discount: "折1.1萬", subsidy: "不折", tax_2_percent: "不加",
                     deposit: "2.9", site: "新竹店", trans_store: "新竹店"
                 });
 
@@ -268,12 +295,19 @@
                     let current_price_yuan = list_price_wan * 10000;
 
                     if (settings.discount === "折1.1萬") current_price_yuan -= 11000;
+                    
+                    // 💡 加入 2% 稅金計算 (以折1.1萬後的價格計算)
+                    if (settings.tax_2_percent === "+2%") {
+                        current_price_yuan = Math.round(current_price_yuan * 1.02);
+                    }
+
                     if (settings.subsidy === "折3264") current_price_yuan -= 3264;
 
-                    if (settings.subsidy === "折3264") {
+                    // 判斷是否需要用「元」做單位
+                    if (settings.subsidy === "折3264" || settings.tax_2_percent === "+2%") {
                         car.deal_price = Math.round(current_price_yuan).toString();
                     } else {
-                        // 【修改】：使用 Number() 轉換，自動去掉 73.80萬 後面多餘的 0
+                        // 使用 Number() 轉換，自動去掉後面多餘的 0
                         car.deal_price = Number((current_price_yuan / 10000).toFixed(2)).toString();
                     }
                 };
@@ -286,7 +320,8 @@
                     calcPrice();
                 });
 
-                watch([() => settings.discount, () => settings.subsidy], calcPrice);
+                // 監聽三個會影響價錢的選項
+                watch([() => settings.discount, () => settings.subsidy, () => settings.tax_2_percent], calcPrice);
 
                 const generateText = () => {
                     calcPrice(); 
@@ -299,11 +334,19 @@
                     let price_after_11k = list_price_yuan;
                     if (settings.discount === "折1.1萬") price_after_11k -= 11000;
 
+                    // 💡 計算 2% 稅金
+                    let price_after_tax = price_after_11k;
+                    let has_tax = (settings.tax_2_percent === "+2%");
+                    if (has_tax) price_after_tax = Math.round(price_after_tax * 1.02);
+
                     let has_subsidy = (settings.subsidy === "折3264");
-                    let price_after_subsidy = price_after_11k;
+                    let price_after_subsidy = price_after_tax;
                     if (has_subsidy) price_after_subsidy -= 3264;
 
                     let final_balance = price_after_subsidy - deposit_yuan;
+                    
+                    // 決定最終單位
+                    let use_yuan = (has_subsidy || has_tax);
 
                     let company_str = car.company || "";
                     let source_header = "";
@@ -349,9 +392,10 @@
                         `里程: ${m_str}`,
                         `售價：${car.list_price}萬`,
                         (settings.discount === "折1.1萬" ? "線上折1.1萬" : ""),
+                        (has_tax ? "買公司名加2%稅金" : ""),
                         (has_subsidy ? "貸款補貼息3264元" : ""),
                         "合約車主:",
-                        `合約售價：${car.deal_price}${has_subsidy ? '元' : '萬'}`,
+                        `合約售價：${car.deal_price}${use_yuan ? '元' : '萬'}`,
                         "付款方式:匯款/貸款",
                         "匯款人：",
                         "金額： 萬",
@@ -370,8 +414,9 @@
                         "【金額試算明細】",
                         `售價 (網路)： ${list_price_wan} 萬`,
                         settings.discount === "折1.1萬" ? `折1.1萬後 ： ${Number((price_after_11k/10000).toFixed(2))} 萬` : "",
+                        has_tax ? `買公司加2%： ${Math.round(price_after_tax)} 元` : "",
                         has_subsidy ? "貸款補貼息： 有 (折3264)" : "",
-                        `合約總價  ： ${has_subsidy ? Math.round(price_after_subsidy) + '元' : Number((price_after_subsidy/10000).toFixed(2)) + '萬'}`,
+                        `合約總價  ： ${use_yuan ? Math.round(price_after_subsidy) + '元' : Number((price_after_subsidy/10000).toFixed(2)) + '萬'}`,
                         `訂金 (${deposit_wan}萬) 後尾款： ${Math.round(final_balance)} 元`
                     ];
                     let calcStr = "\n\n\n\n" + calcStrLines.filter(line => line !== "").join("\n");

@@ -7,6 +7,27 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        const userId = localStorage.getItem('jw_user_id');
+        const permsRaw = localStorage.getItem('jw_permissions');
+        
+        if (!userId || !permsRaw) {
+            // 如果沒登入過，直接踢回首頁
+            window.location.href = "/";
+        } else {
+            // 如果有登入，檢查有沒有這個頁面的權限
+            const perms = JSON.parse(permsRaw);
+            const isSuperAdmin = String(perms['最高管理員']).toUpperCase() === 'V';
+            const hasAuth = String(perms['戰情室']).toUpperCase() === 'V'; // ⚠️ 專屬此頁的權限檢查
+            
+            if (!isSuperAdmin && !hasAuth) {
+                alert("⛔ 存取被拒絕！您沒有【戰情室】的瀏覽權限。");
+                window.location.href = "/";
+            }
+        }
+    </script>
+
     <style>
         body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F4F6F9; }
         [v-cloak] { display: none !important; }
@@ -186,7 +207,6 @@
                         statusMessage.value = "🔄 正在從雲端取得最新車源...";
                         const [optRes, carsRes] = await Promise.all([
                             fetch(`${API_URL}/options`),
-                            // 【升級】：API 讀取時，直接要求過濾掉已售與取證的車輛
                             fetch(`${API_URL}/cars?limit=5000&hide_sold=true&hide_cert=true`) 
                         ]);
                         
@@ -199,7 +219,6 @@
                         allCars = carsData.data.map((c, index) => {
                             let price = parseFloat(c['顯示價格']) || 0;
                             
-                            // 【升級】：處理 202411 這種新格式，並算出數字年份與顯示字串
                             let raw_year = String(c['年份'] || c['clean_year'] || '').replace('.0', '').trim();
                             let numYear = 0;
                             let yearDisplay = raw_year;
@@ -213,7 +232,6 @@
                                 numYear = parseFloat(raw_year.replace(/[^\d.]/g, '')) || 0;
                             }
 
-                            // 【升級】：里程自動換算回「萬公里」顯示
                             let m_val = parseFloat(c['里程']) || 0;
                             let m_display = "";
                             if (m_val > 1000) {

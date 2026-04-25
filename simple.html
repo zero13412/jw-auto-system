@@ -6,6 +6,27 @@
     <title>📊 新竹車源即時看板 - 杰運汽車</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    
+    <script>
+        const userId = localStorage.getItem('jw_user_id');
+        const permsRaw = localStorage.getItem('jw_permissions');
+        
+        if (!userId || !permsRaw) {
+            // 如果沒登入過，直接踢回首頁
+            window.location.href = "/";
+        } else {
+            // 如果有登入，檢查有沒有這個頁面的權限
+            const perms = JSON.parse(permsRaw);
+            const isSuperAdmin = String(perms['最高管理員']).toUpperCase() === 'V';
+            const hasAuth = String(perms['新竹看板']).toUpperCase() === 'V'; // ⚠️ 已經幫您改成這頁專屬的名字囉！
+            
+            if (!isSuperAdmin && !hasAuth) {
+                alert("⛔ 存取被拒絕！您沒有【新竹看板】的瀏覽權限。");
+                window.location.href = "/";
+            }
+        }
+    </script>
+
     <style>
         body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
         [v-cloak] { display: none !important; }

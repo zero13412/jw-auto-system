@@ -6,6 +6,25 @@
     <title>🚚 車輛調度與訂購系統 - 杰運汽車</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <script>
+        const userId = localStorage.getItem('jw_user_id');
+        const permsRaw = localStorage.getItem('jw_permissions');
+        
+        if (!userId || !permsRaw) {
+            window.location.href = "/";
+        } else {
+            const perms = JSON.parse(permsRaw);
+            const isSuperAdmin = String(perms['最高管理員']).toUpperCase() === 'V';
+            const hasAuth = String(perms['調度系統']).toUpperCase() === 'V'; // ⚠️ 專屬此頁的權限檢查
+            
+            if (!isSuperAdmin && !hasAuth) {
+                alert("⛔ 存取被拒絕！您沒有【調度系統】的使用權限。");
+                window.location.href = "/";
+            }
+        }
+    </script>
+
     <style>
         body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
         [v-cloak] { display: none !important; }

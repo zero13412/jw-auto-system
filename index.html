@@ -13,226 +13,126 @@
 <body class="bg-slate-100 min-h-screen flex items-center justify-center p-4 relative">
     
     <div id="loadingOverlay" class="fixed inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center text-white">
-        <div class="text-2xl sm:text-3xl font-bold animate-pulse mb-4 flex items-center gap-3">
+        <div class="text-2xl font-bold animate-pulse mb-4 flex items-center gap-3">
             <span class="text-4xl">🛡️</span> 正在驗證您的存取權限...
         </div>
-        <p class="text-gray-400">請稍候，系統正在讀取您的專屬設定</p>
     </div>
 
     <div class="max-w-6xl w-full" id="mainContent" style="display: none;">
-        <div class="text-center mb-8 relative">
+        <div class="text-center mb-8 flex flex-col items-center">
             <h1 class="text-3xl md:text-4xl font-bold text-slate-800 mb-2">杰運汽車新竹店阿鍇專用 - 內部系統</h1>
-            <p class="text-slate-500 font-bold">請選擇您要使用的工具</p>
-            <button onclick="liffLogout()" class="absolute right-0 top-0 text-xs bg-slate-200 text-slate-600 px-3 py-1 rounded hover:bg-slate-300 transition shadow-sm font-bold">登出切換帳號</button>
+            <p class="text-slate-500 font-bold mb-4">請選擇您要使用的工具</p>
+            
+            <button onclick="liffLogout()" id="userBadge" class="inline-flex items-center justify-center gap-2 text-sm bg-white border border-gray-200 text-slate-700 px-4 py-1.5 rounded-full hover:bg-slate-50 transition shadow-sm font-bold">
+                <span class="relative flex h-3 w-3">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                </span>
+                載入中...
+            </button>
         </div>
         
         <div class="grid md:grid-cols-3 gap-6">
             <a onclick="goToPage(event, '/cars', 'E車源看板')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
                 <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">🔍</div>
                 <h2 class="text-xl font-bold text-slate-800 mb-2">E車源分析系統</h2>
-                <p class="text-gray-500 text-xs">查詢車輛庫存、價格篩選</p>
             </a>
             
             <a onclick="goToPage(event, '/deal', '成交系統')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
                 <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">🤝</div>
                 <h2 class="text-xl font-bold text-slate-800 mb-2">恭喜成交系統</h2>
-                <p class="text-gray-500 text-xs">一鍵生成三區合約文字模板</p>
             </a>
 
             <a onclick="goToPage(event, '/dispatch', '調度系統')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
                 <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">🚚</div>
                 <h2 class="text-xl font-bold text-slate-800 mb-2">車輛調度系統</h2>
-                <p class="text-gray-500 text-xs">自動計算費用、生成內部回報</p>
             </a>
-            
+
             <a onclick="goToPage(event, '/loan', '分期試算')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
                 <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">📈</div>
                 <h2 class="text-xl font-bold text-slate-800 mb-2">分期試算工具</h2>
-                <p class="text-gray-500 text-xs">計算月付、總利息與加價表</p>
             </a>
 
             <a onclick="goToPage(event, '/simple', '新竹看板')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
                 <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">📊</div>
                 <h2 class="text-xl font-bold text-slate-800 mb-2">新竹車源即時看板</h2>
-                <p class="text-gray-500 text-xs">新竹車源即時過濾與計算看板</p>
             </a>
 
-            <a onclick="goToPage(event, '/tax', '稅金計算')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border-rose-200 border-2 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
+            <a onclick="goToPage(event, '/tax', '稅金計算')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
                 <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">💰</div>
-                <h2 class="text-xl font-bold text-rose-800 mb-2">稅金計算小幫手</h2>
-                <p class="text-gray-500 text-xs">依比例計算過戶當日剩餘稅額</p>
+                <h2 class="text-xl font-bold text-slate-800 mb-2">稅金計算小幫手</h2>
             </a>
 
-            <a onclick="goToPage(event, '/cs', '戰情室')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border-emerald-200 border-2 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
+            <a onclick="goToPage(event, '/cs', '戰情室')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
                 <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">📞</div>
-                <h2 class="text-xl font-bold text-emerald-800 mb-2">收車估價戰情室</h2>
-                <p class="text-gray-500 text-xs">分析庫存行情與收購策略</p>
+                <h2 class="text-xl font-bold text-slate-800 mb-2">收車估價戰情室</h2>
             </a>
 
-            <a onclick="goToPage(event, '/customer', '客資系統')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border-cyan-200 border-2 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
+            <a onclick="goToPage(event, '/customer', '客資系統')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
                 <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">👥</div>
-                <h2 class="text-xl font-bold text-cyan-800 mb-2">客資管理看板 (CRM)</h2>
-                <p class="text-gray-500 text-xs">管理 LINE 紀錄的客戶資料</p>
+                <h2 class="text-xl font-bold text-slate-800 mb-2">客資管理看板</h2>
             </a>
 
-            <a onclick="goToPage(event, '/copy', '快速回覆')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border-fuchsia-200 border-2 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
+            <a onclick="goToPage(event, '/copy', '快速回覆')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
                 <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">📋</div>
-                <h2 class="text-xl font-bold text-fuchsia-800 mb-2">快捷回覆工具</h2>
-                <p class="text-gray-500 text-xs">一鍵複製刷卡連結與對客話術</p>
+                <h2 class="text-xl font-bold text-slate-800 mb-2">快捷回覆工具</h2>
             </a>
-            
-            <div class="md:col-span-3 mt-2 bg-white rounded-xl shadow-lg border-2 border-indigo-100 p-6 sm:p-8">
-                <div class="flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div class="text-center md:text-left flex-1">
-                        <h2 class="text-2xl font-bold text-indigo-700 mb-2">📥 總表自動同步 (支援多表自動分類)</h2>
-                        <p class="text-gray-600 text-sm leading-relaxed">
-                            請上傳 Excel 檔案。系統會自動根據檔名判斷：<br>
-                            檔名包含 <span class="font-bold text-red-500">"新竹"</span> ➔ 寫入「新竹車源」分頁<br>
-                            其他檔名 ➔ 寫入預設「E車源」與「E車源售出」分頁
-                        </p>
-                    </div>
-                    <div class="w-full md:w-auto flex flex-col items-center gap-3">
-                        <label class="block w-full text-center bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg py-3 px-4 cursor-pointer hover:bg-indigo-100 transition font-bold">
-                            📂 選擇 Excel 檔案
-                            <input type="file" id="excelFile" accept=".xlsx,.pdf" class="hidden" onchange="document.getElementById('fileName').textContent = this.files[0]?.name || '未選擇檔案'">
-                        </label>
-                        <div id="fileName" class="text-xs text-gray-500 truncate w-48 text-center">未選擇檔案</div>
-                        <button onclick="uploadExcel()" id="uploadBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition w-full shadow-indigo-200">
-                            🚀 上傳並同步資料
-                        </button>
-                    </div>
-                </div>
-                <div id="uploadStatus" class="mt-4 text-center font-bold text-sm hidden p-3 rounded-lg"></div>
-            </div>
         </div>
     </div>
 
     <script>
         let myPermissions = {};
 
+        function updateUserBadge(perms, fallbackName) {
+            const name = perms['姓名'] || fallbackName || '已登入';
+            document.getElementById('userBadge').innerHTML = `
+                <span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span></span>
+                ${name} <span class="text-xs font-normal text-gray-400 ml-1">(登出)</span>`;
+        }
+
         async function initAuth() {
-            // 1. 先翻找手機有沒有「記憶吐司」
             const storedUserId = localStorage.getItem('jw_user_id');
-            const storedPerms = localStorage.getItem('jw_permissions');
+            const storedUserName = localStorage.getItem('jw_user_name') || '';
 
-            if (storedUserId && storedPerms) {
-                // 🎉 VIP 快速通關！瞬間拿掉黑幕！
-                myPermissions = JSON.parse(storedPerms);
-                document.getElementById('loadingOverlay').style.display = 'none';
-                document.getElementById('mainContent').style.display = 'block';
-
-                // 背景悄悄更新權限，確保資料最新，不卡畫面
-                fetch(`/api/my_permissions?user_id=${storedUserId}`)
-                    .then(res => res.json())
-                    .then(data => {
-                        if(data.status === "success") {
-                            myPermissions = data.permissions;
-                            localStorage.setItem('jw_permissions', JSON.stringify(myPermissions));
-                        }
-                    });
-                return; // 結束流程，不跑下面的 LINE 登入
-            }
-
-            // 2. 如果是第一次來，或是剛登出，才乖乖走 LINE 登入流程
             try {
                 await liff.init({ liffId: "2009888743-q1JdQOEa" });
-                
-                if (!liff.isLoggedIn()) {
-                    liff.login({ redirectUri: window.location.href });
-                    return;
-                }
+                if (!liff.isLoggedIn()) { liff.login({ redirectUri: window.location.href }); return; }
                 
                 const profile = await liff.getProfile();
                 const userId = profile.userId;
-                localStorage.setItem('jw_user_id', userId); // 發放記憶吐司
+                const userName = profile.displayName;
                 
-                const res = await fetch(`/api/my_permissions?user_id=${userId}`);
+                localStorage.setItem('jw_user_id', userId); 
+                localStorage.setItem('jw_user_name', userName);
+
+                const res = await fetch(`/api/my_permissions?user_id=${userId}&user_name=${encodeURIComponent(userName)}`);
                 const data = await res.json();
                 
                 if (data.status === "success") {
                     myPermissions = data.permissions;
                     localStorage.setItem('jw_permissions', JSON.stringify(myPermissions));
+                    if (data.is_new) alert(`👋 歡迎首次使用，${userName}！\n\n系統已自動為您提交開通申請。\n請告知阿鍇幫您點亮「V」即可開始使用。`);
                 }
                 
                 document.getElementById('loadingOverlay').style.display = 'none';
                 document.getElementById('mainContent').style.display = 'block';
+                updateUserBadge(myPermissions, userName);
                 
-            } catch (err) {
-                console.error("登入失敗", err);
-                alert("系統連線異常，請確認網路狀態後重新整理網頁");
-            }
+            } catch (err) { alert("登入失敗，請檢查網路"); }
         }
 
-        // 點擊卡片時的權限檢查
         function goToPage(event, url, actionName) {
             event.preventDefault(); 
-            
             const isSuperAdmin = String(myPermissions['最高管理員'] || '').toUpperCase() === 'V';
             const hasAuth = String(myPermissions[actionName] || '').toUpperCase() === 'V';
-            
-            if (isSuperAdmin || hasAuth) {
-                window.location.href = url;
-            } else {
-                alert(`⛔ 存取被拒絕！\n\n抱歉，您的帳號尚未開通【${actionName}】的權限。\n請聯繫阿鍇為您開通。`);
-            }
+            if (isSuperAdmin || hasAuth) window.location.href = url;
+            else alert(`⛔ 存取被拒絕！\n\n您尚未開通【${actionName}】的權限。`);
         }
 
-        // 登出按鈕
         function liffLogout() {
-            localStorage.removeItem('jw_user_id');
-            localStorage.removeItem('jw_permissions');
+            localStorage.clear();
             try { liff.logout(); } catch(e) {}
             window.location.reload();
-        }
-
-        // 上傳 Excel 權限鎖
-        async function uploadExcel() {
-            const isSuperAdmin = String(myPermissions['最高管理員'] || '').toUpperCase() === 'V';
-            const canUpload = String(myPermissions['上傳檔案'] || '').toUpperCase() === 'V';
-            
-            if (!isSuperAdmin && !canUpload) {
-                alert("⛔ 存取被拒絕！您沒有【上傳檔案】的權限。");
-                return;
-            }
-
-            const fileInput = document.getElementById('excelFile');
-            const statusDiv = document.getElementById('uploadStatus');
-            const btn = document.getElementById('uploadBtn');
-            
-            if (!fileInput.files[0]) {
-                statusDiv.textContent = "❌ 請先點擊上方選擇 Excel/PDF 檔案！";
-                statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
-                return;
-            }
-
-            const formData = new FormData();
-            formData.append("file", fileInput.files[0]);
-
-            statusDiv.textContent = "⏳ 資料處理中...系統正在判斷檔名與底色，請稍候...";
-            statusDiv.className = "mt-4 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block";
-            btn.disabled = true;
-            btn.classList.add("opacity-50", "cursor-not-allowed");
-
-            try {
-                const response = await fetch('/api/upload_excel', { method: 'POST', body: formData });
-                const result = await response.json();
-                
-                if (result.status === "success") {
-                    statusDiv.textContent = "✅ " + result.message;
-                    statusDiv.className = "mt-4 text-center font-bold text-sm bg-green-50 text-green-700 p-3 rounded-lg block";
-                    fileInput.value = ""; 
-                    document.getElementById('fileName').textContent = '未選擇檔案';
-                } else {
-                    statusDiv.textContent = "❌ " + result.message;
-                    statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
-                }
-            } catch (error) {
-                statusDiv.textContent = "❌ 網路連線失敗或處理逾時。";
-                statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
-            } finally {
-                btn.disabled = false;
-                btn.classList.remove("opacity-50", "cursor-not-allowed");
-            }
         }
 
         window.onload = initAuth;

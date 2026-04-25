@@ -18,7 +18,7 @@
             // 如果有登入，檢查有沒有這個頁面的權限
             const perms = JSON.parse(permsRaw);
             const isSuperAdmin = String(perms['最高管理員']).toUpperCase() === 'V';
-            const hasAuth = String(perms['E車源看板']).toUpperCase() === 'V'; // ⚠️ 其他網頁只要改這裡的名字就好
+            const hasAuth = String(perms['E車源看板']).toUpperCase() === 'V'; 
             
             if (!isSuperAdmin && !hasAuth) {
                 alert("⛔ 存取被拒絕！您沒有【E車源看板】的瀏覽權限。");
@@ -47,10 +47,10 @@
                     🏠 首頁
                 </a>
                 <button @click="syncBackend" class="bg-red-600 hover:bg-red-700 px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm flex-1 sm:flex-none">
-                    🌐 抓取後台
+                    🌐 更新車源表
                 </button>
                 <button @click="refreshData" class="bg-blue-600 hover:bg-blue-700 px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm flex-1 sm:flex-none">
-                    🔄 更新資料
+                    🔄 重新整理
                 </button>
             </div>
             <div class="w-full text-center sm:text-right text-xs text-green-400 mt-1 sm:mt-0 sm:absolute sm:bottom-1 sm:right-4 pointer-events-none">
@@ -256,8 +256,6 @@
 
         createApp({
             setup() {
-                // 💡 移除了與驗證有關的變數 (isAuthorized, authLoading 等)，因為現在都交給最上面的 script 把關了
-
                 const cars = ref([]);
                 const options = reactive({ brands: [], locations: [], properties: [] });
                 const loading = ref(false);
@@ -270,8 +268,6 @@
                     model: "", plate: "", person: "", min_price: "", max_price: "",
                     sort_by: "最新入庫", hide_no_price: false, hide_sold: false, hide_cert: false, hide_reserved: false
                 });
-
-                // 💡 移除了 initAuth() 和 liffLogout()，因為登入和登出現在全部在首頁 (index.html) 處理！
 
                 const fetchOptions = async () => {
                     try {
@@ -323,9 +319,9 @@
                 };
 
                 const syncBackend = async () => {
-                    statusMessage.value = "連線後台抓取中...";
+                    statusMessage.value = "更新車源表中...";
                     loading.value = true;
-                    loadingText.value = "正在連線公司後台抓取 700+ 台車源...";
+                    loadingText.value = "正在更新車源表...";
                     try {
                         const res = await fetch(`${API_URL}/sync_car_source`);
                         const data = await res.json();
@@ -375,7 +371,6 @@
                 };
 
                 onMounted(() => { 
-                    // 💡 既然能進來這個頁面，代表上面那段 script 已經放行了，所以直接抓資料！
                     fetchOptions().then(searchCars); 
                 });
 
@@ -383,7 +378,6 @@
                     cars, options, filters, loading, loadingText, statusMessage, showMobileFilters,
                     searchCars, searchCarsMobile, resetFilters, refreshData, syncBackend, copyPlate, formatCondition,
                     isWarning
-                    // 💡 移除了與驗證有關的變數回傳
                 };
             }
         }).mount('#app');

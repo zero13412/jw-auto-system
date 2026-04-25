@@ -52,7 +52,33 @@ def get_gspread_client():
     creds = Credentials.from_service_account_file(key_path, scopes=scopes)
     return gspread.authorize(creds)
 
-# 🛡️ 權限檢查函數 (單一權限)
+# 🔐 系統智慧保險箱：取得或建立帳密
+def get_or_create_creds():
+    client = get_gspread_client()
+    doc = client.open_by_key(SHEET_ID)
+    try:
+        ws = doc.worksheet("系統設定")
+        data = ws.get_all_values()
+        user = data[1][1] if len(data) > 1 and len(data[1]) > 1 else "Admin02"
+        pwd = data[2][1] if len(data) > 2 and len(data[2]) > 1 else "Eric740625"
+        return user, pwd
+    except Exception:
+        # 如果沒有系統設定表，自動建一個並寫入預設帳密
+        try:
+            ws = doc.add_worksheet(title="系統設定", rows="10", cols="5")
+            ws.update(values=[["項目", "數值"], ["後台帳號", "Admin02"], ["後台密碼", "Eric740625"]], range_name='A1')
+        except: pass
+        return "Admin02", "Eric740625"
+
+# 🔐 系統智慧保險箱：更新帳密
+def update_creds(user, pwd):
+    client = get_gspread_client()
+    doc = client.open_by_key(SHEET_ID)
+    try:
+        ws = doc.worksheet("系統設定")
+        ws.update(values=[["後台帳號", user], ["後台密碼", pwd]], range_name='A2')
+    except: pass
+
 def check_permission(line_user_id, action):
     try:
         client = get_gspread_client()
@@ -209,8 +235,6 @@ def load_and_clean_data():
     return df
 
 # ================= 🚀 API 區塊 =================
-
-# 🛡️ 取得使用者的「全部權限」 (給首頁大門用的)
 @app.get("/api/my_permissions")
 def get_my_permissions(user_id: str = ""):
     if not user_id: return {"status": "error", "permissions": {}}
@@ -222,9 +246,8 @@ def get_my_permissions(user_id: str = ""):
         for r in records:
             if str(r.get("LINE ID", "")).strip() == user_id:
                 return {"status": "success", "permissions": r}
-        return {"status": "success", "permissions": {}} # 找不到這個人
-    except Exception as e:
-        return {"status": "error", "permissions": {}}
+        return {"status": "success", "permissions": {}} 
+    except Exception: return {"status": "error", "permissions": {}}
 
 @app.get("/api/check_auth")
 def check_auth(user_id: str = "", action: str = ""):
@@ -333,7 +356,6 @@ def get_simple_data():
         return {"status": "success", "data": df_simple.to_dict(orient="records")}
     except Exception as e: return {"status": "error", "message": f"讀取失敗：{str(e)}"}
 
-# ================= 👥 CRM 客資 API 區塊 =================
 @app.get("/api/customers")
 def get_customers():
     try:
@@ -365,7 +387,6 @@ async def add_customer(request: Request):
         return {"status": "success", "message": "客資已新增"}
     except Exception as e: return {"status": "error", "message": str(e)}
 
-# ================= 🚀 客資 Excel 智慧解析 =================
 def process_crm_excel(filename: str, contents: bytes):
     wb = None
     try:
@@ -464,7 +485,6 @@ def process_crm_excel(filename: str, contents: bytes):
         del wb
         gc.collect()
 
-# ================= 📄 PDF 解析核心 =================
 def process_pdf_file(filename: str, contents: bytes):
     try: import pdfplumber
     except ImportError: return {"status": "error", "message": "缺少 pdfplumber 套件"}
@@ -506,7 +526,6 @@ def process_pdf_file(filename: str, contents: bytes):
     except Exception as e: return {"status": "error", "message": f"PDF 處理失敗：{str(e)}"}
     finally: gc.collect()
 
-# ================= Excel 解析與上傳 =================
 def get_color_rgb(cell):
     try:
         fill = cell.fill
@@ -716,31 +735,47 @@ def process_excel_file(filename: str, contents: bytes):
         load_and_clean_data()
         return {"status": "success", "message": " ＆ ".join(messages)}
     except Exception as e:
-        import traceback
-        traceback.print_exc()
         return {"status": "error", "message": f"處理失敗：{str(e)}"}
     finally:
         if wb: wb.close()
         del wb
         gc.collect()
 
-# ================= 🚀 自動化爬取公司後台 =================
+# 🚀 【升級】自動化爬取公司後台 (加入智慧保險箱讀取功能)
 @app.get("/api/sync_car_source")
-def sync_car_source_from_backend():
+def sync_car_source_from_backend(u: str = "", p: str = ""):
     global cached_df
     try:
+        # 如果網頁端有傳新的帳密過來，就用新的；不然就去保險箱拿
+        if u and p:
+            login_user = u
+            login_pwd = p
+        else:
+            login_user, login_pwd = get_or_create_creds()
+            
         login_url = "https://www.jwincar.com.tw/manage/login/index.php"
         data_url = "https://www.jwincar.com.tw/manage/accounting/accounting_car_list.php?stock=all"
         session = requests.Session()
-        login_payload = {"strID": "Admin02", "strPW": "Eric740625", "Submit": "送出"}
+        login_payload = {"strID": login_user, "strPW": login_pwd, "Submit": "送出"}
         session.post(login_url, data=login_payload)
         
         res = session.get(data_url + "&page=1")
         res.encoding = 'utf-8'
         soup = BeautifulSoup(res.text, "html.parser")
         table = soup.find("table", {"id": "carTable"})
-        if not table: return {"status": "error", "message": "🚨 系統警告：找不到後台表格！"}
         
+        # 🚨 找不到表格，代表登入失敗！
+        if not table: 
+            if u and p:
+                return {"status": "error", "message": "🚨 登入失敗！請確認您輸入的新帳號或密碼是否正確。"}
+            else:
+                # 沒傳新密碼但失敗，代表舊密碼失效，呼叫網頁跳出重新輸入視窗
+                return {"status": "need_login", "message": "公司後台密碼已更改，系統無法登入抓取資料！\n請按確定後，輸入最新的帳號密碼來更新系統。"}
+
+        # 💡 如果上面有傳新密碼，而且成功登入了，就把新密碼存進保險箱
+        if u and p:
+            update_creds(u, p)
+
         total_pages = 1
         page_info = soup.find(string=re.compile(r"第 \d+ / \d+ 頁"))
         if page_info:
@@ -749,19 +784,17 @@ def sync_car_source_from_backend():
 
         all_cars = []
         headers = []
-        for p in range(1, total_pages + 1):
-            if p > 1:
-                res = session.get(data_url + f"&page={p}")
+        for page_num in range(1, total_pages + 1):
+            if page_num > 1:
+                res = session.get(data_url + f"&page={page_num}")
                 res.encoding = 'utf-8'
                 soup = BeautifulSoup(res.text, "html.parser")
             table = soup.find("table", {"id": "carTable"})
             if not table: continue
             rows = table.find_all("tr")
             if not rows: continue
-            if p == 1:
+            if page_num == 1:
                 headers = [th.text.replace("⇅", "").strip() for th in rows[0].find_all("th")]
-                if "狀態" not in headers or "新編號" not in headers or "廠牌" not in headers:
-                    return {"status": "error", "message": "🚨 系統警告：後台表格核心欄位遺失！"}
             for row in rows[1:]:
                 tds = row.find_all("td")
                 if not tds: continue
@@ -777,7 +810,7 @@ def sync_car_source_from_backend():
                     row_data.append(val)
                 all_cars.append(row_data)
 
-        if len(all_cars) < 50: return {"status": "error", "message": "🚨 抓取數量異常少！"}
+        if len(all_cars) < 50: return {"status": "error", "message": "🚨 抓取數量異常少，可能被阻擋！"}
 
         df_crawled = pd.DataFrame(all_cars, columns=headers)
         if "操作" in df_crawled.columns: df_crawled = df_crawled.drop(columns=["操作"])
@@ -849,8 +882,6 @@ def sync_car_source_from_backend():
         return {"status": "success", "message": msg}
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
         return {"status": "error", "message": f"爬蟲執行失敗：{str(e)}"}
     finally:
         gc.collect()
@@ -882,7 +913,11 @@ def handle_text_message(event):
         def run_task():
             try:
                 res = sync_car_source_from_backend()
-                line_bot_api.push_message(user_id, TextSendMessage(text=res["message"]))
+                # 💡 如果機器人發現密碼錯了，會通知您去網頁版改密碼
+                if res.get("status") == "need_login":
+                    line_bot_api.push_message(user_id, TextSendMessage(text="🚨 公司後台密碼已更改，機器人無法登入！\n\n請用電腦或手機開啟「E車源看板」，點擊右上角【更新車源表】，系統會跳出視窗讓您輸入新密碼。\n輸入完成後機器人就能恢復正常運作囉！"))
+                else:
+                    line_bot_api.push_message(user_id, TextSendMessage(text=res["message"]))
             except Exception as e:
                 line_bot_api.push_message(user_id, TextSendMessage(text=f"❌ 發生錯誤：{str(e)}"))
         threading.Thread(target=run_task).start()
@@ -943,7 +978,6 @@ def handle_file_message(event):
 
     threading.Thread(target=process_and_notify).start()
 
-# ================= 網頁路由區塊 =================
 @app.post("/callback")
 async def callback(request: Request):
     signature = request.headers.get("X-Line-Signature", "")

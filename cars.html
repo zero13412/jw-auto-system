@@ -12,10 +12,8 @@
         const permsRaw = localStorage.getItem('jw_permissions');
         
         if (!userId || !permsRaw) {
-            // 如果沒登入過，直接踢回首頁
             window.location.href = "/";
         } else {
-            // 如果有登入，檢查有沒有這個頁面的權限
             const perms = JSON.parse(permsRaw);
             const isSuperAdmin = String(perms['最高管理員']).toUpperCase() === 'V';
             const hasAuth = String(perms['E車源看板']).toUpperCase() === 'V'; 
@@ -46,7 +44,7 @@
                 <a href="/" class="bg-yellow-500 hover:bg-yellow-600 text-slate-900 font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm">
                     🏠 首頁
                 </a>
-                <button @click="syncBackend" class="bg-red-600 hover:bg-red-700 px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm flex-1 sm:flex-none">
+                <button @click="syncBackend()" class="bg-red-600 hover:bg-red-700 px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm flex-1 sm:flex-none">
                     🌐 更新車源表
                 </button>
                 <button @click="refreshData" class="bg-blue-600 hover:bg-blue-700 px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm flex-1 sm:flex-none">
@@ -318,17 +316,40 @@
                     } catch (e) { statusMessage.value = "同步失敗"; }
                 };
 
-                const syncBackend = async () => {
+                // 💡 升級版：支援傳入新帳號密碼的自動重試功能
+                const syncBackend = async (retryUser = null, retryPwd = null) => {
                     statusMessage.value = "更新車源表中...";
                     loading.value = true;
-                    loadingText.value = "正在更新車源表...";
+                    loadingText.value = "正在連線公司後台...";
+                    
                     try {
-                        const res = await fetch(`${API_URL}/sync_car_source`);
+                        let url = `${API_URL}/sync_car_source`;
+                        if (retryUser && retryPwd) {
+                            url += `?u=${encodeURIComponent(retryUser)}&p=${encodeURIComponent(retryPwd)}`;
+                        }
+                        const res = await fetch(url);
                         const data = await res.json();
+                        
                         if (data.status === 'success') {
                             statusMessage.value = "✅ 抓取完成！";
                             alert(data.message);
                             await refreshData();
+                            
+                        } else if (data.status === 'need_login') {
+                            // 遇到密碼錯誤，暫時解除 loading
+                            loading.value = false;
+                            alert("🚨 " + data.message);
+                            
+                            // 跳出視窗要新帳密
+                            let newUser = prompt("請輸入最新的【公司後台帳號】\n(如果帳號沒變，請照填原來的帳號):");
+                            if (!newUser) { statusMessage.value = "已取消更新"; return; }
+                            
+                            let newPwd = prompt("請輸入最新的【公司後台密碼】:");
+                            if (!newPwd) { statusMessage.value = "已取消更新"; return; }
+                            
+                            // 拿到新密碼，重新呼叫自己一次！
+                            await syncBackend(newUser, newPwd);
+                            
                         } else {
                             statusMessage.value = "❌ 抓取失敗：" + data.message;
                             alert(data.message);
@@ -336,8 +357,11 @@
                     } catch (e) { 
                         statusMessage.value = "抓取連線失敗"; 
                     } finally {
-                        loading.value = false;
-                        loadingText.value = "";
+                        // 確保如果不是正在重試，就把 loading 關掉
+                        if (statusMessage.value !== "更新車源表中...") {
+                            loading.value = false;
+                            loadingText.value = "";
+                        }
                     }
                 };
 

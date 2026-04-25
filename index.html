@@ -19,6 +19,32 @@
         <p class="text-gray-400">請稍候，系統正在讀取您的專屬設定</p>
     </div>
 
+    <div id="loginModal" class="fixed inset-0 bg-slate-900 bg-opacity-80 z-[60] flex items-center justify-center hidden" style="backdrop-filter: blur(4px);">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 w-11/12 max-w-sm border border-gray-200 transform transition-all">
+            <div class="flex items-center gap-3 mb-2 text-red-600">
+                <span class="text-3xl">🚨</span>
+                <h3 class="text-xl font-bold">系統密碼已變更</h3>
+            </div>
+            <p id="loginModalMsg" class="text-sm text-gray-600 mb-6 font-bold">請輸入最新的帳號與密碼</p>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-1">登入帳號</label>
+                    <input type="text" id="modalUser" class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition" placeholder="請輸入帳號">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-1">登入密碼</label>
+                    <input type="password" id="modalPwd" class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition" placeholder="請輸入密碼">
+                </div>
+            </div>
+            
+            <div class="mt-8 flex justify-end gap-3">
+                <button onclick="closeLoginModal(false)" class="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300 transition">取消</button>
+                <button onclick="closeLoginModal(true)" class="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition shadow-md">確認更新</button>
+            </div>
+        </div>
+    </div>
+
     <div class="max-w-6xl w-full" id="mainContent" style="display: none;">
         
         <div class="text-center mb-8 flex flex-col items-center">
@@ -95,14 +121,14 @@
                     <div class="text-center md:text-left flex-1">
                         <h2 class="text-2xl font-bold text-indigo-700 mb-2">📥 系統資料同步中心 (管理員專用)</h2>
                         <p class="text-gray-500 text-sm leading-relaxed">
-                            您可以自動抓取公司後台車源，或手動上傳 Excel/PDF 同步至系統資料庫。<br>
+                            您可以自動更新車源表，或手動上傳 Excel/PDF 同步至系統資料庫。<br>
                             <span class="text-xs text-gray-400">※ 檔名包含 <span class="font-bold text-red-500">"新竹"</span> ➔ 自動寫入「新竹車源」，其餘寫入「E車源」</span>
                         </p>
                     </div>
                     <div class="w-full md:w-auto flex flex-col items-center gap-3 md:min-w-[300px]">
                         
                         <button onclick="syncBackend()" id="syncBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition w-full flex items-center justify-center gap-2" style="display: none;">
-                            🌐 自動抓取後台車源
+                            🌐 自動更新車源表
                         </button>
 
                         <hr id="dividerLine" class="w-full border-indigo-100 my-1" style="display: none;">
@@ -127,6 +153,38 @@
 
     <script>
         let myPermissions = {};
+        let loginModalResolve = null; // 處理彈窗 Promise 的變數
+
+        // 💡 開啟自訂登入彈窗
+        function openLoginModal(message) {
+            return new Promise((resolve) => {
+                document.getElementById('loginModalMsg').innerText = message;
+                document.getElementById('modalUser').value = "";
+                document.getElementById('modalPwd').value = "";
+                document.getElementById('loginModal').classList.remove('hidden');
+                loginModalResolve = resolve;
+            });
+        }
+
+        // 💡 關閉彈窗並回傳結果
+        function closeLoginModal(isConfirm) {
+            if (!loginModalResolve) return;
+
+            if (isConfirm) {
+                const u = document.getElementById('modalUser').value.trim();
+                const p = document.getElementById('modalPwd').value.trim();
+                if (!u || !p) {
+                    alert("⚠️ 帳號與密碼不得為空！");
+                    return; // 密碼為空不給過，彈窗繼續顯示
+                }
+                document.getElementById('loginModal').classList.add('hidden');
+                loginModalResolve({ u, p });
+            } else {
+                document.getElementById('loginModal').classList.add('hidden');
+                loginModalResolve(null); // 回傳 null 代表取消
+            }
+            loginModalResolve = null;
+        }
 
         // 更新綠燈姓名與控制管理員區塊顯示
         function updateUserBadge(perms, fallbackName) {
@@ -191,12 +249,12 @@
             window.location.reload();
         }
 
-        // 🚀 自動抓取後台車源功能
+        // 🚀 自動更新車源表功能 (結合安全彈窗)
         async function syncBackend(retryUser = null, retryPwd = null) {
             const statusDiv = document.getElementById('uploadStatus');
             const syncBtn = document.getElementById('syncBtn');
             
-            statusDiv.textContent = "⏳ 正在連線公司後台更新車源表...";
+            statusDiv.textContent = "⏳ 正在連線更新車源表...";
             statusDiv.style.display = "block";
             statusDiv.className = "mt-4 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block";
             syncBtn.disabled = true;
@@ -219,11 +277,19 @@
                     alert(data.message);
                 } else if (data.status === 'need_login') {
                     statusDiv.style.display = "none";
-                    let newUser = prompt(data.message + "\n\n請輸入最新的【公司後台帳號】\n(如果帳號沒變照舊填):");
-                    if (!newUser) return;
-                    let newPwd = prompt("請輸入最新的【公司後台密碼】:");
-                    if (!newPwd) return;
-                    await syncBackend(newUser, newPwd);
+                    
+                    // 💡 呼叫自訂的密碼保險箱彈窗
+                    const creds = await openLoginModal(data.message);
+                    
+                    if (!creds) {
+                        statusDiv.textContent = "⚠️ 更新已取消";
+                        statusDiv.className = "mt-4 text-center font-bold text-sm bg-gray-100 text-gray-500 p-3 rounded-lg block";
+                        statusDiv.style.display = "block";
+                        return; // 取消就停止
+                    }
+                    
+                    // 拿到了新帳密，重新呼叫更新！
+                    await syncBackend(creds.u, creds.p);
                 } else {
                     statusDiv.textContent = "❌ " + data.message;
                     statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";

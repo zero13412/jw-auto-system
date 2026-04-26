@@ -214,8 +214,8 @@
                                 </div>
                                 
                                 <div v-if="car.車況 && car.車況 !== 'nan'" class="text-xs sm:text-sm mt-1 font-bold" 
-                                     :class="String(car.車況).trim() === '原鈑件' ? 'text-gray-400' : 'text-red-600'">
-                                    <span v-if="String(car.車況).trim() !== '原鈑件'">⚠️</span> 車況: <span v-html="formatCondition(car.車況)"></span>
+                                     :class="['原鈑件', '原版件'].includes(String(car.車況).trim()) ? 'text-gray-400' : 'text-red-600'">
+                                    <span v-if="!['原鈑件', '原版件'].includes(String(car.車況).trim())">⚠️</span> 車況: <span v-html="formatCondition(car.車況)"></span>
                                 </div>
                             </div>
                             
@@ -319,7 +319,7 @@
 
                 const formatCondition = (cond) => {
                     if (!cond) return '';
-                    return String(cond).replace(/原鈑件/g, '<span class="text-gray-400 font-normal">原鈑件</span>');
+                    return String(cond).replace(/原[鈑版]件/g, (match) => `<span class="text-gray-400 font-normal">${match}</span>`);
                 };
 
                 const isWarning = (val) => {

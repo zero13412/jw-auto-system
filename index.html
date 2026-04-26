@@ -147,7 +147,7 @@
                         </div>
                     </div>
                 </div>
-                <div id="uploadStatus" class="mt-4 text-center font-bold text-sm hidden p-3 rounded-lg"></div>
+                <div id="uploadStatus" class="mt-4 text-center font-bold text-sm hidden p-3 rounded-lg whitespace-pre-wrap leading-relaxed"></div>
             </div>
         </div>
     </div>
@@ -256,7 +256,7 @@
             
             statusDiv.textContent = "⏳ 正在連線更新車源表...";
             statusDiv.style.display = "block";
-            statusDiv.className = "mt-4 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block";
+            statusDiv.className = "mt-4 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
             syncBtn.disabled = true;
             syncBtn.classList.add("opacity-50", "cursor-not-allowed");
             
@@ -273,7 +273,7 @@
                 
                 if (data.status === 'success') {
                     statusDiv.textContent = "✅ " + data.message;
-                    statusDiv.className = "mt-4 text-center font-bold text-sm bg-green-50 text-green-700 p-3 rounded-lg block";
+                    statusDiv.className = "mt-4 text-left md:text-center font-bold text-sm bg-green-50 text-green-700 p-4 rounded-lg block whitespace-pre-wrap leading-relaxed";
                     alert(data.message);
                 } else if (data.status === 'need_login') {
                     statusDiv.style.display = "none";
@@ -287,7 +287,7 @@
                     await syncBackend(creds.u, creds.p);
                 } else {
                     statusDiv.textContent = "❌ " + data.message;
-                    statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
+                    statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
                     alert(data.message);
                 }
             } catch (e) { 
@@ -314,7 +314,7 @@
             
             statusDiv.textContent = "⏳ 資料處理中...系統正在分析檔名與內容，請稍候...";
             statusDiv.style.display = "block";
-            statusDiv.className = "mt-4 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block";
+            statusDiv.className = "mt-4 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
             btn.disabled = true;
             btn.classList.add("opacity-50", "cursor-not-allowed");
 
@@ -324,13 +324,13 @@
                 
                 if (result.status === "success") {
                     statusDiv.textContent = "✅ " + result.message;
-                    statusDiv.className = "mt-4 text-center font-bold text-sm bg-green-50 text-green-700 p-3 rounded-lg block";
+                    statusDiv.className = "mt-4 text-left md:text-center font-bold text-sm bg-green-50 text-green-700 p-4 rounded-lg block whitespace-pre-wrap leading-relaxed";
                     fileInput.value = ""; 
                     document.getElementById('fileName').textContent = '未選擇檔案';
                     alert(result.message);
                 } else {
                     statusDiv.textContent = "❌ " + result.message;
-                    statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
+                    statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
                 }
             } catch (error) { 
                 statusDiv.textContent = "❌ 網路連線失敗或處理逾時。";

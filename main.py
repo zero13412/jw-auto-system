@@ -20,7 +20,7 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, FileMessage
 
-app = FastAPI(title="🚗 杰運內部系統 - 強制報到與終極完整版")
+app = FastAPI(title="🚗 杰運內部系統 - 終極完整版")
 
 app.add_middleware(
     CORSMiddleware,
@@ -77,7 +77,7 @@ def update_creds(user, pwd):
         ws.update(values=[[user], [pwd]], range_name='B2:B3')
     except: pass
 
-# 🛡️ 權限檢查核心 (後端 API 保護)
+# 🛡️ 權限檢查核心
 def check_permission(user_id, action):
     if not user_id: return False
     try:
@@ -330,8 +330,17 @@ def process_pdf_file(filename: str, contents: bytes):
         target_gsheet.clear()
         target_gsheet.update(values=[[str(cell) for cell in row] for row in data_to_upload], range_name='A1')
         doc.batch_update({"requests": color_requests})
+        
+        # 📊 狀態統計
+        status_counts = {}
+        for row in data_to_upload[1:]:
+            val = str(row[status_col_idx]).strip()
+            val = val if val else "在庫"
+            status_counts[val] = status_counts.get(val, 0) + 1
+        st_msg = "、".join([f"{k}: {v}台" for k, v in status_counts.items()])
+        
         load_and_clean_data()
-        return {"status": "success", "message": f"📄 PDF 解析成功！共更新 {len(data_to_upload)-1} 筆車輛！"}
+        return {"status": "success", "message": f"📄 PDF 解析成功！共更新 {len(data_to_upload)-1} 筆車輛！\n📊 狀態分佈：{st_msg}"}
     except Exception as e: return {"status": "error", "message": f"PDF 處理失敗：{str(e)}"}
     finally: gc.collect()
 
@@ -441,11 +450,19 @@ def process_excel_file(filename: str, contents: bytes):
                 target_gsheet_main.update(values=[[str(cell) for cell in row] for row in data_to_upload_main], range_name='A1')
                 target_gsheet_main.update_acell('A2', '="共"&SUMPRODUCT(--(LEN(TRIM($C$5:$C$133))>0))&"台"')
                 doc.batch_update({"requests": color_requests_main})
-                msg = f"「新竹車源」更新成功({len(data_to_upload_main)-1}筆)"
+                
+                # 📊 狀態統計 (新竹版)
+                status_counts = {}
+                for row in data_to_upload_main[1:]:
+                    val = str(row[status_idx]).strip()
+                    val = "已收訂" if val == "已收訂" else "在庫"
+                    status_counts[val] = status_counts.get(val, 0) + 1
+                st_msg = "、".join([f"{k}: {v}台" for k, v in status_counts.items()])
+                
+                msg = f"「新竹車源」更新成功({len(data_to_upload_main)-1}筆)\n📊 狀態分佈：{st_msg}"
                 if new_cars_list:
                     msg += f"\n✨ 新增 {len(new_cars_list)} 台車輛：\n" + "\n".join(new_cars_list[:10])
                     if len(new_cars_list) > 10: msg += f"\n...等共 {len(new_cars_list)} 台"
-                else: msg += "\n🔄 資料已同步，本次無新增車輛。"
                 messages.append(msg)
             except Exception as e: return {"status": "error", "message": f"新竹寫入失敗：{str(e)}"}
 
@@ -499,11 +516,19 @@ def process_excel_file(filename: str, contents: bytes):
                 target_gsheet_main.clear()
                 target_gsheet_main.update(values=[[str(cell) for cell in row] for row in data_to_upload_main], range_name='A1')
                 doc.batch_update({"requests": color_requests_main})
-                msg = f"「E車源」成功({len(data_to_upload_main)-1}筆)"
+                
+                # 📊 狀態統計 (E車源版)
+                status_counts = {}
+                for row in data_to_upload_main[1:]:
+                    val = str(row[status_col_idx]).strip()
+                    val = val if val else "在庫"
+                    status_counts[val] = status_counts.get(val, 0) + 1
+                st_msg = "、".join([f"{k}: {v}台" for k, v in status_counts.items()])
+                
+                msg = f"「E車源」成功({len(data_to_upload_main)-1}筆)\n📊 狀態分佈：{st_msg}"
                 if new_cars_list:
                     msg += f"\n✨ 新增 {len(new_cars_list)} 台車輛：\n" + "\n".join(new_cars_list[:10])
                     if len(new_cars_list) > 10: msg += f"\n...等共 {len(new_cars_list)} 台"
-                else: msg += "\n🔄 資料已同步，本次無新增車輛。"
                 messages.append(msg)
                 
                 try: sold_gsheet = doc.worksheet("E車源售出")
@@ -538,7 +563,6 @@ def process_excel_file(filename: str, contents: bytes):
                     for rec in merged_dict.values(): final_data.append([str(rec.get(h, "")) for h in final_headers])
                     sold_gsheet.clear()
                     sold_gsheet.update(values=final_data, range_name='A1')
-                    messages.append("並已同步備份至「E車源售出」")
             except Exception as e: return {"status": "error", "message": f"主表寫入失敗：{str(e)}"}
 
         load_and_clean_data()
@@ -551,7 +575,6 @@ def process_excel_file(filename: str, contents: bytes):
         gc.collect()
 
 # ================= 🚀 API 區塊 =================
-
 @app.get("/api/my_permissions")
 def get_my_permissions(user_id: str = "", user_name: str = ""):
     if not user_id: return {"status": "error", "message": "ID 缺失"}
@@ -698,6 +721,18 @@ def sync_car_source_from_backend(user_id: str = "", u: str = "", p: str = ""):
         if "操作" in df_crawled.columns: df_crawled = df_crawled.drop(columns=["操作"])
         df_crawled = df_crawled.fillna("")
 
+        # 📊 狀態統計 (爬蟲版)
+        status_msg = ""
+        if "狀態" in df_crawled.columns:
+            st_counts = {}
+            for st in df_crawled["狀態"]:
+                val = str(st).strip()
+                val = val if val else "在庫"
+                st_counts[val] = st_counts.get(val, 0) + 1
+            status_parts = [f"{k}: {v}台" for k, v in st_counts.items()]
+            if status_parts:
+                status_msg = f"\n📊 狀態分佈：{'、'.join(status_parts)}"
+
         old_ids = set()
         if cached_df is not None and '新編號' in cached_df.columns:
             old_ids = set(cached_df['新編號'].astype(str).str.strip().tolist())
@@ -756,7 +791,7 @@ def sync_car_source_from_backend(user_id: str = "", u: str = "", p: str = ""):
                 
         load_and_clean_data()
         
-        msg = f"🤖 更新成功！共抓取 {len(all_cars)} 筆車源。"
+        msg = f"🤖 更新成功！共抓取 {len(all_cars)} 筆車源。{status_msg}"
         if new_count > 0:
             msg += f"\n✨ 自動發現 {new_count} 台新車：\n" + "\n".join(new_cars_list[:10])
         return {"status": "success", "message": msg}

@@ -331,7 +331,6 @@ def process_pdf_file(filename: str, contents: bytes):
         target_gsheet.update(values=[[str(cell) for cell in row] for row in data_to_upload], range_name='A1')
         doc.batch_update({"requests": color_requests})
         
-        # 📊 狀態統計
         status_counts = {}
         for row in data_to_upload[1:]:
             val = str(row[status_col_idx]).strip()
@@ -384,7 +383,9 @@ def process_excel_file(filename: str, contents: bytes):
         data_to_upload_main = []
         color_requests_main = [{"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": 1 }, "cell": {"userEnteredFormat": {"backgroundColorStyle": {"rgbColor": { "red": 1.0, "green": 1.0, "blue": 1.0 }}}}, "fields": "userEnteredFormat.backgroundColorStyle,userEnteredFormat.backgroundColor"}}]
 
+        # 💡 強制除蟲：舊資料過濾掉小數點跟空白，精準備對
         old_keys = set()
+        is_excel_initial = False
         try:
             old_values = target_gsheet_main.get_all_values()
             if old_values and len(old_values) > 1:
@@ -392,15 +393,16 @@ def process_excel_file(filename: str, contents: bytes):
                 p_idx = old_hdrs.index("車牌") if "車牌" in old_hdrs else -1
                 v_idx = old_hdrs.index("車身") if "車身" in old_hdrs else -1
                 n_idx = old_hdrs.index("新編號") if "新編號" in old_hdrs else -1
-                m_idx = old_hdrs.index("車型") if "車型" in old_hdrs else -1
                 for row in old_values[1:]:
                     key = ""
                     if n_idx != -1 and len(row) > n_idx and str(row[n_idx]).strip(): key = str(row[n_idx]).strip()
                     elif p_idx != -1 and len(row) > p_idx and str(row[p_idx]).strip(): key = str(row[p_idx]).strip()
                     elif v_idx != -1 and len(row) > v_idx and str(row[v_idx]).strip(): key = str(row[v_idx]).strip()
-                    if not key and m_idx != -1 and len(row) > m_idx: key = "M_" + str(row[m_idx]).strip()
-                    if key: old_keys.add(key)
-        except: pass
+                    if key: old_keys.add(str(key).replace('.0', '').strip())
+            else:
+                is_excel_initial = True
+        except:
+            is_excel_initial = True
 
         col_model = headers_main.index("車型") if "車型" in headers_main else -1
         col_version = headers_main.index("版本") if "版本" in headers_main else -1
@@ -408,6 +410,8 @@ def process_excel_file(filename: str, contents: bytes):
         vin_idx = headers_main.index("車身") if "車身" in headers_main else -1
         no_idx = headers_main.index("新編號") if "新編號" in headers_main else -1
         year_idx = headers_main.index("年份") if "年份" in headers_main else -1
+        
+        new_count = 0
         new_cars_list = []
 
         if target_tab_name == "新竹車源":
@@ -420,17 +424,19 @@ def process_excel_file(filename: str, contents: bytes):
                 while len(row_values) <= status_idx: row_values.append("")
                 while len(row_values) < len(headers_main): row_values.append("")
                 
-                p_val = str(row_values[plate_idx]).strip() if plate_idx != -1 else ""
-                v_val = str(row_values[vin_idx]).strip() if vin_idx != -1 else ""
-                n_val = str(row_values[no_idx]).strip() if no_idx != -1 else ""
-                m_val = str(row_values[col_model]).strip() if col_model != -1 else ""
-                row_key = n_val if n_val else (p_val if p_val else (v_val if v_val else ("M_" + m_val if m_val else "")))
+                n_val = str(row_values[no_idx]).replace('.0', '').strip() if no_idx != -1 else ""
+                p_val = str(row_values[plate_idx]).replace('.0', '').strip() if plate_idx != -1 else ""
+                v_val = str(row_values[vin_idx]).replace('.0', '').strip() if vin_idx != -1 else ""
                 
-                if row_key and row_key not in old_keys:
-                    y_val = str(row_values[year_idx]).strip() if year_idx != -1 else ""
-                    if len(y_val) == 6 and y_val.replace(".0", "").isdigit(): y_val = f"{y_val[:4]}年{y_val[4:]}月"
+                row_key = n_val if n_val else (p_val if p_val else v_val)
+                
+                if row_key and not is_excel_initial and row_key not in old_keys:
+                    new_count += 1
+                    y_val = str(row_values[year_idx]).replace('.0', '').strip() if year_idx != -1 else ""
+                    if len(y_val) == 6 and y_val.isdigit(): y_val = f"{y_val[:4]}年{y_val[4:]}月"
                     elif len(y_val) == 4 and y_val.isdigit(): y_val = f"{y_val}年"
                     disp_plate = p_val if p_val else "(無車牌)"
+                    m_val = str(row_values[col_model]).strip() if col_model != -1 else ""
                     new_cars_list.append(f"{y_val} {m_val} #{disp_plate}")
                     old_keys.add(row_key)
                 
@@ -451,7 +457,6 @@ def process_excel_file(filename: str, contents: bytes):
                 target_gsheet_main.update_acell('A2', '="共"&SUMPRODUCT(--(LEN(TRIM($C$5:$C$133))>0))&"台"')
                 doc.batch_update({"requests": color_requests_main})
                 
-                # 📊 狀態統計 (新竹版)
                 status_counts = {}
                 for row in data_to_upload_main[1:]:
                     val = str(row[status_idx]).strip()
@@ -477,17 +482,19 @@ def process_excel_file(filename: str, contents: bytes):
                 while len(row_values) <= status_col_idx: row_values.append("")
                 while len(row_values) < len(headers_main): row_values.append("")
                 
-                p_val = str(row_values[plate_idx]).strip() if plate_idx != -1 else ""
-                v_val = str(row_values[vin_idx]).strip() if vin_idx != -1 else ""
-                n_val = str(row_values[no_idx]).strip() if no_idx != -1 else ""
-                m_val = str(row_values[col_model]).strip() if col_model != -1 else ""
-                row_key = n_val if n_val else (p_val if p_val else (v_val if v_val else ("M_" + m_val if m_val else "")))
+                n_val = str(row_values[no_idx]).replace('.0', '').strip() if no_idx != -1 else ""
+                p_val = str(row_values[plate_idx]).replace('.0', '').strip() if plate_idx != -1 else ""
+                v_val = str(row_values[vin_idx]).replace('.0', '').strip() if vin_idx != -1 else ""
                 
-                if row_key and row_key not in old_keys:
-                    y_val = str(row_values[year_idx]).strip() if year_idx != -1 else ""
-                    if len(y_val) == 6 and y_val.replace(".0", "").isdigit(): y_val = f"{y_val[:4]}年{y_val[4:]}月"
+                row_key = n_val if n_val else (p_val if p_val else v_val)
+                
+                if row_key and not is_excel_initial and row_key not in old_keys:
+                    new_count += 1
+                    y_val = str(row_values[year_idx]).replace('.0', '').strip() if year_idx != -1 else ""
+                    if len(y_val) == 6 and y_val.isdigit(): y_val = f"{y_val[:4]}年{y_val[4:]}月"
                     elif len(y_val) == 4 and y_val.isdigit(): y_val = f"{y_val}年"
                     disp_plate = p_val if p_val else "(無車牌)"
+                    m_val = str(row_values[col_model]).strip() if col_model != -1 else ""
                     new_cars_list.append(f"{y_val} {m_val} #{disp_plate}")
                     old_keys.add(row_key)
                 
@@ -517,7 +524,6 @@ def process_excel_file(filename: str, contents: bytes):
                 target_gsheet_main.update(values=[[str(cell) for cell in row] for row in data_to_upload_main], range_name='A1')
                 doc.batch_update({"requests": color_requests_main})
                 
-                # 📊 狀態統計 (E車源版)
                 status_counts = {}
                 for row in data_to_upload_main[1:]:
                     val = str(row[status_col_idx]).strip()
@@ -721,7 +727,6 @@ def sync_car_source_from_backend(user_id: str = "", u: str = "", p: str = ""):
         if "操作" in df_crawled.columns: df_crawled = df_crawled.drop(columns=["操作"])
         df_crawled = df_crawled.fillna("")
 
-        # 📊 狀態統計 (爬蟲版)
         status_msg = ""
         if "狀態" in df_crawled.columns:
             st_counts = {}
@@ -733,25 +738,56 @@ def sync_car_source_from_backend(user_id: str = "", u: str = "", p: str = ""):
             if status_parts:
                 status_msg = f"\n📊 狀態分佈：{'、'.join(status_parts)}"
 
+        # 💡 強制除蟲：舊資料庫清單絕對無小數點
         old_ids = set()
-        if cached_df is not None and '新編號' in cached_df.columns:
-            old_ids = set(cached_df['新編號'].astype(str).str.strip().tolist())
-
-        new_count = 0
-        new_cars_list = []
-        if "新編號" in df_crawled.columns:
-            for idx, row in df_crawled.iterrows():
-                cid = str(row.get("新編號", "")).strip()
-                if cid and cid not in old_ids:
-                    new_count += 1
-                    y = str(row.get("年份", "")).strip()
-                    if len(y) == 6 and y.isdigit(): y = f"{y[:4]}年{y[4:]}月"
-                    elif len(y) == 4 and y.isdigit(): y = f"{y}年"
-                    new_cars_list.append(f"{y} {str(row.get('車型','')).strip()} #{str(row.get('車牌','')).strip()}")
-                    old_ids.add(cid)
-
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)
+        try:
+            ws_main = doc.worksheet("E車源")
+            old_values = ws_main.get_all_values()
+            if old_values and len(old_values) > 1:
+                old_hdrs = old_values[0]
+                n_idx = old_hdrs.index("新編號") if "新編號" in old_hdrs else -1
+                p_idx = old_hdrs.index("車牌") if "車牌" in old_hdrs else -1
+                for r in old_values[1:]:
+                    k = ""
+                    if n_idx != -1 and len(r) > n_idx and str(r[n_idx]).strip(): k = str(r[n_idx]).strip()
+                    elif p_idx != -1 and len(r) > p_idx and str(r[p_idx]).strip(): k = str(r[p_idx]).strip()
+                    if k: old_ids.add(str(k).replace('.0', '').strip())
+        except Exception as e:
+            print("Crawler old_ids fetch error:", e)
+
+        # 防呆：如果完全沒抓到舊表，用 cached_df 補救
+        if not old_ids and cached_df is not None:
+            if '新編號' in cached_df.columns:
+                for val in cached_df['新編號']:
+                    v = str(val).replace('.0', '').strip()
+                    if v: old_ids.add(v)
+            if '車牌' in cached_df.columns:
+                for val in cached_df['車牌']:
+                    v = str(val).replace('.0', '').strip()
+                    if v: old_ids.add(v)
+
+        # 💡 如果連備用方案都是空的，代表是第一次啟動，禁止報新車
+        is_initial = len(old_ids) == 0
+        new_count = 0
+        new_cars_list = []
+
+        if "新編號" in df_crawled.columns or "車牌" in df_crawled.columns:
+            for idx, row in df_crawled.iterrows():
+                cid = str(row.get("新編號", "")).replace('.0', '').strip()
+                if not cid:
+                    cid = str(row.get("車牌", "")).replace('.0', '').strip()
+                
+                if cid and not is_initial and cid not in old_ids:
+                    new_count += 1
+                    y = str(row.get("年份", "")).replace('.0', '').strip()
+                    if len(y) == 6 and y.isdigit(): y = f"{y[:4]}年{y[4:]}月"
+                    elif len(y) == 4 and y.isdigit(): y = f"{y}年"
+                    plate = str(row.get('車牌','')).strip() or "(無車牌)"
+                    new_cars_list.append(f"{y} {str(row.get('車型','')).strip()} #{plate}")
+                    old_ids.add(cid)
+
         target_gsheet_main = doc.worksheet("E車源")
         final_headers = list(df_crawled.columns)
         data_to_upload_main = [final_headers] + df_crawled.values.tolist()
@@ -794,6 +830,7 @@ def sync_car_source_from_backend(user_id: str = "", u: str = "", p: str = ""):
         msg = f"🤖 更新成功！共抓取 {len(all_cars)} 筆車源。{status_msg}"
         if new_count > 0:
             msg += f"\n✨ 自動發現 {new_count} 台新車：\n" + "\n".join(new_cars_list[:10])
+            if new_count > 10: msg += f"\n...等共 {new_count} 台"
         return {"status": "success", "message": msg}
 
     except Exception as e:

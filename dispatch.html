@@ -16,7 +16,7 @@
         } else {
             const perms = JSON.parse(permsRaw);
             const isSuperAdmin = String(perms['最高管理員']).toUpperCase() === 'V';
-            const hasAuth = String(perms['調度系統']).toUpperCase() === 'V'; // ⚠️ 專屬此頁的權限檢查
+            const hasAuth = String(perms['調度系統']).toUpperCase() === 'V'; 
             
             if (!isSuperAdmin && !hasAuth) {
                 alert("⛔ 存取被拒絕！您沒有【調度系統】的使用權限。");
@@ -83,7 +83,7 @@
                     <div class="flex items-center justify-between gap-1 mt-2 bg-gray-50 p-2 rounded border">
                         <div class="flex flex-col flex-1">
                             <label class="text-xs font-bold text-gray-500">車輛所在地</label>
-                            <select v-model="settings.locFrom" :disabled="settings.mode === 'reserve' || settings.mode === 'universal'" class="border rounded p-1 text-sm bg-white mt-1 focus:ring-1 focus:ring-cyan-400 focus:outline-none">
+                            <select v-model="settings.locFrom" class="border rounded p-1 text-sm bg-white mt-1 focus:ring-1 focus:ring-cyan-400 focus:outline-none">
                                 <option v-for="l in locations" :value="l">{{ l }}</option>
                             </select>
                         </div>
@@ -142,7 +142,7 @@
                     </div>
                 </div>
 
-                <button @click="generateTexts" class="w-full bg-cyan-700 hover:bg-cyan-800 text-white font-bold py-3 sm:py-4 px-4 rounded mt-4 shadow-md transition active:scale-95 text-lg">
+                <button @click="handleManualGenerate" class="w-full bg-cyan-700 hover:bg-cyan-800 text-white font-bold py-3 sm:py-4 px-4 rounded mt-4 shadow-md transition active:scale-95 text-lg">
                     ✨ 生成回報與話術 ✨
                 </button>
             </aside>
@@ -154,7 +154,7 @@
                         <span class="font-bold text-gray-700 text-sm sm:text-base">🏢 公司內部回報</span>
                         <button v-if="output.report && settings.mode !== 'universal'" @click="copyContent(output.report)" class="bg-cyan-100 hover:bg-cyan-200 text-cyan-800 font-bold px-3 py-1 rounded text-sm transition shadow-sm active:scale-95">📋 複製回報</button>
                     </div>
-                    <div v-if="!output.report" class="p-8 text-center text-gray-400 text-sm">請先點擊左下角生成按鈕...</div>
+                    <div v-if="!output.report" class="p-8 text-center text-gray-400 text-sm">請填寫左側資料，系統將自動生成...</div>
                     <textarea v-else id="reportArea" v-model="output.report" class="w-full p-3 sm:p-4 resize-none focus:outline-none text-sm sm:text-base leading-relaxed font-mono bg-white min-h-[200px]" readonly></textarea>
                 </div>
 
@@ -165,7 +165,7 @@
                     </div>
                     
                     <div v-if="output.pitches.length === 0" class="p-8 text-center text-gray-400 text-sm bg-gray-50 rounded-b-lg">
-                        請先搜尋車輛並點擊「✨ 生成回報與話術 ✨」
+                        此模式無對客話術，或請先填寫資料
                     </div>
 
                     <div v-else class="p-3 sm:p-4 space-y-4 bg-gray-50 rounded-b-lg">
@@ -186,7 +186,7 @@
     </div>
 
     <script>
-        const { createApp, ref, reactive, watch, computed, nextTick } = Vue;
+        const { createApp, ref, reactive, watch, computed, nextTick, onMounted } = Vue;
         const API_URL = "/api"; 
 
         createApp({
@@ -238,7 +238,8 @@
                 const amountHint = computed(() => {
                     if (settings.mode === 'order') return "";
                     if (settings.mode === 'universal') return "(通用模式不需設定金額)";
-                    if (settings.mode === 'reserve') return "(請自行輸入金額)";
+                    // 💡 更新提示文字
+                    if (settings.mode === 'reserve') return "(預設9000，可自訂)";
                     
                     let fee = priceMatrix[settings.locFrom]?.[settings.locTo] || 0;
                     if (fee === 0) return "(同門市，無調度費)";
@@ -249,7 +250,8 @@
                     if (settings.mode === 'transfer') {
                         settings.amount = priceMatrix[settings.locFrom]?.[settings.locTo] || 0;
                     } else if (settings.mode === 'reserve') {
-                        settings.amount = 1500;
+                        // 💡 模式 1 金額預設改為 9000
+                        settings.amount = 9000;
                     }
                 });
 
@@ -297,14 +299,20 @@
                     }
                 };
 
-                const generateTexts = () => {
+                // 💡 拆分出核心的自動更新函數
+                const autoGenerate = () => {
                     generateReport();
                     generatePitch();
-                    
+                };
+
+                // 💡 按鈕點擊的函數 (加入捲動與提示)
+                const handleManualGenerate = () => {
+                    autoGenerate();
                     if (window.innerWidth < 768) {
                         setTimeout(() => { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }, 100);
                     }
                     updateStatus(`⚡ 文案與話術生成完畢！`, "text-green-300 font-bold");
+                    setTimeout(() => updateStatus("系統準備就緒", "text-cyan-200"), 3000);
                 };
 
                 const generateReport = () => {
@@ -437,10 +445,19 @@
                     });
                 };
 
+                // 💡 監聽所有的輸入變化，一變就自動生成
+                watch(settings, autoGenerate, { deep: true });
+                watch(car, autoGenerate, { deep: true });
+
+                // 💡 初始載入時先生成一次空表
+                onMounted(() => {
+                    autoGenerate();
+                });
+
                 return {
                     statusMessage, statusColor, searchQuery,
                     locations, settings, car, output, amountHint,
-                    searchCar, generateTexts, copyContent
+                    searchCar, handleManualGenerate, copyContent
                 };
             }
         }).mount('#app');

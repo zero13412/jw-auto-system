@@ -18,7 +18,7 @@
             // 如果有登入，檢查有沒有這個頁面的權限
             const perms = JSON.parse(permsRaw);
             const isSuperAdmin = String(perms['最高管理員']).toUpperCase() === 'V';
-            const hasAuth = String(perms['新竹看板']).toUpperCase() === 'V'; // ⚠️ 已經幫您改成這頁專屬的名字囉！
+            const hasAuth = String(perms['新竹看板']).toUpperCase() === 'V'; 
             
             if (!isSuperAdmin && !hasAuth) {
                 alert("⛔ 存取被拒絕！您沒有【新竹看板】的瀏覽權限。");
@@ -100,7 +100,7 @@
                             </div>
 
                             <div v-if="row.condition" class="p-2 rounded text-xs border leading-relaxed"
-                                 :class="String(row.condition).trim() === '原鈑件' ? 'bg-gray-50 border-gray-200 text-gray-500' : 'bg-red-50 border-red-100 text-red-700'">
+                                 :class="['原鈑件', '原版件', '原板件'].includes(String(row.condition).trim()) ? 'bg-gray-50 border-gray-200 text-gray-500' : 'bg-red-50 border-red-100 text-red-700'">
                                 <span class="font-bold">狀況:</span> 
                                 <span v-html="formatCondition(row.condition)"></span>
                             </div>
@@ -151,7 +151,7 @@
                                 <td class="px-3 py-2 border border-gray-200 text-gray-700 text-center">{{ row.mileage }}</td>
                                 
                                 <td class="px-3 py-2 border border-gray-200 whitespace-normal min-w-[200px] text-xs font-bold" 
-                                    :class="String(row.condition).trim() === '原鈑件' ? 'text-gray-500' : 'text-red-700'" 
+                                    :class="['原鈑件', '原版件', '原板件'].includes(String(row.condition).trim()) ? 'text-gray-500' : 'text-red-700'" 
                                     v-html="formatCondition(row.condition)"></td>
                             </tr>
                         </tbody>
@@ -223,10 +223,10 @@
                     return map[cat] || map['default'];
                 }
 
-                // 將「原鈑件」三個字變成灰色
+                // 將「原鈑件、原版件、原板件」都變成灰色
                 const formatCondition = (cond) => {
                     if (!cond) return '';
-                    return String(cond).replace(/原鈑件/g, '<span class="text-gray-400 font-normal">原鈑件</span>');
+                    return String(cond).replace(/原[鈑版板]件/g, (match) => `<span class="text-gray-400 font-normal">${match}</span>`);
                 };
 
                 // 複製車號功能

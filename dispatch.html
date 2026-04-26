@@ -238,7 +238,6 @@
                 const amountHint = computed(() => {
                     if (settings.mode === 'order') return "";
                     if (settings.mode === 'universal') return "(通用模式不需設定金額)";
-                    // 💡 更新提示文字
                     if (settings.mode === 'reserve') return "(預設9000，可自訂)";
                     
                     let fee = priceMatrix[settings.locFrom]?.[settings.locTo] || 0;
@@ -250,7 +249,6 @@
                     if (settings.mode === 'transfer') {
                         settings.amount = priceMatrix[settings.locFrom]?.[settings.locTo] || 0;
                     } else if (settings.mode === 'reserve') {
-                        // 💡 模式 1 金額預設改為 9000
                         settings.amount = 9000;
                     }
                 });
@@ -292,20 +290,18 @@
                             updateStatus(`✅ 找到車輛：${car.model} (產權: ${car.company || '無'})`, "text-green-300 font-bold");
                         } else {
                             car.plate = searchQuery.value.toUpperCase();
-                            updateStatus("❌ 查無此車，請手動輸入明細", "text-red-300 font-bold");
+                            updateStatus("❌ 查無此車，請手手動輸入明細", "text-red-300 font-bold");
                         }
                     } catch (e) {
                         updateStatus("❌ 網路連線錯誤", "text-red-300 font-bold");
                     }
                 };
 
-                // 💡 拆分出核心的自動更新函數
                 const autoGenerate = () => {
                     generateReport();
                     generatePitch();
                 };
 
-                // 💡 按鈕點擊的函數 (加入捲動與提示)
                 const handleManualGenerate = () => {
                     autoGenerate();
                     if (window.innerWidth < 768) {
@@ -380,7 +376,8 @@
                     } else if (settings.mode === "reserve") {
                         text_out = `${today_str} ${settings.custSrc} ${settings.custName}\n`;
                         text_out += `線上預約$${settings.amount} ${settings.payMethod} 保留優惠七天\n`;
-                        text_out += `${view_date_str}直接到${settings.locTo}店賞車\n\n`;
+                        // 💡 模式1 不調度，賞車地即為車輛所在地
+                        text_out += `${view_date_str}直接到${settings.locFrom}店賞車\n\n`;
                         text_out += `${clean_year}年${car.model} ${car.color}${source_str}\n`;
                         text_out += `里程：${car.mileage}\n`;
                         text_out += `${plate_str}`;
@@ -408,7 +405,8 @@
                     }
 
                     if (settings.mode === 'reserve') {
-                        const p1 = `您要直接到${settings.locTo}店賞車 看您有沒有意願線上預付賞車金${fee}元\n${fee} 元是賞車金 不是訂金\n(刷卡或匯款都可)\n因為我們車跑的速度蠻快\n您付賞車金之後 保留優惠 並且是購車的第一順位\n\n假設 您來看車之前\n有第二順位出現 他想直接付訂金\n(我們訂金是收 29000 元)\n會馬上告知您 您有3小時考慮時間 可馬上來看車\n如您有意願購買 就必須3小時內 補刷到 29000 元\n如您沒有意願 就會安排會計小姐 退款 ${fee} 元\n那如果看完車不滿意 現場也沒有其他考慮的車款\n${fee}元可全退`;
+                        // 💡 模式1 帶入車輛所在地
+                        const p1 = `您要直接到「${settings.locFrom}」店賞車的話 看您有沒有意願線上預付賞車金${fee}元\n${fee} 元是賞車金 不是訂金\n(刷卡或匯款都可)\n因為我們車跑的速度蠻快\n您付賞車金之後 保留優惠 並且是購車的第一順位\n\n假設 您來看車之前\n有第二順位出現 他想直接付訂金\n(我們訂金是收 29000 元)\n會馬上告知您 您有3小時考慮時間 可馬上來看車\n如您有意願購買 就必須3小時內 補刷到 29000 元\n如您沒有意願 就會安排會計小姐 退款 ${fee} 元\n那如果看完車不滿意 現場也沒有其他考慮的車款\n${fee}元可全退`;
                         output.pitches = [p1];
                         return;
                     }
@@ -445,11 +443,9 @@
                     });
                 };
 
-                // 💡 監聽所有的輸入變化，一變就自動生成
                 watch(settings, autoGenerate, { deep: true });
                 watch(car, autoGenerate, { deep: true });
 
-                // 💡 初始載入時先生成一次空表
                 onMounted(() => {
                     autoGenerate();
                 });

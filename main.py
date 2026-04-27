@@ -383,7 +383,6 @@ def process_excel_file(filename: str, contents: bytes):
         data_to_upload_main = []
         color_requests_main = [{"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": 1 }, "cell": {"userEnteredFormat": {"backgroundColorStyle": {"rgbColor": { "red": 1.0, "green": 1.0, "blue": 1.0 }}}}, "fields": "userEnteredFormat.backgroundColorStyle,userEnteredFormat.backgroundColor"}}]
 
-        # 💡 強制除蟲：舊資料過濾掉小數點跟空白，精準備對
         old_keys = set()
         is_excel_initial = False
         try:
@@ -643,8 +642,18 @@ def get_cars(brand: str = "全部", location: str = "全部", prop: str = "全�
     if brand != "全部": res = res[res['廠牌'] == brand]
     if location != "全部": res = res[res['車輛位置'] == location]
     if prop != "全部": res = res[res['filter_property'] == prop]
-    if model: res = res[res['車型'].astype(str).str.contains(model, case=False)]
-    if plate: res = res[res['車牌'].astype(str).str.contains(plate, case=False)]
+    
+    # 💡 車型與車牌模糊搜尋：無視空格、連字號，不分大小寫
+    if model: 
+        clean_model = re.sub(r'[\s\-]', '', model).lower()
+        clean_col = res['車型'].astype(str).str.replace(r'[\s\-]', '', regex=True).str.lower()
+        res = res[clean_col.str.contains(clean_model, na=False)]
+        
+    if plate: 
+        clean_plate = re.sub(r'[\s\-]', '', plate).lower()
+        clean_col_p = res['車牌'].astype(str).str.replace(r'[\s\-]', '', regex=True).str.lower()
+        res = res[clean_col_p.str.contains(clean_plate, na=False)]
+        
     if person:
         mask = pd.Series(False, index=res.index)
         if '採購' in res.columns: mask = mask | res['採購'].astype(str).str.contains(person, case=False)
@@ -738,7 +747,6 @@ def sync_car_source_from_backend(user_id: str = "", u: str = "", p: str = ""):
             if status_parts:
                 status_msg = f"\n📊 狀態分佈：{'、'.join(status_parts)}"
 
-        # 💡 強制除蟲：舊資料庫清單絕對無小數點
         old_ids = set()
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)
@@ -757,7 +765,6 @@ def sync_car_source_from_backend(user_id: str = "", u: str = "", p: str = ""):
         except Exception as e:
             print("Crawler old_ids fetch error:", e)
 
-        # 防呆：如果完全沒抓到舊表，用 cached_df 補救
         if not old_ids and cached_df is not None:
             if '新編號' in cached_df.columns:
                 for val in cached_df['新編號']:
@@ -768,7 +775,6 @@ def sync_car_source_from_backend(user_id: str = "", u: str = "", p: str = ""):
                     v = str(val).replace('.0', '').strip()
                     if v: old_ids.add(v)
 
-        # 💡 如果連備用方案都是空的，代表是第一次啟動，禁止報新車
         is_initial = len(old_ids) == 0
         new_count = 0
         new_cars_list = []
@@ -843,8 +849,9 @@ def search_plate(plate: str):
     if cached_df is None: load_and_clean_data()
     res = cached_df.copy()
     if '車牌' in res.columns:
-        target_plate = plate.strip().upper()
-        res['clean_plate'] = res['車牌'].astype(str).str.replace(" ", "").str.upper()
+        # 💡 車牌 API 模糊搜尋
+        target_plate = re.sub(r'[\s\-]', '', plate).upper()
+        res['clean_plate'] = res['車牌'].astype(str).str.replace(r'[\s\-]', '', regex=True).str.upper()
         matches = res[res['clean_plate'].str.contains(target_plate, na=False)]
         if len(matches) > 0:
             car_data = matches.iloc[0].to_dict()

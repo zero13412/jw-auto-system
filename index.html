@@ -8,6 +8,16 @@
     <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <style>
         body { font-family: 'Microsoft JhengHei', sans-serif; }
+        /* 替進度條增加流動光影動畫 */
+        .progress-bar-stripes {
+            background-image: linear-gradient(45deg, rgba(255, 255, 255, 0.15) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, 0.15) 50%, rgba(255, 255, 255, 0.15) 75%, transparent 75%, transparent);
+            background-size: 1rem 1rem;
+            animation: progress-stripes 1s linear infinite;
+        }
+        @keyframes progress-stripes {
+            from { background-position: 1rem 0; }
+            to { background-position: 0 0; }
+        }
     </style>
 </head>
 <body class="bg-slate-100 min-h-screen flex items-center justify-center p-4 relative">
@@ -147,7 +157,12 @@
                         </div>
                     </div>
                 </div>
-                <div id="uploadStatus" class="mt-4 text-center font-bold text-sm hidden p-3 rounded-lg whitespace-pre-wrap leading-relaxed"></div>
+
+                <div id="progressContainer" class="w-full bg-gray-200 rounded-full h-3 mt-5 hidden overflow-hidden shadow-inner border border-gray-300">
+                    <div id="progressBar" class="bg-blue-500 h-3 rounded-full transition-all duration-300 relative progress-bar-stripes" style="width: 0%"></div>
+                </div>
+
+                <div id="uploadStatus" class="mt-3 text-center font-bold text-sm hidden p-3 rounded-lg whitespace-pre-wrap leading-relaxed"></div>
             </div>
         </div>
     </div>
@@ -155,6 +170,50 @@
     <script>
         let myPermissions = {};
         let loginModalResolve = null;
+        let progressInterval = null; // 控制進度條的計時器
+
+        // 💡 進度條控制器
+        function startProgress() {
+            const pContainer = document.getElementById('progressContainer');
+            const pBar = document.getElementById('progressBar');
+            pContainer.classList.remove('hidden');
+            
+            // 重置進度條樣式
+            pBar.style.width = '0%';
+            pBar.className = "h-3 rounded-full transition-all duration-300 relative progress-bar-stripes bg-blue-500";
+            
+            let width = 0;
+            // 模擬進度推進，大約在 15~20 秒內推到 90%
+            progressInterval = setInterval(() => {
+                if (width >= 90) {
+                    clearInterval(progressInterval);
+                } else {
+                    width += Math.random() * 4; // 隨機推進 0~4%
+                    if (width > 90) width = 90;
+                    pBar.style.width = width + '%';
+                }
+            }, 800);
+        }
+
+        function finishProgress(isSuccess) {
+            if (progressInterval) clearInterval(progressInterval);
+            const pBar = document.getElementById('progressBar');
+            
+            pBar.style.width = '100%';
+            pBar.classList.remove('progress-bar-stripes', 'bg-blue-500');
+            
+            if (isSuccess) {
+                pBar.classList.add('bg-green-500');
+            } else {
+                pBar.classList.add('bg-red-500');
+            }
+        }
+
+        function hideProgress() {
+            if (progressInterval) clearInterval(progressInterval);
+            document.getElementById('progressContainer').classList.add('hidden');
+        }
+
 
         function openLoginModal(message) {
             return new Promise((resolve) => {
@@ -254,9 +313,12 @@
             const statusDiv = document.getElementById('uploadStatus');
             const syncBtn = document.getElementById('syncBtn');
             
-            statusDiv.textContent = "⏳ 正在連線更新車源表...";
+            // 啟動進度條與狀態文字
+            startProgress();
+            statusDiv.textContent = "⏳ 正在連線更新車源表，請稍候...";
             statusDiv.style.display = "block";
-            statusDiv.className = "mt-4 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
+            statusDiv.className = "mt-3 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
+            
             syncBtn.disabled = true;
             syncBtn.classList.add("opacity-50", "cursor-not-allowed");
             
@@ -272,27 +334,31 @@
                 const data = await res.json();
                 
                 if (data.status === 'success') {
+                    finishProgress(true);
                     statusDiv.textContent = "✅ " + data.message;
-                    statusDiv.className = "mt-4 text-left md:text-center font-bold text-sm bg-green-50 text-green-700 p-4 rounded-lg block whitespace-pre-wrap leading-relaxed";
+                    statusDiv.className = "mt-3 text-left md:text-center font-bold text-sm bg-green-50 text-green-700 p-4 rounded-lg block whitespace-pre-wrap leading-relaxed";
                     alert(data.message);
                 } else if (data.status === 'need_login') {
+                    hideProgress();
                     statusDiv.style.display = "none";
                     const creds = await openLoginModal(data.message);
                     if (!creds) {
                         statusDiv.textContent = "⚠️ 更新已取消";
-                        statusDiv.className = "mt-4 text-center font-bold text-sm bg-gray-100 text-gray-500 p-3 rounded-lg block";
+                        statusDiv.className = "mt-3 text-center font-bold text-sm bg-gray-100 text-gray-500 p-3 rounded-lg block";
                         statusDiv.style.display = "block";
                         return;
                     }
                     await syncBackend(creds.u, creds.p);
                 } else {
+                    finishProgress(false);
                     statusDiv.textContent = "❌ " + data.message;
-                    statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
+                    statusDiv.className = "mt-3 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
                     alert(data.message);
                 }
             } catch (e) { 
-                statusDiv.textContent = "❌ 更新連線失敗";
-                statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
+                finishProgress(false);
+                statusDiv.textContent = "❌ 更新連線失敗，請檢查網路狀態";
+                statusDiv.className = "mt-3 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
             } finally { 
                 syncBtn.disabled = false;
                 syncBtn.classList.remove("opacity-50", "cursor-not-allowed");
@@ -312,9 +378,12 @@
             const formData = new FormData();
             formData.append("file", fileInput.files[0]);
             
-            statusDiv.textContent = "⏳ 資料處理中...系統正在分析檔名與內容，請稍候...";
+            // 啟動進度條與狀態文字
+            startProgress();
+            statusDiv.textContent = "⏳ 資料上傳處理中...系統正在分析檔名與內容，請稍候...";
             statusDiv.style.display = "block";
-            statusDiv.className = "mt-4 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
+            statusDiv.className = "mt-3 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
+            
             btn.disabled = true;
             btn.classList.add("opacity-50", "cursor-not-allowed");
 
@@ -323,18 +392,21 @@
                 const result = await response.json();
                 
                 if (result.status === "success") {
+                    finishProgress(true);
                     statusDiv.textContent = "✅ " + result.message;
-                    statusDiv.className = "mt-4 text-left md:text-center font-bold text-sm bg-green-50 text-green-700 p-4 rounded-lg block whitespace-pre-wrap leading-relaxed";
+                    statusDiv.className = "mt-3 text-left md:text-center font-bold text-sm bg-green-50 text-green-700 p-4 rounded-lg block whitespace-pre-wrap leading-relaxed";
                     fileInput.value = ""; 
                     document.getElementById('fileName').textContent = '未選擇檔案';
                     alert(result.message);
                 } else {
+                    finishProgress(false);
                     statusDiv.textContent = "❌ " + result.message;
-                    statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
+                    statusDiv.className = "mt-3 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
                 }
             } catch (error) { 
+                finishProgress(false);
                 statusDiv.textContent = "❌ 網路連線失敗或處理逾時。";
-                statusDiv.className = "mt-4 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
+                statusDiv.className = "mt-3 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
             } finally {
                 btn.disabled = false;
                 btn.classList.remove("opacity-50", "cursor-not-allowed");

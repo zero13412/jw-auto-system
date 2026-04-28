@@ -9,7 +9,20 @@
 
     <script>
         const userId = localStorage.getItem('jw_user_id');
-        if (!userId) { window.location.href = "/"; }
+        const permsRaw = localStorage.getItem('jw_permissions');
+        
+        if (!userId || !permsRaw) {
+            window.location.href = "/";
+        } else {
+            const perms = JSON.parse(permsRaw);
+            const isSuperAdmin = String(perms['最高管理員']).toUpperCase() === 'V';
+            const hasAuth = String(perms['車前牌製作']).toUpperCase() === 'V'; 
+            
+            if (!isSuperAdmin && !hasAuth) {
+                alert("⛔ 存取被拒絕！您沒有【車前牌製作】的使用權限。");
+                window.location.href = "/";
+            }
+        }
     </script>
 
     <style>

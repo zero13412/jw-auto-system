@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🏷️ 杰運汽車 - 車前牌製作系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <script>
+        const userId = localStorage.getItem('jw_user_id');
+        if (!userId) { window.location.href = "/"; }
+    </script>
+
+    <style>
+        body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
+        [v-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div id="app" class="min-h-screen flex flex-col" v-cloak>
+        
+        <header class="bg-orange-600 text-white p-3 sm:p-4 shadow-md flex justify-between items-center z-10 relative">
+            <h1 class="text-base sm:text-xl font-bold truncate pr-2">🏷️ 車前牌製作系統</h1>
+            <a href="/" class="bg-yellow-500 hover:bg-yellow-600 text-orange-900 font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm">
+                🏠 首頁
+            </a>
+        </header>
+
+        <div class="bg-orange-800 text-white text-xs py-1 px-4 text-center sm:text-right transition-colors duration-300" :class="statusColor">
+            {{ statusMessage }}
+        </div>
+
+        <div class="flex-1 max-w-5xl w-full mx-auto p-3 sm:p-6 grid md:grid-cols-2 gap-6 items-start mt-2">
+            
+            <div class="bg-white rounded-xl shadow-md border border-gray-200 p-5 flex flex-col h-full min-h-[400px]">
+                <h2 class="text-lg font-bold text-orange-700 border-b pb-2 mb-4 flex items-center gap-2">
+                    <span>1️⃣</span> 貼上廣告文案
+                </h2>
+                
+                <textarea v-model="rawText" placeholder="請將 FB 或 8891 的廣告文案直接貼在這裡..." 
+                          class="w-full flex-1 border-2 border-gray-200 rounded-lg p-3 focus:border-orange-400 focus:ring-0 transition resize-none text-sm leading-relaxed mb-4"></textarea>
+                
+                <div class="flex gap-3 mt-auto">
+                    <button @click="clearText" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 px-4 rounded-lg transition active:scale-95 shadow-sm">
+                        🧹 清空
+                    </button>
+                    <button @click="parseAd" :disabled="loading" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition shadow-md active:scale-95 flex items-center justify-center gap-2">
+                        <span v-if="!loading">✨ 智慧解析</span>
+                        <span v-else>⏳ 處理中...</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-md border border-gray-200 p-5 flex flex-col">
+                <h2 class="text-lg font-bold text-blue-700 border-b pb-2 mb-4 flex items-center gap-2">
+                    <span>2️⃣</span> 確認與調整欄位
+                </h2>
+
+                <div class="space-y-4 flex-1">
+                    <div class="flex items-center gap-3">
+                        <label class="w-16 font-bold text-gray-600 text-sm">品牌</label>
+                        <input type="text" v-model="parsed.brand" class="flex-1 border-2 border-gray-200 rounded-lg p-2 focus:border-blue-400 focus:ring-0 transition">
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <label class="w-16 font-bold text-gray-600 text-sm">車型</label>
+                        <input type="text" v-model="parsed.model" class="flex-1 border-2 border-gray-200 rounded-lg p-2 focus:border-blue-400 focus:ring-0 transition">
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <label class="w-16 font-bold text-gray-600 text-sm">出廠</label>
+                        <input type="text" v-model="parsed.man_date" class="flex-1 border-2 border-gray-200 rounded-lg p-2 focus:border-blue-400 focus:ring-0 transition">
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <label class="w-16 font-bold text-gray-600 text-sm">領牌</label>
+                        <input type="text" v-model="parsed.lic_date" class="flex-1 border-2 border-gray-200 rounded-lg p-2 focus:border-blue-400 focus:ring-0 transition">
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <label class="w-16 font-bold text-gray-600 text-sm">里程</label>
+                        <input type="text" v-model="parsed.mileage" class="flex-1 border-2 border-gray-200 rounded-lg p-2 focus:border-blue-400 focus:ring-0 transition">
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <label class="w-16 font-bold text-red-600 text-sm">價格</label>
+                        <input type="text" v-model="parsed.price" class="flex-1 border-2 border-red-200 rounded-lg p-2 focus:border-red-400 text-red-700 font-bold focus:ring-0 transition">
+                    </div>
+                </div>
+
+                <div class="mt-8 border-t pt-4">
+                    <button @click="exportExcel" :disabled="loadingExp" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-lg transition shadow-md active:scale-95 flex items-center justify-center gap-2 text-lg">
+                        <span v-if="!loadingExp">💾 下載車前牌 Excel</span>
+                        <span v-else>⏳ 正在產生檔案...</span>
+                    </button>
+                    <p class="text-center text-xs text-gray-400 mt-2">系統會自動使用內建的認證表格式</p>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, reactive } = Vue;
+
+        createApp({
+            setup() {
+                const rawText = ref("");
+                const statusMessage = ref("系統準備就緒");
+                const statusColor = ref("text-orange-200");
+                const loading = ref(false);
+                const loadingExp = ref(false);
+
+                const parsed = reactive({
+                    brand: "", model: "", man_date: "", lic_date: "", mileage: "", price: ""
+                });
+
+                const updateStatus = (msg, colorClass) => {
+                    statusMessage.value = msg;
+                    statusColor.value = colorClass;
+                };
+
+                const clearText = () => {
+                    rawText.value = "";
+                    Object.keys(parsed).forEach(k => parsed[k] = "");
+                    updateStatus("🧹 已清空內容", "text-orange-200");
+                };
+
+                const parseAd = async () => {
+                    if (!rawText.value.trim()) {
+                        updateStatus("⚠️ 請先貼上廣告文案！", "text-yellow-300 font-bold");
+                        return;
+                    }
+                    loading.value = true;
+                    updateStatus("⏳ 正在由 AI 智慧解析...", "text-blue-300 font-bold");
+                    
+                    try {
+                        const res = await fetch("/api/parse_ad", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ text: rawText.value })
+                        });
+                        const result = await res.json();
+                        
+                        if (result.status === "success") {
+                            Object.assign(parsed, result.data);
+                            updateStatus(`✅ 解析成功！請確認右側欄位。`, "text-green-300 font-bold");
+                        } else {
+                            updateStatus("❌ 解析失敗", "text-red-300 font-bold");
+                        }
+                    } catch (e) {
+                        updateStatus("❌ 網路連線錯誤", "text-red-300 font-bold");
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                const exportExcel = async () => {
+                    if (!parsed.brand && !parsed.model) {
+                        updateStatus("⚠️ 請先完成解析再下載", "text-yellow-300 font-bold");
+                        return;
+                    }
+                    loadingExp.value = true;
+                    updateStatus("⏳ 正在產生 Excel...", "text-blue-300 font-bold");
+                    
+                    try {
+                        const res = await fetch("/api/export_board", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(parsed)
+                        });
+                        
+                        if (!res.ok) throw new Error("下載失敗");
+                        
+                        const blob = await res.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        
+                        let y = "0000";
+                        const m = parsed.man_date.match(/(\d{4})/);
+                        if (m) y = m[1];
+                        
+                        a.download = `車前牌_${y}_${parsed.brand}_${parsed.model}.xlsx`;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        
+                        updateStatus("✅ Excel 下載完成！", "text-green-300 font-bold");
+                    } catch (e) {
+                        updateStatus("❌ 下載發生錯誤", "text-red-300 font-bold");
+                    } finally {
+                        loadingExp.value = false;
+                    }
+                };
+
+                return { rawText, parsed, statusMessage, statusColor, loading, loadingExp, clearText, parseAd, exportExcel };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

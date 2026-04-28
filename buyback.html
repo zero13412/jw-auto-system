@@ -75,7 +75,7 @@
                     </button>
                 </div>
 
-                <div class="bg-white rounded-xl shadow-md border border-gray-200 p-5 flex-1 flex flex-col min-h-[300px]">
+                <div class="bg-white rounded-xl shadow-md border border-gray-200 p-5 flex-1 flex flex-col min-h-[350px]">
                     <h2 class="text-lg font-bold text-indigo-700 border-b pb-2 mb-4 flex items-center gap-2">
                         <span>👁️</span> 步驟 2: 確認與設定店別
                     </h2>
@@ -90,7 +90,7 @@
                         </div>
                     </div>
 
-                    <textarea v-model="previewText" class="w-full flex-1 border-2 border-indigo-50 bg-indigo-50/30 rounded-lg p-3 text-gray-700 focus:outline-none resize-none text-base leading-relaxed font-bold" readonly placeholder="請先在上方搜尋車輛..."></textarea>
+                    <textarea v-model="previewText" rows="6" class="w-full flex-1 border-2 border-indigo-50 bg-indigo-50/30 rounded-lg p-4 text-gray-800 focus:outline-none resize-none text-lg leading-relaxed font-bold min-h-[180px]" readonly placeholder="請先在上方搜尋車輛..."></textarea>
                     
                     <button @click="addToList" :disabled="!selectedCar" class="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-lg transition shadow-md active:scale-95 flex items-center justify-center gap-2 text-lg">
                         <span>⬇️ 確認無誤，加入清單 ➡️</span>
@@ -183,7 +183,6 @@
                 const outputList = ref("");
                 const listCount = ref(0);
                 
-                // Modal 控制
                 const showModal = ref(false);
                 const multiResults = ref([]);
 
@@ -192,7 +191,6 @@
                     statusColor.value = colorClass;
                 };
 
-                // 即時計算預覽文字
                 const previewText = computed(() => {
                     if (!selectedCar.value) return "";
                     const c = selectedCar.value;
@@ -210,7 +208,7 @@
                     
                     loading.value = true;
                     updateStatus("🔍 正在搜尋資料庫...", "text-yellow-300 font-bold");
-                    selectedCar.value = null; // 重置預覽
+                    selectedCar.value = null; 
                     
                     try {
                         const res = await fetch(`/api/search_car_multi?mode=${form.mode}&query=${encodeURIComponent(form.query)}`);
@@ -218,10 +216,8 @@
                         
                         if (result.status === "success" && result.data.length > 0) {
                             if (result.data.length === 1) {
-                                // 只有一筆，直接選取
                                 selectCarData(result.data[0]);
                             } else {
-                                // 有多筆，跳出彈窗
                                 multiResults.value = result.data;
                                 showModal.value = true;
                                 updateStatus(`⚠️ 找到 ${result.data.length} 筆資料，請手動選擇`, "text-yellow-300 font-bold");
@@ -252,7 +248,6 @@
                     
                     const checkIdStr = `編號：${selectedCar.value.stock_id}`;
                     
-                    // 重複檢查
                     if (outputList.value.includes(checkIdStr)) {
                         if(!confirm(`車牌：${selectedCar.value['車牌'] || '無'}\n編號：${selectedCar.value.stock_id}\n\n這台車已經在右側清單囉！\n確定要再加入一次嗎？`)) {
                             return; 
@@ -267,7 +262,6 @@
                     
                     listCount.value += 1;
                     
-                    // 清空搜尋，準備下一台
                     selectedCar.value = null;
                     form.query = "";
                     updateStatus("✅ 已加入清單，請繼續搜尋下一台", "text-green-300 font-bold");
@@ -291,7 +285,6 @@
                     });
                 };
 
-                // 當店別改變時，如果已有選中的車，更新狀態列
                 watch(() => form.store, () => {
                     if (selectedCar.value) {
                         updateStatus(`✅ 已預覽: ${selectedCar.value['車牌']} (${form.store})`, "text-green-300 font-bold");

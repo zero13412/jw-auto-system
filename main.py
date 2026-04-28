@@ -710,14 +710,13 @@ async def export_board(request: Request):
         for r, val in updates.items():
             cell = ws.cell(row=r, column=2)
             cell.value = val
-            # 💡 重點：保留原本的字體、大小，只微調對齊與「自適應縮小(shrink_to_fit)」
             current_align = cell.alignment
             if current_align:
                 cell.alignment = Alignment(
                     horizontal=current_align.horizontal or 'center',
                     vertical=current_align.vertical or 'center',
                     wrap_text=current_align.wrap_text,
-                    shrink_to_fit=True, # 強制開啟自適應
+                    shrink_to_fit=True,
                     text_rotation=current_align.text_rotation,
                     indent=current_align.indent
                 )
@@ -725,16 +724,14 @@ async def export_board(request: Request):
                 cell.alignment = Alignment(horizontal='center', vertical='center', shrink_to_fit=True)
                 
     else:
-        # 無中生有：如果沒有上傳範本，系統自動生成「展間級」排版
+        # 💡 無中生有：A 欄不寫入任何文字，保留乾淨排版邊距
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "認證表格"
         
-        # 設定完美的欄寬
         ws.column_dimensions['A'].width = 15
         ws.column_dimensions['B'].width = 50
         
-        labels = ["", "品牌", "車型", "出廠", "領牌", "里程", "價格"]
         updates = {
             2: brand,
             3: model,
@@ -744,19 +741,11 @@ async def export_board(request: Request):
             7: data.get("price", "")
         }
         
-        for i, lbl in enumerate(labels):
-            row_idx = i + 1
-            # 設定完美的列高
+        for row_idx in range(1, 8):
             ws.row_dimensions[row_idx].height = 55
             
-            if lbl: 
-                c_label = ws.cell(row=row_idx, column=1, value=lbl)
-                c_label.font = Font(name='微軟正黑體', size=18, bold=True)
-                c_label.alignment = Alignment(horizontal='right', vertical='center')
-                
             if row_idx in updates:
                 c_val = ws.cell(row=row_idx, column=2, value=updates[row_idx])
-                # 設定超大字體並開啟自適應
                 c_val.font = Font(name='微軟正黑體', size=36, bold=True)
                 c_val.alignment = Alignment(horizontal='center', vertical='center', shrink_to_fit=True)
                 

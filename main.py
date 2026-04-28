@@ -3,7 +3,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import openpyxl
-from openpyxl.styles import Alignment
+from openpyxl.styles import Alignment, Font
 import gspread
 from google.oauth2.service_account import Credentials
 import re
@@ -22,7 +22,7 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, FileMessage
 
-app = FastAPI(title="🚗 杰運內部系統 - 終極完整版")
+app = FastAPI(title="🚗 杰運汽車新竹店阿鍇專用 - 內部系統")
 
 app.add_middleware(
     CORSMiddleware,
@@ -697,24 +697,69 @@ async def export_board(request: Request):
     if os.path.exists(template_path):
         wb = openpyxl.load_workbook(template_path)
         ws = wb["認證表格"] if "認證表格" in wb.sheetnames else wb.active
+        
+        updates = {
+            2: brand,
+            3: model,
+            4: data.get("man_date", ""),
+            5: data.get("lic_date", ""),
+            6: data.get("mileage", ""),
+            7: data.get("price", "")
+        }
+        
+        for r, val in updates.items():
+            cell = ws.cell(row=r, column=2)
+            cell.value = val
+            # 💡 重點：保留原本的字體、大小，只微調對齊與「自適應縮小(shrink_to_fit)」
+            current_align = cell.alignment
+            if current_align:
+                cell.alignment = Alignment(
+                    horizontal=current_align.horizontal or 'center',
+                    vertical=current_align.vertical or 'center',
+                    wrap_text=current_align.wrap_text,
+                    shrink_to_fit=True, # 強制開啟自適應
+                    text_rotation=current_align.text_rotation,
+                    indent=current_align.indent
+                )
+            else:
+                cell.alignment = Alignment(horizontal='center', vertical='center', shrink_to_fit=True)
+                
     else:
+        # 無中生有：如果沒有上傳範本，系統自動生成「展間級」排版
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "認證表格"
-        labels = ["", "品牌", "車型", "出廠", "領牌", "里程", "價格"]
-        for i, lbl in enumerate(labels):
-            if lbl: ws.cell(row=i+1, column=1, value=lbl)
-            
-    ws.cell(row=2, column=2, value=brand)
-    ws.cell(row=3, column=2, value=model)
-    ws.cell(row=4, column=2, value=data.get("man_date", ""))
-    ws.cell(row=5, column=2, value=data.get("lic_date", ""))
-    ws.cell(row=6, column=2, value=data.get("mileage", ""))
-    ws.cell(row=7, column=2, value=data.get("price", ""))
-    
-    for r in range(2, 8):
-        ws.cell(row=r, column=2).alignment = Alignment(horizontal='center', vertical='center')
         
+        # 設定完美的欄寬
+        ws.column_dimensions['A'].width = 15
+        ws.column_dimensions['B'].width = 50
+        
+        labels = ["", "品牌", "車型", "出廠", "領牌", "里程", "價格"]
+        updates = {
+            2: brand,
+            3: model,
+            4: data.get("man_date", ""),
+            5: data.get("lic_date", ""),
+            6: data.get("mileage", ""),
+            7: data.get("price", "")
+        }
+        
+        for i, lbl in enumerate(labels):
+            row_idx = i + 1
+            # 設定完美的列高
+            ws.row_dimensions[row_idx].height = 55
+            
+            if lbl: 
+                c_label = ws.cell(row=row_idx, column=1, value=lbl)
+                c_label.font = Font(name='微軟正黑體', size=18, bold=True)
+                c_label.alignment = Alignment(horizontal='right', vertical='center')
+                
+            if row_idx in updates:
+                c_val = ws.cell(row=row_idx, column=2, value=updates[row_idx])
+                # 設定超大字體並開啟自適應
+                c_val.font = Font(name='微軟正黑體', size=36, bold=True)
+                c_val.alignment = Alignment(horizontal='center', vertical='center', shrink_to_fit=True)
+                
     stream = io.BytesIO()
     wb.save(stream)
     stream.seek(0)

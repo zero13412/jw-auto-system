@@ -590,6 +590,20 @@ def process_excel_file(filename: str, contents: bytes):
 
 # ================= 🚀 API 區塊 =================
 
+# 💡 增強版：價格驗證過濾邏輯
+def is_valid_price_local(val_str, full_txt, match_obj):
+    try:
+        val = float(val_str)
+        if not (5.0 <= val <= 5000.0): return False
+        start_pos = match_obj.start()
+        end_pos = match_obj.end()
+        ctx_after = full_txt[end_pos : end_pos + 6]
+        if any(w in ctx_after for w in ['期', '零', '利', '頭', '貸']): return False
+        ctx_before = full_txt[max(0, start_pos - 10) : start_pos]
+        if any(w in ctx_before for w in ['訂閱', '人數', '人', '觀看', '里程', '跑']): return False
+        return True
+    except: return False
+
 @app.post("/api/parse_ad")
 async def parse_ad(request: Request):
     data = await request.json()
@@ -648,32 +662,63 @@ async def parse_ad(request: Request):
     if not m: m = re.search(r'([0-9,]+)\s*公里', raw_text)
     if m: mileage_str = f"{m.group(1)}公里"
 
+    # 💡 價格分離邏輯 (新車、店內、優惠)
     clean_price_text = raw_text.replace(',', '')
-    final_p_val, needs_markup = 0.0, True
-    
-    store_p_match = re.search(r'店內(?:售價|價格).*?([\d.]+)萬', clean_price_text)
-    if store_p_match:
-        final_p_val = float(store_p_match.group(1))
-        needs_markup = False
-    
-    if final_p_val == 0.0:
-        valid_prices = []
-        for m in re.finditer(r'([\d.]+)萬', clean_price_text):
-            val = float(m.group(1))
-            if 8.0 <= val <= 5000.0:
-                ctx_after = clean_price_text[m.end() : m.end()+6]
-                if any(w in ctx_after for w in ['期', '零', '利', '頭', '貸']): continue
-                ctx_before = clean_price_text[max(0, m.start()-10) : m.start()]
-                if any(w in ctx_before for w in ['訂閱', '人數', '里程', '跑']): continue
-                valid_prices.append(val)
-        if valid_prices: 
-            final_p_val = min(valid_prices)
-            needs_markup = True
+    new_p = ""
+    store_p = ""
+    promo_p = ""
 
-    price_str = ""
-    if final_p_val > 0:
-        if needs_markup: final_p_val += 3.0
-        price_str = f"{final_p_val:.1f}".replace(".0", "") + "萬"
+    new_p_match = re.search(r'新車.*?([\d.]+)萬', clean_price_text)
+    if new_p_match and is_valid_price_local(new_p_match.group(1), clean_price_text, new_p_match):
+        new_p = new_p_match.group(1)
+
+    store_p_match = re.search(r'店內.*?([\d.]+)萬', clean_price_text)
+    if store_p_match and is_valid_price_local(store_p_match.group(1), clean_price_text, store_p_match):
+        store_p = store_p_match.group(1)
+
+    for rg in [r'優惠價.*?([\d.]+)萬', r'折扣.*?([\d.]+)萬', r'網路價.*?([\d.]+)萬', r'最新優惠.*?([\d.]+)萬']:
+        pm = re.search(rg, clean_price_text)
+        if pm:
+            val = pm.group(1)
+            if float(val) > 10.0 and is_valid_price_local(val, clean_price_text, pm):
+                promo_p = val
+                break
+
+    if not store_p and promo_p:
+        try: store_p = f"{float(promo_p)+3:.1f}".replace(".0", "")
+        except: pass
+    if store_p and not promo_p:
+        try: promo_p = f"{float(store_p)-3:.1f}".replace(".0", "")
+        except: pass
+
+    if not store_p and not promo_p:
+        valid_prices = []
+        for match_m in re.finditer(r'([\d.]+)萬', clean_price_text):
+            if is_valid_price_local(match_m.group(1), clean_price_text, match_m):
+                v = float(match_m.group(1))
+                if new_p and abs(v - float(new_p)) < 0.1: continue
+                valid_prices.append(v)
+        if valid_prices:
+            valid_prices.sort()
+            promo_p = str(valid_prices[0])
+            if len(valid_prices) > 1: store_p = str(valid_prices[1])
+            else: store_p = f"{float(promo_p)+3:.1f}".replace(".0", "")
+
+    # 💡 貸款解析邏輯
+    loan_term = ""
+    loan_monthly = ""
+    loan_match = re.search(r'月付.*?(\d+)\$?\s*[:/]\s*(\d+)期', clean_price_text)
+    if not loan_match: loan_match = re.search(r'\$(\d+)\s*[:/]\s*(\d+)期', clean_price_text)
+
+    if loan_match:
+        v1, v2 = loan_match.group(1), loan_match.group(2)
+        if int(v1) > 100: loan_monthly, loan_term = v1, v2
+        else: loan_term, loan_monthly = v1, v2
+    else:
+        term_match = re.search(r'(\d+)期', clean_price_text)
+        if term_match: loan_term = term_match.group(1)
+        monthly_match = re.search(r'月付.*?(\d+)', clean_price_text)
+        if monthly_match: loan_monthly = monthly_match.group(1)
 
     return {
         "status": "success",
@@ -683,7 +728,11 @@ async def parse_ad(request: Request):
             "man_date": man_date_str,
             "lic_date": lic_date_str,
             "mileage": mileage_str,
-            "price": price_str
+            "new_price": new_p,
+            "store_price": store_p,
+            "promo_price": promo_p,
+            "loan_term": loan_term,
+            "loan_monthly": loan_monthly
         }
     }
 
@@ -692,6 +741,11 @@ async def export_board(request: Request):
     data = await request.json()
     brand = data.get("brand", "")
     model = data.get("model", "")
+    
+    # 將價格加上 '萬' 字以符合車前牌格式
+    price_val = data.get("price", "")
+    if price_val and "萬" not in price_val:
+        price_val += "萬"
     
     template_path = "template.xlsx"
     if os.path.exists(template_path):
@@ -704,7 +758,7 @@ async def export_board(request: Request):
             4: data.get("man_date", ""),
             5: data.get("lic_date", ""),
             6: data.get("mileage", ""),
-            7: data.get("price", "")
+            7: price_val
         }
         
         for r, val in updates.items():
@@ -724,7 +778,6 @@ async def export_board(request: Request):
                 cell.alignment = Alignment(horizontal='center', vertical='center', shrink_to_fit=True)
                 
     else:
-        # 💡 無中生有：A 欄不寫入任何文字，保留乾淨排版邊距
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "認證表格"
@@ -738,12 +791,11 @@ async def export_board(request: Request):
             4: data.get("man_date", ""),
             5: data.get("lic_date", ""),
             6: data.get("mileage", ""),
-            7: data.get("price", "")
+            7: price_val
         }
         
         for row_idx in range(1, 8):
             ws.row_dimensions[row_idx].height = 55
-            
             if row_idx in updates:
                 c_val = ws.cell(row=row_idx, column=2, value=updates[row_idx])
                 c_val.font = Font(name='微軟正黑體', size=36, bold=True)

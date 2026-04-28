@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>🏷️ 杰運汽車 - 車前牌製作系統</title>
+    <title>杰運汽車新竹店阿鍇專用 - 內部系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 
@@ -34,7 +34,7 @@
     <div id="app" class="min-h-screen flex flex-col" v-cloak>
         
         <header class="bg-orange-600 text-white p-3 sm:p-4 shadow-md flex justify-between items-center z-10 relative">
-            <h1 class="text-base sm:text-xl font-bold truncate pr-2">🏷️ 車前牌製作系統</h1>
+            <h1 class="text-base sm:text-xl font-bold truncate pr-2">🏷️ 車前牌 & 影片文案生成系統</h1>
             <a href="/" class="bg-yellow-500 hover:bg-yellow-600 text-orange-900 font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm">
                 🏠 首頁
             </a>
@@ -44,68 +44,118 @@
             {{ statusMessage }}
         </div>
 
-        <div class="flex-1 max-w-5xl w-full mx-auto p-3 sm:p-6 grid md:grid-cols-2 gap-6 items-start mt-2">
+        <div class="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-4 grid lg:grid-cols-12 gap-4 items-start mt-2">
             
-            <div class="bg-white rounded-xl shadow-md border border-gray-200 p-5 flex flex-col h-full min-h-[400px]">
+            <div class="lg:col-span-5 bg-white rounded-xl shadow-md border border-gray-200 p-5 flex flex-col h-full min-h-[400px]">
                 <h2 class="text-lg font-bold text-orange-700 border-b pb-2 mb-4 flex items-center gap-2">
                     <span>1️⃣</span> 貼上廣告文案
                 </h2>
                 
                 <textarea v-model="rawText" placeholder="請將 FB 或 8891 的廣告文案直接貼在這裡..." 
-                          class="w-full flex-1 border-2 border-gray-200 rounded-lg p-3 focus:border-orange-400 focus:ring-0 transition resize-none text-sm leading-relaxed mb-4"></textarea>
+                          class="w-full flex-1 border-2 border-gray-200 rounded-lg p-3 focus:border-orange-400 focus:ring-0 transition resize-none text-sm leading-relaxed mb-4 min-h-[250px]"></textarea>
                 
                 <div class="flex gap-3 mt-auto">
                     <button @click="clearText" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 px-4 rounded-lg transition active:scale-95 shadow-sm">
                         🧹 清空
                     </button>
                     <button @click="parseAd" :disabled="loading" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition shadow-md active:scale-95 flex items-center justify-center gap-2">
-                        <span v-if="!loading">✨ 智慧解析</span>
+                        <span v-if="!loading">✨ 智慧解析資料</span>
                         <span v-else>⏳ 處理中...</span>
                     </button>
                 </div>
             </div>
 
-            <div class="bg-white rounded-xl shadow-md border border-gray-200 p-5 flex flex-col">
-                <h2 class="text-lg font-bold text-blue-700 border-b pb-2 mb-4 flex items-center gap-2">
-                    <span>2️⃣</span> 確認與調整欄位
-                </h2>
+            <div class="lg:col-span-7 flex flex-col gap-4">
+                
+                <div class="bg-white rounded-xl shadow-md border border-gray-200 p-5">
+                    <h2 class="text-lg font-bold text-blue-700 border-b pb-2 mb-4 flex items-center gap-2">
+                        <span>2️⃣</span> 確認與調整欄位
+                    </h2>
 
-                <div class="space-y-4 flex-1">
-                    <div class="flex items-center gap-3">
-                        <label class="w-16 font-bold text-gray-600 text-sm">品牌</label>
-                        <input type="text" v-model="parsed.brand" class="flex-1 border-2 border-gray-200 rounded-lg p-2 focus:border-blue-400 focus:ring-0 transition">
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <label class="w-16 font-bold text-gray-600 text-sm">車型</label>
-                        <input type="text" v-model="parsed.model" class="flex-1 border-2 border-gray-200 rounded-lg p-2 focus:border-blue-400 focus:ring-0 transition">
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <label class="w-16 font-bold text-gray-600 text-sm">出廠</label>
-                        <input type="text" v-model="parsed.man_date" class="flex-1 border-2 border-gray-200 rounded-lg p-2 focus:border-blue-400 focus:ring-0 transition">
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <label class="w-16 font-bold text-gray-600 text-sm">領牌</label>
-                        <input type="text" v-model="parsed.lic_date" class="flex-1 border-2 border-gray-200 rounded-lg p-2 focus:border-blue-400 focus:ring-0 transition">
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <label class="w-16 font-bold text-gray-600 text-sm">里程</label>
-                        <input type="text" v-model="parsed.mileage" class="flex-1 border-2 border-gray-200 rounded-lg p-2 focus:border-blue-400 focus:ring-0 transition">
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <label class="w-16 font-bold text-red-600 text-sm">價格</label>
-                        <input type="text" v-model="parsed.price" class="flex-1 border-2 border-red-200 rounded-lg p-2 focus:border-red-400 text-red-700 font-bold focus:ring-0 transition">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="flex flex-col gap-1">
+                            <label class="font-bold text-gray-600 text-xs">品牌</label>
+                            <input type="text" v-model="parsed.brand" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="font-bold text-gray-600 text-xs">車型全名</label>
+                            <input type="text" v-model="parsed.model" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="font-bold text-gray-600 text-xs">出廠日期</label>
+                            <input type="text" v-model="parsed.man_date" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="font-bold text-gray-600 text-xs">領牌日期</label>
+                            <input type="text" v-model="parsed.lic_date" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="font-bold text-gray-600 text-xs">里程數</label>
+                            <input type="text" v-model="parsed.mileage" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="font-bold text-gray-400 text-xs">新車價(萬)</label>
+                            <input type="text" v-model="parsed.new_price" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="font-bold text-gray-500 text-xs">店內價(萬)</label>
+                            <input type="text" v-model="parsed.store_price" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm font-bold">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="font-bold text-red-600 text-xs">優惠價(萬) - 車前牌用</label>
+                            <input type="text" v-model="parsed.promo_price" class="border-2 border-red-200 rounded-lg p-1.5 focus:border-red-400 text-red-700 font-bold focus:ring-0 text-sm">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="font-bold text-indigo-600 text-xs">貸款期數</label>
+                            <input type="text" v-model="parsed.loan_term" class="border-2 border-indigo-200 rounded-lg p-1.5 focus:border-indigo-400 text-indigo-700 font-bold focus:ring-0 text-sm">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="font-bold text-indigo-600 text-xs">月付金額</label>
+                            <input type="text" v-model="parsed.loan_monthly" class="border-2 border-indigo-200 rounded-lg p-1.5 focus:border-indigo-400 text-indigo-700 font-bold focus:ring-0 text-sm">
+                        </div>
                     </div>
                 </div>
 
-                <div class="mt-8 border-t pt-4">
-                    <button @click="exportExcel" :disabled="loadingExp" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-lg transition shadow-md active:scale-95 flex items-center justify-center gap-2 text-lg">
-                        <span v-if="!loadingExp">💾 下載車前牌 Excel</span>
-                        <span v-else>⏳ 正在產生檔案...</span>
-                    </button>
-                    <p class="text-center text-xs text-gray-400 mt-2">系統會自動使用內建的認證表格式</p>
+                <div class="bg-white rounded-xl shadow-md border border-gray-200 p-5">
+                    <h2 class="text-lg font-bold text-teal-700 border-b pb-2 mb-3 flex items-center gap-2">
+                        <span>3️⃣</span> 車況與輸出
+                    </h2>
+
+                    <div class="flex items-center gap-4 mb-3">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" v-model="conditionType" value="original" class="w-4 h-4 text-teal-600">
+                            <span class="font-bold text-gray-700">✅ 原鈑件</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" v-model="conditionType" value="non_original" class="w-4 h-4 text-red-600">
+                            <span class="font-bold text-red-600">⚠️ 非原鈑件</span>
+                        </label>
+                    </div>
+
+                    <textarea v-if="conditionType === 'non_original'" v-model="damageText" 
+                              class="w-full border-2 border-red-200 rounded-lg p-2 text-sm text-gray-700 focus:border-red-400 focus:ring-0 resize-none mb-4" rows="4"></textarea>
+
+                    <div class="flex flex-col sm:flex-row gap-3 mb-4 border-t pt-4">
+                        <button @click="exportExcel" :disabled="loadingExp" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition shadow-md active:scale-95 flex justify-center items-center gap-2 text-sm sm:text-base">
+                            <span v-if="!loadingExp">💾 下載車前牌 Excel</span>
+                            <span v-else>⏳ 產生中...</span>
+                        </button>
+                        
+                        <button @click="generateScript" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-lg transition shadow-md active:scale-95 flex justify-center items-center gap-2 text-sm sm:text-base">
+                            🎬 產生影片腳本
+                        </button>
+                    </div>
+
+                    <div v-if="videoScript" class="relative">
+                        <div class="flex justify-between items-center bg-gray-100 p-2 border border-b-0 border-gray-200 rounded-t-lg">
+                            <span class="text-xs font-bold text-gray-500">影片文案預覽</span>
+                            <button @click="copyScript" class="bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold px-3 py-1 rounded text-xs transition shadow-sm active:scale-95">📋 複製腳本</button>
+                        </div>
+                        <textarea v-model="videoScript" class="w-full border-2 border-gray-200 rounded-b-lg p-3 text-sm text-gray-700 focus:outline-none resize-none leading-relaxed" rows="8" readonly></textarea>
+                    </div>
                 </div>
+
             </div>
-
         </div>
     </div>
 
@@ -119,9 +169,14 @@
                 const statusColor = ref("text-orange-200");
                 const loading = ref(false);
                 const loadingExp = ref(false);
+                
+                const conditionType = ref("original");
+                const damageText = ref("結構部份此車結構無做過任何更換\n右前樑頭有輕微版修痕跡\n較行情便宜四萬\n右前門板出保換新\n較正常行情便宜兩萬\n左前葉出保換新\n較正常行情便宜三萬\n後尾門換新\n較正常行情便宜兩萬\n實際較正常車況便宜共計xx萬元");
+                const videoScript = ref("");
 
                 const parsed = reactive({
-                    brand: "", model: "", man_date: "", lic_date: "", mileage: "", price: ""
+                    brand: "", model: "", man_date: "", lic_date: "", mileage: "", 
+                    new_price: "", store_price: "", promo_price: "", loan_term: "", loan_monthly: ""
                 });
 
                 const updateStatus = (msg, colorClass) => {
@@ -132,6 +187,7 @@
                 const clearText = () => {
                     rawText.value = "";
                     Object.keys(parsed).forEach(k => parsed[k] = "");
+                    videoScript.value = "";
                     updateStatus("🧹 已清空內容", "text-orange-200");
                 };
 
@@ -173,10 +229,19 @@
                     updateStatus("⏳ 正在產生 Excel...", "text-blue-300 font-bold");
                     
                     try {
+                        const payload = {
+                            brand: parsed.brand,
+                            model: parsed.model,
+                            man_date: parsed.man_date,
+                            lic_date: parsed.lic_date,
+                            mileage: parsed.mileage,
+                            price: parsed.promo_price
+                        };
+
                         const res = await fetch("/api/export_board", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify(parsed)
+                            body: JSON.stringify(payload)
                         });
                         
                         if (!res.ok) throw new Error("下載失敗");
@@ -203,7 +268,96 @@
                     }
                 };
 
-                return { rawText, parsed, statusMessage, statusColor, loading, loadingExp, clearText, parseAd, exportExcel };
+                const calculateDamageTotal = (text) => {
+                    let total = 0;
+                    const regex = /便宜(\d+)萬/g;
+                    let match;
+                    while ((match = regex.exec(text)) !== null) {
+                        total += parseInt(match[1]);
+                    }
+                    if (total > 0) {
+                        return text.replace(/共計.*?萬/, `共計${total}萬`);
+                    }
+                    return text;
+                };
+
+                const generateScript = () => {
+                    const d = parsed;
+                    const carName = d.model ? `${d.brand || ''} ${d.model}`.trim() : "(車名)";
+                    const manDate = d.man_date || "(出廠日)";
+                    const licDate = d.lic_date || "(領牌日)";
+                    const mileage = d.mileage || "(里程)";
+                    const newPrice = d.new_price || "(新車價)";
+                    const storePrice = d.store_price || "(店內價)";
+                    const promoPrice = d.promo_price || "(優惠價)";
+                    const loanTerm = d.loan_term || "xx";
+                    const loanMonthly = d.loan_monthly || "xxxx";
+
+                    let bodyText = "";
+                    if (conditionType.value === "original") {
+                        bodyText = "鈑件部份\n此車結構以及鈑件均無做過任何更換\n為原鈑件";
+                    } else {
+                        damageText.value = calculateDamageTotal(damageText.value);
+                        bodyText = damageText.value;
+                    }
+
+                    let discountLine = "購買可當兩萬折抵等於再折扣一萬一\n";
+                    if (parseFloat(promoPrice) < 15.0) {
+                        discountLine = "";
+                    }
+
+                    videoScript.value = `大家好這裡是杰運汽車日常頻道
+今天來為大家介紹這台
+${carName}
+此車在${manDate}出廠
+${licDate}領牌
+儀錶板實際里程數是${mileage}
+查核監理系統里程數據也符合
+
+${bodyText}
+
+新車價格${newPrice}萬
+店內價格${storePrice}萬
+網路購車加碼優惠折扣三萬
+價格是${promoPrice}萬
+
+另有線上預約全台賞車專案
+只要刷卡九千元
+就可以免費託運至當地服務據點
+${discountLine}未購買只需依距離負擔一千到兩千五百元拖車保險費用
+
+貸款部分這邊也幫您試算好
+零頭款
+分期${loanTerm}期
+月付金額也只要${loanMonthly}元
+並且關稅戰杰運汽車再加碼
+好禮二選一
+第一十五萬十二期零利率的補貼息三千兩百元
+第二贈送兩次基礎保養市值八千到一萬元
+
+保固部分
+保固您引擎變速箱方向機三大系統
+2014年以後
+里程數二十萬以內的車型
+更是加碼只要在店內做自費大保養
+都可以升級成一年的延長保固
+接下來讓我們由車頭開始逐一帶大家來賞車`;
+
+                    updateStatus("✅ 影片腳本生成成功！", "text-teal-300 font-bold");
+                };
+
+                const copyScript = () => {
+                    if (!videoScript.value) return;
+                    navigator.clipboard.writeText(videoScript.value).then(() => {
+                        updateStatus("📋 腳本已複製！", "text-yellow-300 font-bold");
+                    });
+                };
+
+                return { 
+                    rawText, parsed, statusMessage, statusColor, loading, loadingExp, 
+                    conditionType, damageText, videoScript,
+                    clearText, parseAd, exportExcel, generateScript, copyScript
+                };
             }
         }).mount('#app');
     </script>

@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>杰運汽車新竹店阿鍇專用 - 內部系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <script>
+        const userId = localStorage.getItem('jw_user_id');
+        const permsRaw = localStorage.getItem('jw_permissions');
+        
+        if (!userId || !permsRaw) {
+            window.location.href = "/";
+        } else {
+            const perms = JSON.parse(permsRaw);
+            const isSuperAdmin = String(perms['最高管理員']).toUpperCase() === 'V';
+            const hasAuth = String(perms['買回停駛']).toUpperCase() === 'V'; 
+            
+            if (!isSuperAdmin && !hasAuth) {
+                alert("⛔ 存取被拒絕！您沒有【買回過公司停駛】的使用權限。");
+                window.location.href = "/";
+            }
+        }
+    </script>
+
+    <style>
+        body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
+        [v-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div id="app" class="min-h-screen flex flex-col" v-cloak>
+        
+        <header class="bg-sky-700 text-white p-3 sm:p-4 shadow-md flex justify-between items-center z-10 relative">
+            <h1 class="text-base sm:text-xl font-bold truncate pr-2">🔄 買回過公司停駛系統</h1>
+            <a href="/" class="bg-yellow-500 hover:bg-yellow-600 text-sky-900 font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm">
+                🏠 首頁
+            </a>
+        </header>
+
+        <div class="bg-sky-800 text-white text-xs py-1 px-4 text-center sm:text-right transition-colors duration-300" :class="statusColor">
+            {{ statusMessage }}
+        </div>
+
+        <div class="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-6 grid lg:grid-cols-12 gap-6 items-start mt-2">
+            
+            <div class="lg:col-span-5 flex flex-col gap-4">
+                
+                <div class="bg-white rounded-xl shadow-md border border-gray-200 p-5">
+                    <h2 class="text-lg font-bold text-sky-700 border-b pb-2 mb-4 flex items-center gap-2">
+                        <span>🔍</span> 步驟 1: 搜尋車輛
+                    </h2>
+                    
+                    <div class="flex items-center gap-4 mb-4">
+                        <label class="font-bold text-gray-700 text-sm">搜尋模式:</label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" v-model="form.mode" value="plate" class="w-4 h-4 text-sky-600">
+                            <span class="font-bold text-gray-700">車牌</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" v-model="form.mode" value="id" class="w-4 h-4 text-sky-600">
+                            <span class="font-bold text-gray-700">編號</span>
+                        </label>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <input type="text" v-model="form.query" @keyup.enter="searchCar" placeholder="請輸入車牌或編號..." 
+                               class="flex-1 border-2 border-gray-200 rounded-lg p-2.5 font-bold uppercase focus:border-sky-400 focus:ring-0 transition text-center text-lg tracking-wider">
+                    </div>
+                    <button @click="searchCar" :disabled="loading" class="w-full mt-3 bg-sky-600 hover:bg-sky-700 text-white font-bold py-3 rounded-lg transition shadow-md active:scale-95 flex items-center justify-center gap-2">
+                        <span v-if="!loading">🔍 搜尋並預覽</span>
+                        <span v-else>⏳ 搜尋中...</span>
+                    </button>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-md border border-gray-200 p-5 flex-1 flex flex-col min-h-[300px]">
+                    <h2 class="text-lg font-bold text-indigo-700 border-b pb-2 mb-4 flex items-center gap-2">
+                        <span>👁️</span> 步驟 2: 確認與設定店別
+                    </h2>
+
+                    <div class="flex flex-wrap items-center gap-3 mb-4">
+                        <label class="font-bold text-gray-700 text-sm">停放店別:</label>
+                        <div class="flex flex-wrap gap-2">
+                            <label v-for="store in stores" :key="store" class="flex items-center gap-1 cursor-pointer">
+                                <input type="radio" v-model="form.store" :value="store" class="w-4 h-4 text-indigo-600">
+                                <span class="text-sm font-bold text-gray-600">{{ store }}</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <textarea v-model="previewText" class="w-full flex-1 border-2 border-indigo-50 bg-indigo-50/30 rounded-lg p-3 text-gray-700 focus:outline-none resize-none text-base leading-relaxed font-bold" readonly placeholder="請先在上方搜尋車輛..."></textarea>
+                    
+                    <button @click="addToList" :disabled="!selectedCar" class="w-full mt-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-lg transition shadow-md active:scale-95 flex items-center justify-center gap-2 text-lg">
+                        <span>⬇️ 確認無誤，加入清單 ➡️</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="lg:col-span-7 bg-white rounded-xl shadow-md border border-gray-200 p-5 flex flex-col h-full min-h-[500px]">
+                <div class="flex justify-between items-center border-b pb-2 mb-4">
+                    <h2 class="text-lg font-bold text-gray-800 flex items-center gap-2">
+                        <span>📋</span> 累積清單 (步驟 3)
+                    </h2>
+                    <span class="text-sm font-bold text-gray-500 bg-gray-100 px-3 py-1 rounded-full">共 {{ listCount }} 筆</span>
+                </div>
+
+                <textarea v-model="outputList" class="w-full flex-1 border-2 border-gray-200 rounded-lg p-4 focus:border-gray-400 focus:ring-0 transition resize-none text-base leading-relaxed font-mono" placeholder="加入的車輛資訊會累積在這裡..."></textarea>
+                
+                <div class="flex gap-3 mt-4">
+                    <button @click="clearList" class="w-1/3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3.5 rounded-lg transition active:scale-95 shadow-sm">
+                        🗑️ 清空
+                    </button>
+                    <button @click="copyList" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3.5 rounded-lg transition shadow-md active:scale-95 flex items-center justify-center gap-2 text-lg">
+                        📋 複製全部結果
+                    </button>
+                </div>
+            </div>
+            
+        </div>
+
+        <div v-if="showModal" class="fixed inset-0 bg-slate-900 bg-opacity-70 z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+                <div class="p-4 border-b bg-amber-50 rounded-t-xl flex justify-between items-center">
+                    <h3 class="text-lg font-bold text-amber-800">⚠️ 找到多筆資料，請點擊正確的車輛</h3>
+                    <button @click="showModal = false" class="text-gray-400 hover:text-gray-800 font-bold text-xl">&times;</button>
+                </div>
+                <div class="p-4 overflow-y-auto flex-1">
+                    <table class="w-full text-sm text-left border-collapse">
+                        <thead class="bg-gray-100 text-gray-700">
+                            <tr>
+                                <th class="p-2 border">年份</th>
+                                <th class="p-2 border">廠牌</th>
+                                <th class="p-2 border">車型</th>
+                                <th class="p-2 border">車牌</th>
+                                <th class="p-2 border">編號</th>
+                                <th class="p-2 border text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(car, index) in multiResults" :key="index" class="hover:bg-blue-50 transition border-b">
+                                <td class="p-2 border font-bold text-gray-600">{{ car.clean_year }}</td>
+                                <td class="p-2 border">{{ car['廠牌'] }}</td>
+                                <td class="p-2 border font-bold text-gray-800">{{ car['車型'] }}</td>
+                                <td class="p-2 border text-blue-700 font-bold">{{ car['車牌'] }}</td>
+                                <td class="p-2 border text-gray-500">{{ car.stock_id }}</td>
+                                <td class="p-2 border text-center">
+                                    <button @click="selectCarFromModal(car)" class="bg-sky-500 hover:bg-sky-600 text-white font-bold py-1 px-3 rounded shadow-sm text-xs">
+                                        選這台
+                                    </button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="p-3 border-t bg-gray-50 text-right rounded-b-xl">
+                    <button @click="showModal = false" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded transition">取消</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp, ref, reactive, computed, watch } = Vue;
+
+        createApp({
+            setup() {
+                const statusMessage = ref("系統準備就緒");
+                const statusColor = ref("text-sky-200");
+                const loading = ref(false);
+                
+                const stores = ['北投', '桃園', '新竹', '台中', '高雄'];
+                
+                const form = reactive({
+                    mode: 'plate',
+                    query: '',
+                    store: '北投'
+                });
+
+                const selectedCar = ref(null);
+                const outputList = ref("");
+                const listCount = ref(0);
+                
+                // Modal 控制
+                const showModal = ref(false);
+                const multiResults = ref([]);
+
+                const updateStatus = (msg, colorClass) => {
+                    statusMessage.value = msg;
+                    statusColor.value = colorClass;
+                };
+
+                // 即時計算預覽文字
+                const previewText = computed(() => {
+                    if (!selectedCar.value) return "";
+                    const c = selectedCar.value;
+                    const baseStatus = "買回過公司停駛";
+                    const statusText = form.store === "北投" ? baseStatus : `${baseStatus}(${form.store}店)`;
+                    
+                    return `${c.clean_year} ${c['廠牌'] || ''} ${c['車型'] || ''}\n車號：${c['車牌'] || '(無)'}\n編號：${c.stock_id}\n${statusText}`;
+                });
+
+                const searchCar = async () => {
+                    if (!form.query.trim()) {
+                        updateStatus("⚠️ 請輸入搜尋條件", "text-yellow-300 font-bold");
+                        return;
+                    }
+                    
+                    loading.value = true;
+                    updateStatus("🔍 正在搜尋資料庫...", "text-yellow-300 font-bold");
+                    selectedCar.value = null; // 重置預覽
+                    
+                    try {
+                        const res = await fetch(`/api/search_car_multi?mode=${form.mode}&query=${encodeURIComponent(form.query)}`);
+                        const result = await res.json();
+                        
+                        if (result.status === "success" && result.data.length > 0) {
+                            if (result.data.length === 1) {
+                                // 只有一筆，直接選取
+                                selectCarData(result.data[0]);
+                            } else {
+                                // 有多筆，跳出彈窗
+                                multiResults.value = result.data;
+                                showModal.value = true;
+                                updateStatus(`⚠️ 找到 ${result.data.length} 筆資料，請手動選擇`, "text-yellow-300 font-bold");
+                            }
+                        } else {
+                            updateStatus(`❌ 找不到符合「${form.query}」的資料`, "text-red-300 font-bold");
+                            alert(`找不到符合「${form.query}」的資料`);
+                        }
+                    } catch (e) {
+                        updateStatus("❌ 網路連線錯誤", "text-red-300 font-bold");
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                const selectCarData = (car) => {
+                    selectedCar.value = car;
+                    updateStatus(`✅ 已預覽: ${car['車牌']} (${form.store})`, "text-green-300 font-bold");
+                };
+
+                const selectCarFromModal = (car) => {
+                    selectCarData(car);
+                    showModal.value = false;
+                };
+
+                const addToList = () => {
+                    if (!selectedCar.value) return;
+                    
+                    const checkIdStr = `編號：${selectedCar.value.stock_id}`;
+                    
+                    // 重複檢查
+                    if (outputList.value.includes(checkIdStr)) {
+                        if(!confirm(`車牌：${selectedCar.value['車牌'] || '無'}\n編號：${selectedCar.value.stock_id}\n\n這台車已經在右側清單囉！\n確定要再加入一次嗎？`)) {
+                            return; 
+                        }
+                    }
+
+                    if (outputList.value.trim() === "") {
+                        outputList.value = previewText.value;
+                    } else {
+                        outputList.value = outputList.value.trim() + "\n\n" + previewText.value;
+                    }
+                    
+                    listCount.value += 1;
+                    
+                    // 清空搜尋，準備下一台
+                    selectedCar.value = null;
+                    form.query = "";
+                    updateStatus("✅ 已加入清單，請繼續搜尋下一台", "text-green-300 font-bold");
+                };
+
+                const clearList = () => {
+                    if(confirm("確定要清空所有累積的清單嗎？")) {
+                        outputList.value = "";
+                        listCount.value = 0;
+                        updateStatus("🗑️ 清單已清空", "text-sky-200");
+                    }
+                };
+
+                const copyList = () => {
+                    if (!outputList.value.trim()) {
+                        updateStatus("⚠️ 清單為空，沒有東西可以複製", "text-yellow-300 font-bold");
+                        return;
+                    }
+                    navigator.clipboard.writeText(outputList.value).then(() => {
+                        updateStatus("✅ 全部結果已複製！", "text-green-300 font-bold");
+                    });
+                };
+
+                // 當店別改變時，如果已有選中的車，更新狀態列
+                watch(() => form.store, () => {
+                    if (selectedCar.value) {
+                        updateStatus(`✅ 已預覽: ${selectedCar.value['車牌']} (${form.store})`, "text-green-300 font-bold");
+                    }
+                });
+
+                return { 
+                    statusMessage, statusColor, loading, form, stores,
+                    previewText, selectedCar, outputList, listCount,
+                    showModal, multiResults,
+                    searchCar, selectCarFromModal, addToList, clearList, copyList
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

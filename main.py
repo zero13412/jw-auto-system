@@ -22,7 +22,8 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, FileMessage
 
-app = FastAPI(title="🚗 杰運汽車新竹店阿鍇專用 - 內部系統")
+app = FastAPI(title="🚗 杰運汽車新竹店阿鍇專用 - 內部系統
+")
 
 app.add_middleware(
     CORSMiddleware,
@@ -590,7 +591,6 @@ def process_excel_file(filename: str, contents: bytes):
 
 # ================= 🚀 API 區塊 =================
 
-# 💡 增強版：價格驗證過濾邏輯
 def is_valid_price_local(val_str, full_txt, match_obj):
     try:
         val = float(val_str)
@@ -662,7 +662,6 @@ async def parse_ad(request: Request):
     if not m: m = re.search(r'([0-9,]+)\s*公里', raw_text)
     if m: mileage_str = f"{m.group(1)}公里"
 
-    # 💡 價格分離邏輯 (新車、店內、優惠)
     clean_price_text = raw_text.replace(',', '')
     new_p = ""
     store_p = ""
@@ -704,7 +703,6 @@ async def parse_ad(request: Request):
             if len(valid_prices) > 1: store_p = str(valid_prices[1])
             else: store_p = f"{float(promo_p)+3:.1f}".replace(".0", "")
 
-    # 💡 貸款解析邏輯
     loan_term = ""
     loan_monthly = ""
     loan_match = re.search(r'月付.*?(\d+)\$?\s*[:/]\s*(\d+)期', clean_price_text)
@@ -742,7 +740,6 @@ async def export_board(request: Request):
     brand = data.get("brand", "")
     model = data.get("model", "")
     
-    # 將價格加上 '萬' 字以符合車前牌格式
     price_val = data.get("price", "")
     if price_val and "萬" not in price_val:
         price_val += "萬"
@@ -906,178 +903,6 @@ def get_cars(brand: str = "全部", location: str = "全部", prop: str = "全�
 
     return {"total": len(res), "data": res.head(limit).to_dict(orient="records")}
 
-@app.get("/api/sync_car_source")
-def sync_car_source_from_backend(user_id: str = "", u: str = "", p: str = ""):
-    if not check_permission(user_id, "更新車源"):
-        return {"status": "error", "message": "⛔ 權限不足！請聯繫管理員開通「更新車源」權限。"}
-
-    try:
-        login_user, login_pwd = (u, p) if u and p else get_or_create_creds()
-        session = requests.Session()
-        login_url = "https://www.jwincar.com.tw/manage/login/index.php"
-        data_url = "https://www.jwincar.com.tw/manage/accounting/accounting_car_list.php?stock=all"
-        
-        session.post(login_url, data={"strID": login_user, "strPW": login_pwd, "Submit": "送出"})
-        
-        all_cars = []
-        headers = []
-        page_num = 1
-        last_first_row = ""
-        
-        while True:
-            res = session.get(data_url + f"&page={page_num}")
-            res.encoding = 'utf-8'
-            soup = BeautifulSoup(res.text, "html.parser")
-            table = soup.find("table", {"id": "carTable"})
-            
-            if not table:
-                if page_num == 1: return {"status": "need_login", "message": "公司後台密碼已更改，系統無法登入！\n請重新輸入最新的帳號密碼。"}
-                break
-            
-            if u and p and page_num == 1: update_creds(u, p)
-
-            rows = table.find_all("tr")
-            if len(rows) <= 1: break 
-            
-            current_first_row = rows[1].text.strip()
-            if current_first_row == last_first_row: break
-            last_first_row = current_first_row
-
-            if page_num == 1: headers = [th.text.replace("⇅", "").strip() for th in rows[0].find_all("th")]
-                
-            for row in rows[1:]:
-                tds = row.find_all("td")
-                if not tds: continue
-                row_data = []
-                for idx, td in enumerate(tds):
-                    val = td.text.strip()
-                    if val in ["—", "-"]: val = ""
-                    if td.has_attr("title"): val = td["title"].strip()
-                    if headers and idx < len(headers) and headers[idx] == "狀態":
-                        if td.find("span", class_=re.compile(r"sold|已售")) or td.find(string=re.compile(r"已售")): val = "已售"
-                        elif td.find("span", class_=re.compile(r"stock|在庫")): val = "在庫"
-                        elif td.find("span", class_=re.compile(r"deposit|收訂")) or td.find(string=re.compile(r"已收訂")): val = "已收訂"
-                    row_data.append(val)
-                all_cars.append(row_data)
-                
-            page_num += 1
-            if page_num > 100: break
-
-        if len(all_cars) < 100:
-            return {"status": "error", "message": f"🚨 數據異常熔斷！後台只回傳了 {len(all_cars)} 筆。\n為保護您的原始資料庫，系統已自動拒絕寫入。"}
-
-        df_crawled = pd.DataFrame(all_cars, columns=headers)
-        if "操作" in df_crawled.columns: df_crawled = df_crawled.drop(columns=["操作"])
-        df_crawled = df_crawled.fillna("")
-
-        status_msg = ""
-        if "狀態" in df_crawled.columns:
-            st_counts = {}
-            for st in df_crawled["狀態"]:
-                val = str(st).strip()
-                val = val if val else "在庫"
-                st_counts[val] = st_counts.get(val, 0) + 1
-            status_parts = [f"{k}: {v}台" for k, v in st_counts.items()]
-            if status_parts:
-                status_msg = f"\n📊 狀態分佈：{'、'.join(status_parts)}"
-
-        old_ids = set()
-        client = get_gspread_client()
-        doc = client.open_by_key(SHEET_ID)
-        try:
-            ws_main = doc.worksheet("E車源")
-            old_values = ws_main.get_all_values()
-            if old_values and len(old_values) > 1:
-                old_hdrs = old_values[0]
-                n_idx = old_hdrs.index("新編號") if "新編號" in old_hdrs else -1
-                p_idx = old_hdrs.index("車牌") if "車牌" in old_hdrs else -1
-                for r in old_values[1:]:
-                    k = ""
-                    if n_idx != -1 and len(r) > n_idx and str(r[n_idx]).strip(): k = str(r[n_idx]).strip()
-                    elif p_idx != -1 and len(r) > p_idx and str(r[p_idx]).strip(): k = str(r[p_idx]).strip()
-                    if k: old_ids.add(str(k).replace('.0', '').strip())
-        except Exception as e:
-            print("Crawler old_ids fetch error:", e)
-
-        if not old_ids and cached_df is not None:
-            if '新編號' in cached_df.columns:
-                for val in cached_df['新編號']:
-                    v = str(val).replace('.0', '').strip()
-                    if v: old_ids.add(v)
-            if '車牌' in cached_df.columns:
-                for val in cached_df['車牌']:
-                    v = str(val).replace('.0', '').strip()
-                    if v: old_ids.add(v)
-
-        is_initial = len(old_ids) == 0
-        new_count = 0
-        new_cars_list = []
-
-        if "新編號" in df_crawled.columns or "車牌" in df_crawled.columns:
-            for idx, row in df_crawled.iterrows():
-                cid = str(row.get("新編號", "")).replace('.0', '').strip()
-                if not cid:
-                    cid = str(row.get("車牌", "")).replace('.0', '').strip()
-                
-                if cid and not is_initial and cid not in old_ids:
-                    new_count += 1
-                    y = str(row.get("年份", "")).replace('.0', '').strip()
-                    if len(y) == 6 and y.isdigit(): y = f"{y[:4]}年{y[4:]}月"
-                    elif len(y) == 4 and y.isdigit(): y = f"{y}年"
-                    plate = str(row.get('車牌','')).strip() or "(無車牌)"
-                    new_cars_list.append(f"{y} {str(row.get('車型','')).strip()} #{plate}")
-                    old_ids.add(cid)
-
-        target_gsheet_main = doc.worksheet("E車源")
-        final_headers = list(df_crawled.columns)
-        data_to_upload_main = [final_headers] + df_crawled.values.tolist()
-        target_gsheet_main.clear()
-        target_gsheet_main.update(values=data_to_upload_main, range_name='A1')
-        
-        status_col_idx = final_headers.index("狀態") if "狀態" in final_headers else -1
-        if status_col_idx != -1:
-            try: sold_gsheet = doc.worksheet("E車源售出")
-            except gspread.exceptions.WorksheetNotFound: sold_gsheet = doc.add_worksheet(title="E車源售出", rows="1000", cols="30")
-            try: old_records = sold_gsheet.get_all_records()
-            except Exception: old_records = []
-            new_records = []
-            for row in data_to_upload_main[1:]:
-                st = str(row[status_col_idx]).strip()
-                if st and st != "在庫":
-                    padded = list(row)
-                    while len(padded) < len(final_headers): padded.append("")
-                    new_records.append(dict(zip(final_headers, padded)))
-            if new_records or old_records:
-                merged_dict = {}
-                for rec in old_records:
-                    pk = str(rec.get("車牌", "")).strip() or str(rec.get("新編號", "")).strip() or str(rec.get("車身", "")).strip()
-                    if pk: merged_dict[pk] = rec
-                for rec in new_records:
-                    pk = str(rec.get("車牌", "")).strip() or str(rec.get("新編號", "")).strip() or str(rec.get("車身", "")).strip()
-                    if pk: merged_dict[pk] = rec
-                    else: merged_dict[str(uuid.uuid4())] = rec
-                sold_headers = list(final_headers)
-                for rec in merged_dict.values():
-                    for k in rec.keys():
-                        if k not in sold_headers and str(k).strip(): sold_headers.append(k)
-                final_sold_data = [sold_headers]
-                for rec in merged_dict.values(): final_sold_data.append([str(rec.get(h, "")) for h in sold_headers])
-                sold_gsheet.clear()
-                sold_gsheet.update(values=final_sold_data, range_name='A1')
-                
-        load_and_clean_data()
-        
-        msg = f"🤖 更新成功！共抓取 {len(all_cars)} 筆車源。{status_msg}"
-        if new_count > 0:
-            msg += f"\n✨ 自動發現 {new_count} 台新車：\n" + "\n".join(new_cars_list[:10])
-            if new_count > 10: msg += f"\n...等共 {new_count} 台"
-        return {"status": "success", "message": msg}
-
-    except Exception as e:
-        return {"status": "error", "message": f"爬蟲發生錯誤：{str(e)}"}
-    finally:
-        gc.collect()
-
 @app.get("/api/search_plate")
 def search_plate(plate: str):
     if cached_df is None: load_and_clean_data()
@@ -1092,6 +917,44 @@ def search_plate(plate: str):
             match = re.search(r'\d{4}', year_val)
             car_data['clean_year'] = match.group(0) if match else year_val.replace('.0', '')
             return {"status": "success", "data": car_data}
+    return {"status": "error", "message": "查無此車"}
+
+# 🆕 新增：雙模式智慧搜尋 (車牌 或 編號)
+@app.get("/api/search_car_multi")
+def search_car_multi(mode: str = "plate", query: str = ""):
+    if cached_df is None: load_and_clean_data()
+    res = cached_df.copy()
+    query = str(query).strip().upper()
+    if not query: return {"status": "error", "message": "請輸入關鍵字"}
+    
+    matches = pd.DataFrame()
+    if mode == "plate" and '車牌' in res.columns:
+        target_plate = re.sub(r'[\s\-]', '', query)
+        res['clean_plate'] = res['車牌'].astype(str).str.replace(r'[\s\-]', '', regex=True).str.upper()
+        matches = res[res['clean_plate'].str.contains(target_plate, na=False)]
+    elif mode == "id":
+        id_cols = [c for c in res.columns if "編號" in c or "序號" in c]
+        if id_cols:
+            mask = pd.Series(False, index=res.index)
+            for c in id_cols:
+                clean_col = res[c].astype(str).apply(lambda x: x[:-2] if x.endswith('.0') else x)
+                mask = mask | (clean_col == query)
+            matches = res[mask]
+    
+    if len(matches) > 0:
+        results = []
+        for _, row in matches.iterrows():
+            car_data = row.to_dict()
+            year_val = str(car_data.get('年份', ''))
+            match = re.search(r'\d{4}', year_val)
+            car_data['clean_year'] = match.group(0) if match else year_val.replace('.0', '')
+            
+            n_id = str(car_data.get('新編號', '')).replace('.0', '').strip()
+            o_id = str(car_data.get('舊編號', '')).replace('.0', '').strip()
+            car_data['stock_id'] = n_id if n_id else o_id
+            
+            results.append(car_data)
+        return {"status": "success", "data": results}
     return {"status": "error", "message": "查無此車"}
 
 @app.get("/api/simple_data")

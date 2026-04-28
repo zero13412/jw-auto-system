@@ -22,8 +22,7 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, FileMessage
 
-app = FastAPI(title="🚗 杰運汽車新竹店阿鍇專用 - 內部系統
-")
+app = FastAPI(title="🚗 杰運汽車新竹店阿鍇專用 - 內部系統")
 
 app.add_middleware(
     CORSMiddleware,

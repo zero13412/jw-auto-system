@@ -253,10 +253,11 @@
                 const statusMessage = ref("系統準備就緒");
                 const showMobileFilters = ref(false);
 
+                // 💡 預設將 hide_sold 與 hide_cert 設為 true，預設打勾
                 const filters = reactive({
                     brand: "全部", location: "全部", prop: "全部",
                     model: "", plate: "", person: "", min_price: "", max_price: "",
-                    sort_by: "最新入庫", hide_no_price: false, hide_sold: false, hide_cert: false, hide_reserved: false
+                    sort_by: "最新入庫", hide_no_price: false, hide_sold: true, hide_cert: true, hide_reserved: false
                 });
 
                 const fetchOptions = async () => {
@@ -299,11 +300,12 @@
                     finally { loading.value = false; }
                 };
 
+                // 💡 重置條件時，也恢復為 hide_sold: true, hide_cert: true
                 const resetFilters = () => {
                     Object.assign(filters, {
                         brand: "全部", location: "全部", prop: "全部",
                         model: "", plate: "", person: "", min_price: "", max_price: "", 
-                        sort_by: "最新入庫", hide_no_price: false, hide_sold: false, hide_cert: false, hide_reserved: false
+                        sort_by: "最新入庫", hide_no_price: false, hide_sold: true, hide_cert: true, hide_reserved: false
                     });
                     searchCarsMobile();
                 };

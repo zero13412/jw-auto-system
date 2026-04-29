@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, UploadFile, File, Request, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Query, UploadFile, File, Request, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
@@ -22,7 +22,7 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, FileMessage
 
-app = FastAPI(title="🚗 杰運內部系統 - 終極完整版")
+app = FastAPI(title="🚗 杰運汽車新竹店阿鍇專用 - 內部系統")
 
 app.add_middleware(
     CORSMiddleware,
@@ -590,6 +590,7 @@ def process_excel_file(filename: str, contents: bytes):
 
 # ================= 🚀 API 區塊 =================
 
+# 💡 爬蟲大腦 (網頁端直接呼叫，不再丟去背景)
 def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     try:
         session = requests.Session()
@@ -754,21 +755,15 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     finally:
         gc.collect()
 
-def bg_sync_task(user_id: str, login_user: str, login_pwd: str):
-    res = core_sync_car_source(user_id, login_user, login_pwd)
-    if user_id:
-        try:
-            line_bot_api.push_message(user_id, TextSendMessage(text=res["message"]))
-        except Exception as e: 
-            print(f"LINE 機器人推播失敗: {e}")
-
+# 💡 網頁端更新 API (直接等待結果)
 @app.get("/api/sync_car_source")
-def api_sync_car_source(background_tasks: BackgroundTasks, user_id: str = "", u: str = "", p: str = ""):
+def api_sync_car_source(user_id: str = "", u: str = "", p: str = ""):
     if not check_permission(user_id, "更新車源"):
         return {"status": "error", "message": "⛔ 權限不足！請聯繫管理員開通「更新車源」權限。"}
     
     login_user, login_pwd = (u, p) if u and p else get_or_create_creds()
     
+    # 檢查密碼是否正確
     try:
         session = requests.Session()
         login_url = "https://www.jwincar.com.tw/manage/login/index.php"
@@ -782,12 +777,8 @@ def api_sync_car_source(background_tasks: BackgroundTasks, user_id: str = "", u:
     except Exception as e:
         return {"status": "error", "message": f"後台驗證連線失敗：{str(e)}"}
     
-    background_tasks.add_task(bg_sync_task, user_id, login_user, login_pwd)
-    
-    return {
-        "status": "success", 
-        "message": "🚀 爬蟲指令已成功送出！\n\n系統正在雲端背景為您抓取資料 (大約需要 1~2 分鐘)。\n\n✅ 抓取完成後，您的 LINE 小幫手會主動推播通知您！\n現在您可以先關閉此視窗，或使用其他系統功能囉！"
-    }
+    # 直接執行爬蟲，並將結果回傳網頁
+    return core_sync_car_source(user_id, login_user, login_pwd)
 
 def is_valid_price_local(val_str, full_txt, match_obj):
     try:

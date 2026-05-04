@@ -16,7 +16,7 @@
         } else {
             const perms = JSON.parse(permsRaw);
             const isSuperAdmin = String(perms['最高管理員']).toUpperCase() === 'V';
-            const hasAuth = String(perms['成交系統']).toUpperCase() === 'V'; // ⚠️ 專屬此頁的權限檢查
+            const hasAuth = String(perms['成交系統']).toUpperCase() === 'V'; 
             
             if (!isSuperAdmin && !hasAuth) {
                 alert("⛔ 存取被拒絕！您沒有【成交系統】的使用權限。");
@@ -224,15 +224,22 @@
                     return p > 0 && p < 15;
                 });
 
+                // 💡 核心修正：完美自適應高度計算引擎
                 const autoResize = (type, areaId) => {
                     nextTick(() => {
                         let el = document.getElementById(areaId);
                         if (el) {
-                            el.style.height = 'auto'; 
+                            // 先將高度強制壓回 1px，強迫瀏覽器重新從零計算真實的內容高度
+                            el.style.height = '1px'; 
                             let newHeight = el.scrollHeight;
+                            
+                            // 套用您的視覺最低高度限制
                             if (type === 'deal' && newHeight < 300) newHeight = 300;
                             if ((type === 'tech' || type === 'admin') && newHeight < 150) newHeight = 150;
+                            
+                            // 更新 Vue 綁定資料，並且馬上把算好的高度塞回 DOM 防止畫面抖動
                             heights[type] = newHeight;
+                            el.style.height = newHeight + 'px'; 
                         }
                     });
                 };
@@ -296,18 +303,15 @@
 
                     if (settings.discount === "折1.1萬") current_price_yuan -= 11000;
                     
-                    // 💡 加入 2% 稅金計算 (以折1.1萬後的價格計算)
                     if (settings.tax_2_percent === "+2%") {
                         current_price_yuan = Math.round(current_price_yuan * 1.02);
                     }
 
                     if (settings.subsidy === "折3264") current_price_yuan -= 3264;
 
-                    // 判斷是否需要用「元」做單位
                     if (settings.subsidy === "折3264" || settings.tax_2_percent === "+2%") {
                         car.deal_price = Math.round(current_price_yuan).toString();
                     } else {
-                        // 使用 Number() 轉換，自動去掉後面多餘的 0
                         car.deal_price = Number((current_price_yuan / 10000).toFixed(2)).toString();
                     }
                 };
@@ -320,7 +324,6 @@
                     calcPrice();
                 });
 
-                // 監聽三個會影響價錢的選項
                 watch([() => settings.discount, () => settings.subsidy, () => settings.tax_2_percent], calcPrice);
 
                 const generateText = () => {
@@ -334,7 +337,6 @@
                     let price_after_11k = list_price_yuan;
                     if (settings.discount === "折1.1萬") price_after_11k -= 11000;
 
-                    // 💡 計算 2% 稅金
                     let price_after_tax = price_after_11k;
                     let has_tax = (settings.tax_2_percent === "+2%");
                     if (has_tax) price_after_tax = Math.round(price_after_tax * 1.02);
@@ -345,7 +347,6 @@
 
                     let final_balance = price_after_subsidy - deposit_yuan;
                     
-                    // 決定最終單位
                     let use_yuan = (has_subsidy || has_tax);
 
                     let company_str = car.company || "";

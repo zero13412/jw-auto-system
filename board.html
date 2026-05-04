@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- 💡 強制鎖定標題 -->
     <title>杰運汽車新竹店阿鍇專用 - 內部系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
@@ -44,58 +45,62 @@
             {{ statusMessage }}
         </div>
 
-        <div class="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-4 grid lg:grid-cols-12 gap-4 items-start mt-2">
+        <!-- 💡 調整為 items-stretch 讓左右兩邊高度一致 -->
+        <div class="flex-1 max-w-6xl w-full mx-auto p-3 sm:p-4 grid lg:grid-cols-12 gap-4 items-stretch mt-2">
             
-            <div class="lg:col-span-5 bg-white rounded-xl shadow-md border border-gray-200 p-5 flex flex-col h-full min-h-[400px]">
-                <h2 class="text-lg font-bold text-orange-700 border-b pb-2 mb-4 flex items-center gap-2">
-                    <span>1️⃣</span> 貼上廣告文案
-                </h2>
+            <!-- 左側：輸入解析 (步驟1) + 欄位確認 (步驟2) -->
+            <div class="lg:col-span-5 flex flex-col gap-4">
                 
-                <textarea v-model="rawText" placeholder="請將 FB 或 8891 的廣告文案直接貼在這裡..." 
-                          class="w-full flex-1 border-2 border-gray-200 rounded-lg p-3 focus:border-orange-400 focus:ring-0 transition resize-none text-sm leading-relaxed mb-4 min-h-[250px]"></textarea>
-                
-                <div class="flex gap-3 mt-auto">
-                    <button @click="clearText" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 px-4 rounded-lg transition active:scale-95 shadow-sm">
-                        🧹 清空
-                    </button>
-                    <button @click="parseAd" :disabled="loading" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition shadow-md active:scale-95 flex items-center justify-center gap-2">
-                        <span v-if="!loading">✨ 智慧解析資料</span>
-                        <span v-else>⏳ 處理中...</span>
-                    </button>
+                <!-- 區塊 1：貼上文案 -->
+                <div class="bg-white rounded-xl shadow-md border border-gray-200 p-5 flex flex-col">
+                    <h2 class="text-lg font-bold text-orange-700 border-b pb-2 mb-4 flex items-center gap-2">
+                        <span>1️⃣</span> 貼上廣告文案
+                    </h2>
+                    
+                    <textarea v-model="rawText" placeholder="請將 FB 或 8891 的廣告文案直接貼在這裡..." 
+                              class="w-full border-2 border-gray-200 rounded-lg p-3 focus:border-orange-400 focus:ring-0 transition resize-none text-sm leading-relaxed mb-4 min-h-[160px]"></textarea>
+                    
+                    <div class="flex gap-3">
+                        <button @click="clearText" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-3 px-4 rounded-lg transition active:scale-95 shadow-sm">
+                            🧹 清空
+                        </button>
+                        <button @click="parseAd" :disabled="loading" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition shadow-md active:scale-95 flex items-center justify-center gap-2">
+                            <span v-if="!loading">✨ 智慧解析資料</span>
+                            <span v-else>⏳ 處理中...</span>
+                        </button>
+                    </div>
                 </div>
-            </div>
 
-            <div class="lg:col-span-7 flex flex-col gap-4">
-                
-                <div class="bg-white rounded-xl shadow-md border border-gray-200 p-5">
+                <!-- 區塊 2：欄位確認 -->
+                <div class="bg-white rounded-xl shadow-md border border-gray-200 p-5 flex-1 flex flex-col">
                     <h2 class="text-lg font-bold text-blue-700 border-b pb-2 mb-4 flex items-center gap-2">
                         <span>2️⃣</span> 確認與調整欄位
                     </h2>
 
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-2 gap-4 flex-1">
                         <div class="flex flex-col gap-1">
                             <label class="font-bold text-gray-600 text-xs">品牌</label>
-                            <input type="text" v-model="parsed.brand" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm">
+                            <input type="text" v-model="parsed.brand" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm font-bold">
                         </div>
                         <div class="flex flex-col gap-1">
                             <label class="font-bold text-gray-600 text-xs">車型全名</label>
-                            <input type="text" v-model="parsed.model" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm">
+                            <input type="text" v-model="parsed.model" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm font-bold">
                         </div>
                         <div class="flex flex-col gap-1">
                             <label class="font-bold text-gray-600 text-xs">出廠日期</label>
-                            <input type="text" v-model="parsed.man_date" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm">
+                            <input type="text" v-model="parsed.man_date" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm font-bold">
                         </div>
                         <div class="flex flex-col gap-1">
                             <label class="font-bold text-gray-600 text-xs">領牌日期</label>
-                            <input type="text" v-model="parsed.lic_date" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm">
+                            <input type="text" v-model="parsed.lic_date" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm font-bold">
                         </div>
                         <div class="flex flex-col gap-1">
                             <label class="font-bold text-gray-600 text-xs">里程數</label>
-                            <input type="text" v-model="parsed.mileage" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm">
+                            <input type="text" v-model="parsed.mileage" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm font-bold">
                         </div>
                         <div class="flex flex-col gap-1">
                             <label class="font-bold text-gray-400 text-xs">新車價(萬)</label>
-                            <input type="text" v-model="parsed.new_price" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm">
+                            <input type="text" v-model="parsed.new_price" class="border-2 border-gray-200 rounded-lg p-1.5 focus:border-blue-400 focus:ring-0 text-sm font-bold text-gray-500">
                         </div>
                         <div class="flex flex-col gap-1">
                             <label class="font-bold text-gray-500 text-xs">店內價(萬)</label>
@@ -103,7 +108,7 @@
                         </div>
                         <div class="flex flex-col gap-1">
                             <label class="font-bold text-red-600 text-xs">優惠價(萬) - 車前牌用</label>
-                            <input type="text" v-model="parsed.promo_price" class="border-2 border-red-200 rounded-lg p-1.5 focus:border-red-400 text-red-700 font-bold focus:ring-0 text-sm">
+                            <input type="text" v-model="parsed.promo_price" class="border-2 border-red-200 rounded-lg p-1.5 focus:border-red-400 text-red-700 font-bold focus:ring-0 text-sm bg-red-50">
                         </div>
                         <div class="flex flex-col gap-1">
                             <label class="font-bold text-indigo-600 text-xs">貸款期數</label>
@@ -116,43 +121,56 @@
                     </div>
                 </div>
 
-                <div class="bg-white rounded-xl shadow-md border border-gray-200 p-5">
-                    <h2 class="text-lg font-bold text-teal-700 border-b pb-2 mb-3 flex items-center gap-2">
-                        <span>3️⃣</span> 車況與輸出
-                    </h2>
+            </div>
 
-                    <div class="flex items-center gap-4 mb-3">
-                        <label class="flex items-center gap-2 cursor-pointer">
-                            <input type="radio" v-model="conditionType" value="original" class="w-4 h-4 text-teal-600">
-                            <span class="font-bold text-gray-700">✅ 原鈑件</span>
-                        </label>
-                        <label class="flex items-center gap-2 cursor-pointer">
-                            <input type="radio" v-model="conditionType" value="non_original" class="w-4 h-4 text-red-600">
-                            <span class="font-bold text-red-600">⚠️ 非原鈑件</span>
-                        </label>
+            <!-- 右側：資料產出與超大腳本區 -->
+            <div class="lg:col-span-7 bg-white rounded-xl shadow-md border border-gray-200 p-5 flex flex-col h-full min-h-[600px]">
+                
+                <h2 class="text-lg font-bold text-teal-700 border-b pb-2 mb-3 flex items-center gap-2">
+                    <span>3️⃣</span> 車況選擇與最終輸出
+                </h2>
+
+                <!-- 車況選項 -->
+                <div class="flex items-center gap-4 mb-3 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" v-model="conditionType" value="original" class="w-4 h-4 text-teal-600">
+                        <span class="font-bold text-gray-700">✅ 原鈑件</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" v-model="conditionType" value="non_original" class="w-4 h-4 text-red-600">
+                        <span class="font-bold text-red-600">⚠️ 非原鈑件</span>
+                    </label>
+                </div>
+
+                <!-- 非原鈑件輸入框 -->
+                <textarea v-if="conditionType === 'non_original'" v-model="damageText" 
+                          class="w-full border-2 border-red-200 rounded-lg p-2 text-sm font-bold text-red-800 bg-red-50 focus:border-red-400 focus:ring-0 resize-none mb-3 shrink-0" rows="3"></textarea>
+
+                <!-- 產生按鈕群 -->
+                <div class="flex flex-col sm:flex-row gap-3 mb-4 pb-4 border-b">
+                    <button @click="exportExcel" :disabled="loadingExp" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition shadow-md active:scale-95 flex justify-center items-center gap-2 text-sm sm:text-base">
+                        <span v-if="!loadingExp">💾 下載車前牌 Excel</span>
+                        <span v-else>⏳ 產生中...</span>
+                    </button>
+                    
+                    <button @click="generateScript" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-lg transition shadow-md active:scale-95 flex justify-center items-center gap-2 text-sm sm:text-base">
+                        🎬 產生影片腳本
+                    </button>
+                </div>
+
+                <!-- 💡 腳本輸出區：自動填滿剩下的高度 flex-1 -->
+                <div v-if="videoScript" class="relative flex flex-col flex-1">
+                    <div class="flex justify-between items-center bg-gray-100 p-2 border border-b-0 border-gray-200 rounded-t-lg shrink-0">
+                        <span class="text-sm font-bold text-gray-700">📝 影片文案預覽</span>
+                        <button @click="copyScript" class="bg-gray-800 hover:bg-black text-white font-bold px-4 py-1.5 rounded text-sm transition shadow-sm active:scale-95">📋 一鍵複製</button>
                     </div>
+                    <textarea v-model="videoScript" class="w-full flex-1 border-2 border-gray-200 rounded-b-lg p-4 text-base sm:text-lg text-gray-800 focus:outline-none resize-none leading-relaxed font-bold bg-amber-50" readonly></textarea>
+                </div>
 
-                    <textarea v-if="conditionType === 'non_original'" v-model="damageText" 
-                              class="w-full border-2 border-red-200 rounded-lg p-2 text-sm text-gray-700 focus:border-red-400 focus:ring-0 resize-none mb-4" rows="4"></textarea>
-
-                    <div class="flex flex-col sm:flex-row gap-3 mb-4 border-t pt-4">
-                        <button @click="exportExcel" :disabled="loadingExp" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition shadow-md active:scale-95 flex justify-center items-center gap-2 text-sm sm:text-base">
-                            <span v-if="!loadingExp">💾 下載車前牌 Excel</span>
-                            <span v-else>⏳ 產生中...</span>
-                        </button>
-                        
-                        <button @click="generateScript" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 rounded-lg transition shadow-md active:scale-95 flex justify-center items-center gap-2 text-sm sm:text-base">
-                            🎬 產生影片腳本
-                        </button>
-                    </div>
-
-                    <div v-if="videoScript" class="relative">
-                        <div class="flex justify-between items-center bg-gray-100 p-2 border border-b-0 border-gray-200 rounded-t-lg">
-                            <span class="text-xs font-bold text-gray-500">影片文案預覽</span>
-                            <button @click="copyScript" class="bg-gray-300 hover:bg-gray-400 text-gray-700 font-bold px-3 py-1 rounded text-xs transition shadow-sm active:scale-95">📋 複製腳本</button>
-                        </div>
-                        <textarea v-model="videoScript" class="w-full border-2 border-gray-200 rounded-b-lg p-3 text-sm text-gray-700 focus:outline-none resize-none leading-relaxed" rows="8" readonly></textarea>
-                    </div>
+                <!-- 預設等待畫面 -->
+                <div v-else class="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 text-gray-400 font-bold">
+                    <span class="text-4xl mb-2">🎬</span>
+                    <p>請先解析文案並點擊「產生影片腳本」</p>
                 </div>
 
             </div>
@@ -209,7 +227,7 @@
                         
                         if (result.status === "success") {
                             Object.assign(parsed, result.data);
-                            updateStatus(`✅ 解析成功！請確認右側欄位。`, "text-green-300 font-bold");
+                            updateStatus(`✅ 解析成功！請確認左側下方欄位。`, "text-green-300 font-bold");
                         } else {
                             updateStatus("❌ 解析失敗", "text-red-300 font-bold");
                         }

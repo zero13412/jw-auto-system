@@ -22,7 +22,7 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, FileMessage
 
-app = FastAPI(title="🚗 杰運汽車新竹店阿鍇專用 - 內部系統")
+app = FastAPI(title="🚗 杰運內部系統 - 終極完整版")
 
 app.add_middleware(
     CORSMiddleware,
@@ -590,7 +590,64 @@ def process_excel_file(filename: str, contents: bytes):
 
 # ================= 🚀 API 區塊 =================
 
-# 💡 爬蟲大腦 (網頁端直接呼叫，不再丟去背景)
+# 💡 自動闖關引擎：讀取員工編號列表作為備用金鑰
+def get_backup_credentials_from_sheet():
+    try:
+        client = get_gspread_client()
+        doc = client.open_by_key(SHEET_ID)
+        ws = doc.worksheet("員工編號列表")
+        records = ws.get_all_records()
+        backup_creds = []
+        for r in records:
+            user_code = str(r.get("代碼", "")).strip()
+            if user_code:
+                backup_creds.append((user_code, "123456"))
+        return backup_creds
+    except Exception as e:
+        print(f"Error fetching backup creds: {e}")
+        return []
+
+def get_valid_credentials(force_u=None, force_p=None):
+    credentials_to_try = []
+    
+    # 1. 優先測試網頁手動輸入的那組
+    if force_u and force_p:
+        credentials_to_try.append((force_u, force_p))
+    else:
+        # 2. 加入 Google Sheet (系統設定) 存的最新一組
+        sheet_user, sheet_pwd = get_or_create_creds()
+        credentials_to_try.append((sheet_user, sheet_pwd))
+        
+        # 3. 💥 從「員工編號列表」取得所有代碼，搭配預設密碼 123456
+        backup_list = get_backup_credentials_from_sheet()
+        
+        for bu, bp in backup_list:
+            if (bu, bp) not in credentials_to_try:
+                credentials_to_try.append((bu, bp))
+                
+    login_url = "https://www.jwincar.com.tw/manage/login/index.php"
+    data_url = "https://www.jwincar.com.tw/manage/accounting/accounting_car_list.php?stock=all"
+    
+    for test_u, test_p in credentials_to_try:
+        try:
+            session = requests.Session()
+            session.post(login_url, data={"strID": test_u, "strPW": test_p, "Submit": "送出"})
+            res = session.get(data_url + "&page=1", timeout=10)
+            soup = BeautifulSoup(res.text, "html.parser")
+            table = soup.find("table", {"id": "carTable"})
+            
+            if table:
+                # 如果是靠備用密碼成功的，順便把它寫回 Google Sheet 更新！
+                if not (force_u and force_p):
+                    sheet_u, sheet_p = get_or_create_creds()
+                    if test_u != sheet_u or test_p != sheet_p:
+                        update_creds(test_u, test_p)
+                return test_u, test_p
+        except:
+            continue
+            
+    return None, None
+
 def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     try:
         session = requests.Session()
@@ -611,7 +668,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             table = soup.find("table", {"id": "carTable"})
             
             if not table: break
-            if page_num == 1: update_creds(login_user, login_pwd)
 
             rows = table.find_all("tr")
             if len(rows) <= 1: break 
@@ -755,30 +811,17 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     finally:
         gc.collect()
 
-# 💡 網頁端更新 API (直接等待結果)
 @app.get("/api/sync_car_source")
 def api_sync_car_source(user_id: str = "", u: str = "", p: str = ""):
     if not check_permission(user_id, "更新車源"):
         return {"status": "error", "message": "⛔ 權限不足！請聯繫管理員開通「更新車源」權限。"}
     
-    login_user, login_pwd = (u, p) if u and p else get_or_create_creds()
+    valid_u, valid_p = get_valid_credentials(u, p)
     
-    # 檢查密碼是否正確
-    try:
-        session = requests.Session()
-        login_url = "https://www.jwincar.com.tw/manage/login/index.php"
-        data_url = "https://www.jwincar.com.tw/manage/accounting/accounting_car_list.php?stock=all"
-        session.post(login_url, data={"strID": login_user, "strPW": login_pwd, "Submit": "送出"})
-        res = session.get(data_url + "&page=1", timeout=10)
-        soup = BeautifulSoup(res.text, "html.parser")
-        table = soup.find("table", {"id": "carTable"})
-        if not table:
-            return {"status": "need_login", "message": "公司後台密碼已更改，系統無法登入！\n請重新輸入最新的帳號密碼。"}
-    except Exception as e:
-        return {"status": "error", "message": f"後台驗證連線失敗：{str(e)}"}
-    
-    # 直接執行爬蟲，並將結果回傳網頁
-    return core_sync_car_source(user_id, login_user, login_pwd)
+    if not valid_u:
+        return {"status": "need_login", "message": "⚠️ 公司後台密碼已更改，系統自動嘗試了所有備用通行證皆失敗！\n請手動輸入最新的帳號與密碼。"}
+        
+    return core_sync_car_source(user_id, valid_u, valid_p)
 
 def is_valid_price_local(val_str, full_txt, match_obj):
     try:
@@ -1221,8 +1264,11 @@ def handle_text_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🤖 身份確認！正在連線後台抓取車源..."))
         def run_task():
             try:
-                login_user, login_pwd = get_or_create_creds()
-                res = core_sync_car_source(user_id, login_user, login_pwd)
+                valid_u, valid_p = get_valid_credentials()
+                if not valid_u:
+                    line_bot_api.push_message(user_id, TextSendMessage(text="🚨 後台密碼已更改，自動嘗試備用密碼也全數失敗。\n請至網頁版手動輸入新密碼！"))
+                    return
+                res = core_sync_car_source(user_id, valid_u, valid_p)
                 line_bot_api.push_message(user_id, TextSendMessage(text=res["message"]))
             except Exception as e:
                 line_bot_api.push_message(user_id, TextSendMessage(text=f"❌ 發生錯誤：{str(e)}"))

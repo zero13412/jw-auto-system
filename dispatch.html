@@ -270,7 +270,9 @@
                             car.color = d['顏色'] || '';
                             car.mileage = d['里程'] || '';
                             
-                            car.company = (d['產權'] && d['產權'] !== 'nan') ? d['產權'] : ((d['公司'] && d['公司'] !== 'nan') ? d['公司'] : '');
+                            // 💡 修正：使用 filter_property 取得精準的產權來源
+                            car.company = d['filter_property'] || ((d['產權'] && d['產權'] !== 'nan') ? d['產權'] : ((d['公司'] && d['公司'] !== 'nan') ? d['公司'] : ''));
+                            if (car.company === '其他') car.company = '';
                             
                             let dbLoc = String(d['車輛位置'] || '');
                             if (dbLoc.includes('北投') || dbLoc.includes('立賢') || dbLoc.includes('台北')) {
@@ -342,12 +344,13 @@
                         }
                     }
                     
+                    // 💡 修正：完美加入「車色」並在車源前空一格
                     let source_str = "";
                     if (car.company) {
-                        if (car.company.includes("禾迪")) source_str = "(禾迪車源)";
-                        else if (car.company.includes("展帆")) source_str = "(展帆車源)";
-                        else if (car.company.includes("杰租") || car.company.includes("租車")) source_str = "(租車車源)";
-                        else if (!car.company.includes("杰")) source_str = `(${car.company}車源)`;
+                        if (car.company.includes("禾迪")) source_str = " (禾迪車源)";
+                        else if (car.company.includes("展帆")) source_str = " (展帆車源)";
+                        else if (car.company.includes("杰租") || car.company.includes("租車")) source_str = " (租車車源)";
+                        else if (!car.company.includes("杰")) source_str = ` (${car.company}車源)`;
                     }
 
                     let clean_year = String(car.year).replace('年', '');
@@ -355,11 +358,11 @@
 
                     if (settings.mode === "order") {
                         text_out = `${today_str} ${settings.custSrc} ${settings.custName}\n`;
-                        text_out += `訂購${settings.locFrom} ${clean_year}年 ${car.model} ${car.color}${source_str}\n`;
+                        text_out += `訂購${settings.locFrom} ${clean_year} ${car.model} ${car.color}${source_str}\n`;
                         text_out += `${settings.locTo}整備交車 再麻煩公司協助調度\n\n`;
                         text_out += `${route_str}\n`;
                         text_out += `${plate_str}\n`;
-                        text_out += `里程：${car.mileage}`;
+                        text_out += `里程: ${car.mileage}`;
                         
                     } else if (settings.mode === "transfer") {
                         text_out = `${settings.custSrc} ${settings.custName}\n`;
@@ -367,9 +370,9 @@
                         text_out += `${settings.locTo}店賞車\n`;
                         text_out += `預計${view_date_str}到${settings.locTo}店賞車\n\n`;
                         text_out += `${route_str}\n`;
-                        // 💡 修正 Mode 2 顯示車源問題，並統一排版格式
-                        text_out += `${clean_year}年${car.model} ${car.color}${source_str}\n`;
-                        text_out += `里程：${car.mileage}\n`;
+                        // 💡 完美結合：年份 車型 顏色 (車源)
+                        text_out += `${clean_year} ${car.model} ${car.color}${source_str}\n`;
+                        text_out += `里程: ${car.mileage}\n`;
                         text_out += `${plate_str}\n`;
                         text_out += `麻煩公司安排調度\n`;
                         text_out += `已告知客戶未購買需負擔${settings.amount}`;
@@ -379,8 +382,9 @@
                         text_out = `${today_str} ${settings.custSrc} ${settings.custName}\n`;
                         text_out += `線上預約$${settings.amount} ${settings.payMethod} 保留優惠七天\n`;
                         text_out += `${view_date_str}直接到${settings.locFrom}店賞車\n\n`;
-                        text_out += `${clean_year}年${car.model} ${car.color}${source_str}\n`;
-                        text_out += `里程：${car.mileage}\n`;
+                        // 💡 完美結合：年份 車型 顏色 (車源)
+                        text_out += `${clean_year} ${car.model} ${car.color}${source_str}\n`;
+                        text_out += `里程: ${car.mileage}\n`;
                         text_out += `${plate_str}`;
                         if (settings.payMethod === "匯款") text_out += `\n${last5_info}${check_receipt_msg}`;
                     }

@@ -367,7 +367,9 @@
                         text_out += `${settings.locTo}店賞車\n`;
                         text_out += `預計${view_date_str}到${settings.locTo}店賞車\n\n`;
                         text_out += `${route_str}\n`;
-                        text_out += `${clean_year} ${car.model} 里程: ${car.mileage}\n`;
+                        // 💡 修正 Mode 2 顯示車源問題，並統一排版格式
+                        text_out += `${clean_year}年${car.model} ${car.color}${source_str}\n`;
+                        text_out += `里程：${car.mileage}\n`;
                         text_out += `${plate_str}\n`;
                         text_out += `麻煩公司安排調度\n`;
                         text_out += `已告知客戶未購買需負擔${settings.amount}`;

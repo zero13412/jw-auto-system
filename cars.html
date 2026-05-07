@@ -172,14 +172,20 @@
                         <div class="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-0">
                             
                             <div class="space-y-2 w-full sm:w-auto">
-                                <div v-if="car.is_sold" class="bg-gray-800 text-white font-bold px-2 py-1 rounded shadow-sm inline-block mb-1 text-xs sm:text-sm border border-gray-900">
-                                    ⛔ 此車已售出
-                                </div>
-                                <div v-else-if="car.is_cert" class="bg-gray-800 text-white font-bold px-2 py-1 rounded shadow-sm inline-block mb-1 text-xs sm:text-sm border border-gray-900">
-                                    📜 注意：此車取證中
-                                </div>
-                                <div v-else-if="car.is_reserved" class="bg-yellow-200 text-red-700 font-bold px-2 py-1 rounded shadow-sm inline-block mb-1 text-xs sm:text-sm border border-red-300">
-                                    ⛔ 注意：此車可能已收訂
+                                <div class="flex flex-wrap gap-2 mb-1">
+                                    <div v-if="car.is_sold" class="bg-gray-800 text-white font-bold px-2 py-1 rounded shadow-sm inline-block text-xs sm:text-sm border border-gray-900">
+                                        ⛔ 此車已售出
+                                    </div>
+                                    <div v-else-if="car.is_cert" class="bg-gray-800 text-white font-bold px-2 py-1 rounded shadow-sm inline-block text-xs sm:text-sm border border-gray-900">
+                                        📜 注意：此車取證中
+                                    </div>
+                                    <div v-else-if="car.is_reserved" class="bg-yellow-200 text-red-700 font-bold px-2 py-1 rounded shadow-sm inline-block text-xs sm:text-sm border border-red-300">
+                                        ⛔ 注意：此車可能已收訂
+                                    </div>
+                                    
+                                    <div v-if="car.filter_property === '杰租'" class="bg-purple-100 text-purple-800 font-bold px-2 py-1 rounded shadow-sm inline-block text-xs sm:text-sm border border-purple-300">
+                                        🚕 提醒：此為杰租車源
+                                    </div>
                                 </div>
 
                                 <h3 class="text-lg sm:text-xl font-bold text-slate-800 leading-tight">
@@ -187,7 +193,7 @@
                                 </h3>
                                 
                                 <div class="flex flex-wrap items-center gap-1 sm:gap-2 text-xs sm:text-sm font-bold">
-                                    <span v-if="car.filter_property" :class="{'flash-text px-1 rounded': ['展帆', '禾迪'].includes(car.filter_property), 'text-green-700': true}">
+                                    <span v-if="car.filter_property" :class="{'flash-text px-1 rounded': ['展帆', '禾迪', '杰租'].includes(car.filter_property), 'text-green-700': true}">
                                         產權: {{ car.filter_property }}
                                     </span>
                                     <span v-else class="text-green-700">公司: {{ car.公司 }}</span>
@@ -253,7 +259,6 @@
                 const statusMessage = ref("系統準備就緒");
                 const showMobileFilters = ref(false);
 
-                // 💡 預設將 hide_sold 與 hide_cert 設為 true，預設打勾
                 const filters = reactive({
                     brand: "全部", location: "全部", prop: "全部",
                     model: "", plate: "", person: "", min_price: "", max_price: "",
@@ -300,7 +305,6 @@
                     finally { loading.value = false; }
                 };
 
-                // 💡 重置條件時，也恢復為 hide_sold: true, hide_cert: true
                 const resetFilters = () => {
                     Object.assign(filters, {
                         brand: "全部", location: "全部", prop: "全部",

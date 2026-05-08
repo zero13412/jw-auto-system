@@ -149,18 +149,8 @@ def load_and_clean_data():
         elif '負責人' in df.columns: df['採購'] = df['負責人']
         else: df['採購'] = ""
 
-    # 💡 完美防呆：會計刪除「舊編號」欄位也不會報錯
-    def make_id(r):
-        n = str(r.get('新編號', '')).replace('.0', '').strip()
-        o = str(r.get('舊編號', '')).replace('.0', '').strip()
-        if n.lower() in ['nan', 'none']: n = ''
-        if o.lower() in ['nan', 'none']: o = ''
-        if n and o: return f"{o} ({n})"
-        return n or o
+    df['編號'] = df.apply(lambda r: f"{str(r.get('舊編號','')).replace('.0','')} ({str(r.get('新編號','')).replace('.0','')})" if str(r.get('新編號','')).strip() and str(r.get('舊編號','')).strip() else (str(r.get('新編號','')) or str(r.get('舊編號',''))), axis=1)
 
-    df['編號'] = df.apply(make_id, axis=1)
-
-    # 💡 完美相容：會計改名叫「售價」、「價格」或「網路」都能成功抓取
     if '網路' in df.columns: df['顯示價格'] = df['網路'].apply(clean_money)
     elif '售價' in df.columns: df['顯示價格'] = df['售價'].apply(clean_money)
     elif '價格' in df.columns: df['顯示價格'] = df['價格'].apply(clean_money)
@@ -347,7 +337,6 @@ def process_pdf_file(filename: str, contents: bytes):
             row[status_col_idx] = "在庫" 
             data_to_upload.append(row)
 
-        # 💡 強制背景白化
         color_requests = [{"repeatCell": {"range": {"sheetId": target_gsheet.id}, "cell": {"userEnteredFormat": {"backgroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}}}, "fields": "userEnteredFormat.backgroundColor"}}]
         target_gsheet.clear()
         target_gsheet.update(values=[[str(cell) for cell in row] for row in data_to_upload], range_name='A1')
@@ -474,6 +463,7 @@ def process_excel_file(filename: str, contents: bytes):
                 for c_idx, cell in enumerate(row):
                     rgb = get_color_rgb(cell)
                     if rgb:
+                        # 💡 只有當前這格 Excel 真的有顏色，才會覆蓋上色
                         color_requests_main.append({"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 }, "cell": {"userEnteredFormat": {"backgroundColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}, "fields": "userEnteredFormat.backgroundColor"}})
                         if c_idx == col_model or c_idx == col_version: is_reserved = True
                 row_values[status_idx] = "已收訂" if is_reserved else ""
@@ -612,6 +602,67 @@ def process_excel_file(filename: str, contents: bytes):
 
 # ================= 🚀 API 區塊 =================
 
+# 💡 從「員工編號列表」取得 B 欄和 C 欄作為備用帳密
+def get_backup_credentials_from_sheet():
+    try:
+        client = get_gspread_client()
+        doc = client.open_by_key(SHEET_ID)
+        ws = doc.worksheet("員工編號列表")
+        raw_data = ws.get_all_values()
+        backup_creds = []
+        
+        if len(raw_data) > 1:
+            for row in raw_data[1:]:
+                if len(row) > 1:
+                    user_code = str(row[1]).strip() # B 欄：帳號
+                    if user_code:
+                        pwd = ""
+                        if len(row) > 2:
+                            pwd = str(row[2]).strip() # C 欄：密碼
+                        if not pwd:
+                            pwd = "123456" # 空白就預設 123456
+                        backup_creds.append((user_code, pwd))
+        return backup_creds
+    except Exception as e:
+        print(f"Error fetching backup creds: {e}")
+        return []
+
+def get_valid_credentials(force_u=None, force_p=None):
+    credentials_to_try = []
+    
+    if force_u and force_p:
+        credentials_to_try.append((force_u, force_p))
+    else:
+        sheet_user, sheet_pwd = get_or_create_creds()
+        credentials_to_try.append((sheet_user, sheet_pwd))
+        
+        backup_list = get_backup_credentials_from_sheet()
+        for bu, bp in backup_list:
+            if (bu, bp) not in credentials_to_try:
+                credentials_to_try.append((bu, bp))
+                
+    login_url = "https://www.jwincar.com.tw/manage/login/index.php"
+    data_url = "https://www.jwincar.com.tw/manage/accounting/accounting_car_list.php?stock=all"
+    
+    for test_u, test_p in credentials_to_try:
+        try:
+            session = requests.Session()
+            session.post(login_url, data={"strID": test_u, "strPW": test_p, "Submit": "送出"})
+            res = session.get(data_url + "&page=1", timeout=10)
+            soup = BeautifulSoup(res.text, "html.parser")
+            table = soup.find("table", {"id": "carTable"})
+            
+            if table:
+                if not (force_u and force_p):
+                    sheet_u, sheet_p = get_or_create_creds()
+                    if test_u != sheet_u or test_p != sheet_p:
+                        update_creds(test_u, test_p)
+                return test_u, test_p
+        except:
+            continue
+            
+    return None, None
+
 def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     try:
         session = requests.Session()
@@ -731,7 +782,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         target_gsheet_main.clear()
         target_gsheet_main.update(values=data_to_upload_main, range_name='A1')
         
-        # 💡 新增：爬蟲寫入時，將整個表單的背景顏色強制全部洗白 (覆蓋掉之前 Excel 留下的舊顏色)
+        # 💡 爬蟲更新時全盤洗白背景
         doc.batch_update({"requests": [{
             "repeatCell": {
                 "range": { "sheetId": target_gsheet_main.id },
@@ -789,24 +840,12 @@ def api_sync_car_source(user_id: str = "", u: str = "", p: str = ""):
     if not check_permission(user_id, "更新車源"):
         return {"status": "error", "message": "⛔ 權限不足！請聯繫管理員開通「更新車源」權限。"}
     
-    login_user, login_pwd = (u, p) if u and p else get_or_create_creds()
+    valid_u, valid_p = get_valid_credentials(u, p)
     
-    # 檢查密碼是否正確
-    try:
-        session = requests.Session()
-        login_url = "https://www.jwincar.com.tw/manage/login/index.php"
-        data_url = "https://www.jwincar.com.tw/manage/accounting/accounting_car_list.php?stock=all"
-        session.post(login_url, data={"strID": login_user, "strPW": login_pwd, "Submit": "送出"})
-        res = session.get(data_url + "&page=1", timeout=10)
-        soup = BeautifulSoup(res.text, "html.parser")
-        table = soup.find("table", {"id": "carTable"})
-        if not table:
-            return {"status": "need_login", "message": "公司後台密碼已更改，系統無法登入！\n請重新輸入最新的帳號密碼。"}
-    except Exception as e:
-        return {"status": "error", "message": f"後台驗證連線失敗：{str(e)}"}
-    
-    # 直接執行爬蟲，並將結果回傳網頁
-    return core_sync_car_source(user_id, login_user, login_pwd)
+    if not valid_u:
+        return {"status": "need_login", "message": "⚠️ 公司後台密碼已更改，系統自動嘗試了所有備用通行證皆失敗！\n請手動輸入最新的帳號與密碼。"}
+        
+    return core_sync_car_source(user_id, valid_u, valid_p)
 
 def is_valid_price_local(val_str, full_txt, match_obj):
     try:
@@ -1249,8 +1288,11 @@ def handle_text_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🤖 身份確認！正在連線後台抓取車源..."))
         def run_task():
             try:
-                login_user, login_pwd = get_or_create_creds()
-                res = core_sync_car_source(user_id, login_user, login_pwd)
+                valid_u, valid_p = get_valid_credentials()
+                if not valid_u:
+                    line_bot_api.push_message(user_id, TextSendMessage(text="🚨 後台密碼已更改，自動嘗試備用密碼也全數失敗。\n請至網頁版手動輸入新密碼！"))
+                    return
+                res = core_sync_car_source(user_id, valid_u, valid_p)
                 line_bot_api.push_message(user_id, TextSendMessage(text=res["message"]))
             except Exception as e:
                 line_bot_api.push_message(user_id, TextSendMessage(text=f"❌ 發生錯誤：{str(e)}"))

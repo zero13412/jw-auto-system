@@ -151,7 +151,10 @@ def load_and_clean_data():
 
     df['編號'] = df.apply(lambda r: f"{str(r.get('舊編號','')).replace('.0','')} ({str(r.get('新編號','')).replace('.0','')})" if str(r.get('新編號','')).strip() and str(r.get('舊編號','')).strip() else (str(r.get('新編號','')) or str(r.get('舊編號',''))), axis=1)
 
+    # 💡 完美適應會計各種價格欄位名稱的變化
     if '網路' in df.columns: df['顯示價格'] = df['網路'].apply(clean_money)
+    elif '售價' in df.columns: df['顯示價格'] = df['售價'].apply(clean_money)
+    elif '價格' in df.columns: df['顯示價格'] = df['價格'].apply(clean_money)
     elif '底價' in df.columns: df['顯示價格'] = df['底價'].apply(clean_money)
     else: df['顯示價格'] = 0.0
 
@@ -590,7 +593,6 @@ def process_excel_file(filename: str, contents: bytes):
 
 # ================= 🚀 API 區塊 =================
 
-# 💡 自動闖關引擎：讀取員工編號列表作為備用金鑰
 def get_backup_credentials_from_sheet():
     try:
         client = get_gspread_client()
@@ -610,17 +612,13 @@ def get_backup_credentials_from_sheet():
 def get_valid_credentials(force_u=None, force_p=None):
     credentials_to_try = []
     
-    # 1. 優先測試網頁手動輸入的那組
     if force_u and force_p:
         credentials_to_try.append((force_u, force_p))
     else:
-        # 2. 加入 Google Sheet (系統設定) 存的最新一組
         sheet_user, sheet_pwd = get_or_create_creds()
         credentials_to_try.append((sheet_user, sheet_pwd))
         
-        # 3. 💥 從「員工編號列表」取得所有代碼，搭配預設密碼 123456
         backup_list = get_backup_credentials_from_sheet()
-        
         for bu, bp in backup_list:
             if (bu, bp) not in credentials_to_try:
                 credentials_to_try.append((bu, bp))
@@ -637,7 +635,6 @@ def get_valid_credentials(force_u=None, force_p=None):
             table = soup.find("table", {"id": "carTable"})
             
             if table:
-                # 如果是靠備用密碼成功的，順便把它寫回 Google Sheet 更新！
                 if not (force_u and force_p):
                     sheet_u, sheet_p = get_or_create_creds()
                     if test_u != sheet_u or test_p != sheet_p:

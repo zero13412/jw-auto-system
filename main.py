@@ -22,7 +22,7 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, FileMessage
 
-app = FastAPI(title="🚗 杰運內部系統 - 終極完整版")
+app = FastAPI(title="🚗 杰運汽車新竹店阿鍇專用 - 內部系統")
 
 app.add_middleware(
     CORSMiddleware,
@@ -151,7 +151,6 @@ def load_and_clean_data():
 
     df['編號'] = df.apply(lambda r: f"{str(r.get('舊編號','')).replace('.0','')} ({str(r.get('新編號','')).replace('.0','')})" if str(r.get('新編號','')).strip() and str(r.get('舊編號','')).strip() else (str(r.get('新編號','')) or str(r.get('舊編號',''))), axis=1)
 
-    # 💡 完美適應會計各種價格欄位名稱的變化
     if '網路' in df.columns: df['顯示價格'] = df['網路'].apply(clean_money)
     elif '售價' in df.columns: df['顯示價格'] = df['售價'].apply(clean_money)
     elif '價格' in df.columns: df['顯示價格'] = df['價格'].apply(clean_money)
@@ -393,7 +392,15 @@ def process_excel_file(filename: str, contents: bytes):
         except gspread.exceptions.WorksheetNotFound: return {"status": "error", "message": f"找不到分頁「{target_tab_name}」"}
 
         data_to_upload_main = []
-        color_requests_main = [{"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": 1 }, "cell": {"userEnteredFormat": {"backgroundColorStyle": {"rgbColor": { "red": 1.0, "green": 1.0, "blue": 1.0 }}}}, "fields": "userEnteredFormat.backgroundColorStyle,userEnteredFormat.backgroundColor"}}]
+        
+        # 💡 核心變動：先將整張表單的背景顏色全部洗成白色（透明）
+        color_requests_main = [{
+            "repeatCell": {
+                "range": { "sheetId": target_gsheet_main.id }, 
+                "cell": {"userEnteredFormat": {"backgroundColorStyle": {"rgbColor": { "red": 1.0, "green": 1.0, "blue": 1.0 }}}}, 
+                "fields": "userEnteredFormat.backgroundColorStyle,userEnteredFormat.backgroundColor"
+            }
+        }]
 
         old_keys = set()
         is_excel_initial = False
@@ -456,6 +463,7 @@ def process_excel_file(filename: str, contents: bytes):
                 for c_idx, cell in enumerate(row):
                     rgb = get_color_rgb(cell)
                     if rgb:
+                        # 💡 只有當前這格 Excel 真的有顏色，才會覆蓋上色
                         color_requests_main.append({"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 }, "cell": {"userEnteredFormat": {"backgroundColorStyle": {"rgbColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}}, "fields": "userEnteredFormat.backgroundColorStyle"}})
                         if c_idx == col_model or c_idx == col_version: is_reserved = True
                 row_values[status_idx] = "已收訂" if is_reserved else ""
@@ -527,6 +535,7 @@ def process_excel_file(filename: str, contents: bytes):
                 data_to_upload_main.append(row_values)
                 for c_idx, rgb in enumerate(row_colors):
                     if rgb:
+                        # 💡 只有這格真的有顏色才會上色
                         color_requests_main.append({"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 }, "cell": {"userEnteredFormat": {"backgroundColorStyle": {"rgbColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}}, "fields": "userEnteredFormat.backgroundColorStyle"}})
 
             messages = []
@@ -763,6 +772,15 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         data_to_upload_main = [final_headers] + df_crawled.values.tolist()
         target_gsheet_main.clear()
         target_gsheet_main.update(values=data_to_upload_main, range_name='A1')
+        
+        # 💡 新增：爬蟲寫入時，將整個表單的背景顏色全部洗白 (覆蓋掉之前 Excel 留下的顏色)
+        doc.batch_update({"requests": [{
+            "repeatCell": {
+                "range": { "sheetId": target_gsheet_main.id },
+                "cell": {"userEnteredFormat": {"backgroundColorStyle": {"rgbColor": { "red": 1.0, "green": 1.0, "blue": 1.0 }}}},
+                "fields": "userEnteredFormat.backgroundColorStyle,userEnteredFormat.backgroundColor"
+            }
+        }]})
         
         status_col_idx = final_headers.index("狀態") if "狀態" in final_headers else -1
         if status_col_idx != -1:

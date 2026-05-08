@@ -149,9 +149,21 @@ def load_and_clean_data():
         elif '負責人' in df.columns: df['採購'] = df['負責人']
         else: df['採購'] = ""
 
-    df['編號'] = df.apply(lambda r: f"{str(r.get('舊編號','')).replace('.0','')} ({str(r.get('新編號','')).replace('.0','')})" if str(r.get('新編號','')).strip() and str(r.get('舊編號','')).strip() else (str(r.get('新編號','')) or str(r.get('舊編號',''))), axis=1)
+    # 💡 完美防呆：會計刪除「舊編號」欄位也不會報錯
+    def make_id(r):
+        n = str(r.get('新編號', '')).replace('.0', '').strip()
+        o = str(r.get('舊編號', '')).replace('.0', '').strip()
+        if n.lower() in ['nan', 'none']: n = ''
+        if o.lower() in ['nan', 'none']: o = ''
+        if n and o: return f"{o} ({n})"
+        return n or o
 
+    df['編號'] = df.apply(make_id, axis=1)
+
+    # 💡 完美相容：會計改名叫「售價」、「價格」或「網路」都能成功抓取
     if '網路' in df.columns: df['顯示價格'] = df['網路'].apply(clean_money)
+    elif '售價' in df.columns: df['顯示價格'] = df['售價'].apply(clean_money)
+    elif '價格' in df.columns: df['顯示價格'] = df['價格'].apply(clean_money)
     elif '底價' in df.columns: df['顯示價格'] = df['底價'].apply(clean_money)
     else: df['顯示價格'] = 0.0
 
@@ -335,7 +347,8 @@ def process_pdf_file(filename: str, contents: bytes):
             row[status_col_idx] = "在庫" 
             data_to_upload.append(row)
 
-        color_requests = [{"repeatCell": {"range": {"sheetId": target_gsheet.id, "startRowIndex": 1}, "cell": {"userEnteredFormat": {"backgroundColorStyle": {"rgbColor": {"red": 1.0, "green": 1.0, "blue": 1.0}}}}, "fields": "userEnteredFormat.backgroundColorStyle,userEnteredFormat.backgroundColor"}}]
+        # 💡 強制背景白化
+        color_requests = [{"repeatCell": {"range": {"sheetId": target_gsheet.id}, "cell": {"userEnteredFormat": {"backgroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}}}, "fields": "userEnteredFormat.backgroundColor"}}]
         target_gsheet.clear()
         target_gsheet.update(values=[[str(cell) for cell in row] for row in data_to_upload], range_name='A1')
         doc.batch_update({"requests": color_requests})
@@ -461,7 +474,7 @@ def process_excel_file(filename: str, contents: bytes):
                 for c_idx, cell in enumerate(row):
                     rgb = get_color_rgb(cell)
                     if rgb:
-                        color_requests_main.append({"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 }, "cell": {"userEnteredFormat": {"backgroundColorStyle": {"rgbColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}}, "fields": "userEnteredFormat.backgroundColorStyle"}})
+                        color_requests_main.append({"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 }, "cell": {"userEnteredFormat": {"backgroundColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}, "fields": "userEnteredFormat.backgroundColor"}})
                         if c_idx == col_model or c_idx == col_version: is_reserved = True
                 row_values[status_idx] = "已收訂" if is_reserved else ""
                 data_to_upload_main.append(row_values)
@@ -532,7 +545,8 @@ def process_excel_file(filename: str, contents: bytes):
                 data_to_upload_main.append(row_values)
                 for c_idx, rgb in enumerate(row_colors):
                     if rgb:
-                        color_requests_main.append({"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 }, "cell": {"userEnteredFormat": {"backgroundColorStyle": {"rgbColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}}, "fields": "userEnteredFormat.backgroundColorStyle"}})
+                        # 💡 只有這格真的有顏色才會上色
+                        color_requests_main.append({"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 }, "cell": {"userEnteredFormat": {"backgroundColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}, "fields": "userEnteredFormat.backgroundColor"}})
 
             messages = []
             try:

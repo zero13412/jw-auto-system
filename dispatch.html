@@ -290,7 +290,7 @@
                             updateStatus(`✅ 找到車輛：${car.model} (產權: ${car.company || '無'})`, "text-green-300 font-bold");
                         } else {
                             car.plate = searchQuery.value.toUpperCase();
-                            updateStatus("❌ 查無此車，請手手動輸入明細", "text-red-300 font-bold");
+                            updateStatus("❌ 查無此車，請手動輸入明細", "text-red-300 font-bold");
                         }
                     } catch (e) {
                         updateStatus("❌ 網路連線錯誤", "text-red-300 font-bold");
@@ -342,7 +342,6 @@
                         }
                     }
                     
-                    // 💡 產權邏輯修正：判斷杰租並加上括號空格
                     let source_str = "";
                     if (car.company) {
                         if (car.company.includes("禾迪")) source_str = " (禾迪車源)";
@@ -354,7 +353,6 @@
                     let clean_year = String(car.year).replace('年', '');
                     let text_out = "";
 
-                    // 💡 統一的車輛資訊區塊
                     let car_info_block = `${clean_year} ${car.model} ${car.color}${source_str}\n里程: ${car.mileage}\n${plate_str}`;
 
                     if (settings.mode === "order") {
@@ -391,9 +389,9 @@
                     let fee = parseInt(settings.amount) || 0;
 
                     if (settings.mode === 'universal') {
-                        const p1 = `賞車有兩種方式\n\n您直接到車輛所在店賞車的話\n我們可以補貼您 單人單趟的高鐵費\n現場看過車覺得不喜歡 不買也有補貼\n\n缺點就是您要跑一趟 而且如果好幾個人一起去就划不來\n因為只有補貼一個人 去程 (自行開車沒有)`;
+                        const p1 = `賞車有兩種方式\n\n車子目前在XX店 您可以自行前往 直接到XX店賞車\n缺點就是您總共至少會要跑兩趟 (第一趟賞車 第二趟交車)\n如果您賞車完想在XX店交車 會需要額外負擔調度費`;
                         
-                        const p2 = `另一種方式是 您可線上預付賞車金 \n我們可幫您把車調度到您覺得賞車最方便的店\n($1000-$2500 依照距離收費 刷卡或匯款都可)\n\n如果車調度到了 您看完車覺得OK 簽約\n賞車金可折抵車價 不用額外付調度費\n\n那如果車調度到之後 您看過車不想買 也沒有其他考慮的車款\n賞車金就沒有退 當作您部分負擔調度費`;
+                        const p2 = `另一種方式是 您可線上預付賞車金 \n我們可幫您把車調度到您覺得賞車最方便的店\n($1000-$2500 依照距離收費 刷卡或匯款都可)\n\n如果車調度到了 您看完車覺得OK 簽約\n賞車金可折抵車價 不用額外付調度費\n也可在XX店交車\n\n那如果車調度到之後 您看過車不想買 也沒有其他考慮的車款\n賞車金就沒有退 當作您部分負擔調度費`;
                         
                         const p3 = `再跟您詳細說明\n賞車金 不是訂金 \n您預付賞車金後 是第一順位\n\n因為我們車跑的速度蠻快\n車子調度需要排隊\n假設\n1. 車子還沒調度 \n2. 調度到了 您來看車之前\n有第二順位出現 想直接付訂金\n(我們訂金是收 29000 元)\n會馬上告知您 您有3小時考慮時間\n\n如您有意願購買 就必須3小時內 補付到 29000 元\n如您沒有意願 就會安排會計小姐 退款您預付的賞車金`;
                         
@@ -422,9 +420,9 @@
                     fee = parseInt(settings.amount) || priceMatrix[settings.locFrom]?.[settings.locTo] || 0;
                     let deposit_balance = 29000 - fee;
 
-                    const p1 = `賞車有兩種方式\n\n您直接到「${settings.locFrom}」店賞車的話\n我們可以補貼您 單人單趟的高鐵費\n現場看過車覺得不喜歡 不買也有補貼\n\n缺點就是您要跑一趟 而且如果好幾個人一起去就划不來\n因為只有補貼一個人 去程 (自行開車沒有)`;
+                    const p1 = `賞車有兩種方式\n\n車子目前在「${settings.locFrom}」店 您可以自行前往 直接到「${settings.locFrom}」店賞車\n缺點就是您總共至少會要跑兩趟 (第一趟賞車 第二趟交車)\n如果您賞車完想在「${settings.locTo}」店交車 會需要額外負擔調度費`;
                     
-                    const p2 = `另一種方式是 您可線上預付 ${fee} 元賞車金 (刷卡或匯款都可)\n我們可幫您把車調度到「${settings.locTo}」店\n如果車到「${settings.locTo}」 您覺得OK 簽約\n${fee} 元可折抵車價 不用額外付調度費\n\n那如果車調度到「${settings.locTo}」後 您看過車不想買 也沒有其他考慮的車款\n${fee} 元就沒有退 當作您部分負擔調度費`;
+                    const p2 = `另一種方式是 您可線上預付 ${fee} 元賞車金 (刷卡或匯款都可)\n我們可幫您把車調度到「${settings.locTo}」店\n如果車到「${settings.locTo}」 您覺得OK 簽約\n${fee} 元可折抵車價 不用額外付調度費\n也可在「${settings.locTo}」店交車\n\n那如果車調度到「${settings.locTo}」後 您看過車不想買 也沒有其他考慮的車款\n${fee} 元就沒有退 當作您部分負擔調度費`;
                     
                     const p3 = `再跟您詳細說明\n${fee} 是賞車金 不是訂金 \n您預付 ${fee} 後 是第一順位\n\n因為我們車跑的速度蠻快\n車子調度需要排隊\n假設\n1. 車子還沒調度 \n2. 調度到了 您來看車之前\n有第二順位出現 想直接付訂金\n(我們訂金是收 29000 元)\n會馬上告知您 您有3小時考慮時間\n\n如您有意願購買 就必須3小時內 補付 ${deposit_balance} 元\n如您沒有意願 就會安排會計小姐 退款 ${fee} 元`;
                     

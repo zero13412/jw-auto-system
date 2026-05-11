@@ -375,7 +375,7 @@
                         
                     } else if (settings.mode === "reserve") {
                         text_out = `${today_str} ${settings.custSrc} ${settings.custName}\n`;
-                        text_out += `線上預約$${settings.amount} ${settings.payMethod} 保留優惠七天\n`;
+                        text_out += `線上預約$${settings.amount} ${settings.payMethod} 保留優惠六天\n`;
                         text_out += `${view_date_str}直接到${settings.locFrom}店賞車\n\n`;
                         text_out += car_info_block;
                         if (settings.payMethod === "匯款") text_out += `\n${last5_info}${check_receipt_msg}`;

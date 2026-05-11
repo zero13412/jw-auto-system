@@ -123,6 +123,11 @@
                                 <span class="text-sm font-bold text-gray-700">🚫 隱藏「無價錢」車輛</span>
                             </label>
 
+                            <label class="flex items-center gap-2 cursor-pointer bg-red-50 border border-red-200 px-3 py-2 rounded-lg w-full hover:bg-red-100 transition shadow-sm">
+                                <input v-model="filters.hide_reserved" @change="searchCars" type="checkbox" class="w-5 h-5 text-red-600 rounded">
+                                <span class="text-sm font-bold text-red-700">🔒 隱藏「已收訂」車輛</span>
+                            </label>
+
                             <label class="flex items-center gap-2 cursor-pointer bg-gray-200 border border-gray-300 px-3 py-2 rounded-lg w-full hover:bg-gray-300 transition shadow-sm">
                                 <input v-model="filters.hide_sold" @change="searchCars" type="checkbox" class="w-5 h-5 text-gray-800 rounded">
                                 <span class="text-sm font-bold text-gray-800">⛔ 隱藏「已售」車輛</span>
@@ -131,11 +136,6 @@
                             <label class="flex items-center gap-2 cursor-pointer bg-gray-200 border border-gray-300 px-3 py-2 rounded-lg w-full hover:bg-gray-300 transition shadow-sm">
                                 <input v-model="filters.hide_cert" @change="searchCars" type="checkbox" class="w-5 h-5 text-gray-800 rounded">
                                 <span class="text-sm font-bold text-gray-800">📜 隱藏「取證」車輛</span>
-                            </label>
-
-                            <label class="flex items-center gap-2 cursor-pointer bg-red-50 border border-red-200 px-3 py-2 rounded-lg w-full hover:bg-red-100 transition shadow-sm">
-                                <input v-model="filters.hide_reserved" @change="searchCars" type="checkbox" class="w-5 h-5 text-red-600 rounded">
-                                <span class="text-sm font-bold text-red-700">🔒 隱藏「已收訂」車輛</span>
                             </label>
                         </div>
                     </div>

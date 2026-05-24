@@ -225,9 +225,12 @@
                                 <div class="text-2xl sm:text-3xl font-bold text-red-600 sm:mb-2">
                                     {{ car.顯示價格 > 0 ? '$' + car.顯示價格 + ' 萬' : '無價錢' }}
                                 </div>
-                                <div class="flex flex-col items-end gap-1">
-                                    <button @click="copyPlate(car.車牌, car.車型)" class="text-xs sm:text-sm bg-white hover:bg-gray-100 border border-gray-300 px-4 py-2 sm:px-3 sm:py-1 rounded shadow-sm text-gray-700 transition font-bold">
+                                <div class="flex flex-col items-end gap-2 sm:gap-1 w-full sm:w-auto">
+                                    <button @click="copyPlate(car.車牌, car.車型)" class="w-full sm:w-auto text-xs sm:text-sm bg-white hover:bg-gray-100 border border-gray-300 px-4 py-2 sm:px-3 sm:py-1 rounded shadow-sm text-gray-700 transition font-bold">
                                         📋 複製車牌
+                                    </button>
+                                    <button @click="copyId(car.編號)" class="w-full sm:w-auto text-xs sm:text-sm bg-white hover:bg-gray-100 border border-gray-300 px-4 py-2 sm:px-3 sm:py-1 rounded shadow-sm text-gray-700 transition font-bold">
+                                        📋 複製編號
                                     </button>
                                 </div>
                             </div>
@@ -319,6 +322,16 @@
                     } else { alert("無車牌資料！"); }
                 };
 
+                // 💡 新增：複製編號的功能
+                const copyId = (id) => {
+                    if (id && id !== 'nan') {
+                        navigator.clipboard.writeText(id).then(() => {
+                            statusMessage.value = `📋 已複製編號 [${id}]`;
+                            setTimeout(() => statusMessage.value = "系統準備就緒", 3000);
+                        });
+                    } else { alert("無編號資料！"); }
+                };
+
                 const formatCondition = (cond) => {
                     if (!cond) return '';
                     return String(cond).replace(/原[鈑版板]件/g, (match) => `<span class="text-gray-400 font-normal">${match}</span>`);
@@ -333,7 +346,7 @@
 
                 return { 
                     cars, options, filters, loading, loadingText, statusMessage, showMobileFilters,
-                    searchCars, searchCarsMobile, resetFilters, refreshData, copyPlate, formatCondition, isWarning
+                    searchCars, searchCarsMobile, resetFilters, refreshData, copyPlate, copyId, formatCondition, isWarning
                 };
             }
         }).mount('#app');

@@ -309,4 +309,65 @@
                         bodyText = damageText.value;
                     }
 
-                    let discountLine = "購買可當兩
+                    let discountLine = "購買可當兩萬折抵等於再折扣一萬一\n";
+                    if (parseFloat(promoPrice) < 15.0) {
+                        discountLine = "";
+                    }
+
+                    videoScript.value = `大家好這裡是杰運汽車日常頻道
+今天來為大家介紹這台
+${carName}
+此車在${manDate}出廠
+${licDate}領牌
+儀錶板實際里程數是${mileage}
+查核監理系統里程數據也符合
+
+${bodyText}
+
+新車價格${newPrice}萬
+店內價格${storePrice}萬
+網路購車加碼優惠折扣三萬
+價格是${promoPrice}萬
+
+另有線上預約全台賞車專案
+只要刷卡九千元
+就可以免費託運至當地服務據點
+${discountLine}未購買只需依距離負擔一千到兩千五百元拖車保險費用
+
+貸款部分這邊也幫您試算好
+零頭款
+分期${loanTerm}期
+月付金額也只要${loanMonthly}元
+並且關稅戰杰運汽車再加碼
+好禮二選一
+第一十五萬十二期零利率的補貼息三千兩百元
+第二贈送兩次基礎保養市值八千到一萬元
+
+保固部分
+保固您引擎變速箱方向機三大系統
+2014年以後
+里程數二十萬以內的車型
+更是加碼只要在店內做自費大保養
+都可以升級成一年的延長保固
+接下來讓我們由車頭開始逐一帶大家來賞車`;
+
+                    updateStatus("✅ 影片腳本生成成功！", "text-teal-300 font-bold");
+                };
+
+                const copyScript = () => {
+                    if (!videoScript.value) return;
+                    navigator.clipboard.writeText(videoScript.value).then(() => {
+                        updateStatus("📋 腳本已複製！", "text-yellow-300 font-bold");
+                    });
+                };
+
+                return { 
+                    rawText, parsed, statusMessage, statusColor, loading, loadingExp, 
+                    conditionType, damageText, videoScript,
+                    clearText, parseAd, exportExcel, generateScript, copyScript
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

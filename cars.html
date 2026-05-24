@@ -212,7 +212,7 @@
                                     <span v-if="car.採購 && String(car.採購).trim() !== 'nan' && String(car.採購).trim() !== ''">&nbsp;|&nbsp; <span class="font-bold text-teal-700">採購: {{ car.採購 }}</span></span>
                                 </div>
                                 <div class="text-xs text-gray-500">
-                                    里程: {{ car.里程 }} &nbsp;|&nbsp; 顏色: {{ car.顏色 }} &nbsp;|&nbsp; 車身: {{ car.車身 }}
+                                    里程: {{ car.里程 }} &nbsp;|&nbsp; 顏色: {{ car.顏色 }} &nbsp;|&nbsp; 車身: {{ car.車身 }} &nbsp;|&nbsp; 過戶時間: {{ (!car.過戶時間 || String(car.過戶時間).trim() === 'nan') ? '無' : car.過戶時間 }}
                                 </div>
                                 
                                 <div v-if="car.車況 && car.車況 !== 'nan'" class="text-xs sm:text-sm mt-1 font-bold" 

@@ -221,19 +221,20 @@
                                 </div>
                             </div>
                             
-                            <div class="text-left sm:text-right flex flex-col justify-center sm:justify-between items-start sm:items-end w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0 mt-2 sm:mt-0 h-full">
-                                <div class="text-2xl sm:text-3xl font-bold text-red-600 sm:mb-2 w-full sm:w-auto text-right">
+                            <div class="flex flex-row justify-between items-center w-full sm:w-auto border-t sm:border-t-0 pt-3 sm:pt-0 mt-2 sm:mt-0 gap-4">
+                                <div class="text-2xl sm:text-3xl font-bold text-red-600 whitespace-nowrap">
                                     {{ car.顯示價格 > 0 ? '$' + car.顯示價格 + ' 萬' : '無價錢' }}
                                 </div>
-                                <div class="flex flex-row sm:flex-col items-center sm:items-end gap-2 sm:gap-1 w-full sm:w-auto mt-2 sm:mt-0">
-                                    <button @click="copyPlate(car.車牌, car.車型)" class="w-full sm:w-auto flex-1 text-xs sm:text-sm bg-white hover:bg-gray-100 border border-gray-300 px-2 py-1.5 sm:px-3 sm:py-1 rounded shadow-sm text-gray-700 transition font-bold text-center">
-                                        📋 複製車牌
-                                    </button>
-                                    <button @click="copyId(car.編號)" class="w-full sm:w-auto flex-1 text-xs sm:text-sm bg-white hover:bg-gray-100 border border-gray-300 px-2 py-1.5 sm:px-3 sm:py-1 rounded shadow-sm text-gray-700 transition font-bold text-center">
+                                <div class="flex flex-col items-end gap-2 sm:gap-1 w-auto shrink-0">
+                                    <button @click="copyId(car.編號)" class="w-full sm:w-auto text-xs sm:text-sm bg-white hover:bg-gray-100 border border-gray-300 px-3 py-1.5 sm:px-3 sm:py-1 rounded shadow-sm text-gray-700 transition font-bold text-center">
                                         📋 複製編號
+                                    </button>
+                                    <button @click="copyPlate(car.車牌, car.車型)" class="w-full sm:w-auto text-xs sm:text-sm bg-white hover:bg-gray-100 border border-gray-300 px-3 py-1.5 sm:px-3 sm:py-1 rounded shadow-sm text-gray-700 transition font-bold text-center">
+                                        📋 複製車牌
                                     </button>
                                 </div>
                             </div>
+
                         </div>
                     </div>
                     

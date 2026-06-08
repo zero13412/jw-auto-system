@@ -134,12 +134,31 @@ def load_and_clean_data():
     try:
         ws_main = doc.worksheet("E車源")
         df_main = pd.read_csv(f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={ws_main.id}")
+        
+        if "車牌" not in df_main.columns:
+            for idx, row in df_main.iterrows():
+                vals = [str(x).strip() for x in row.values]
+                if "車牌" in vals and ("廠牌" in vals or "品牌" in vals or "車型" in vals):
+                    df_main.columns = vals
+                    df_main = df_main.iloc[idx+1:].reset_index(drop=True)
+                    break
+                    
         df_main['is_sold_sheet'] = False
         dfs.append(df_main)
     except: pass
 
-    if not dfs: df = pd.read_csv(CSV_URL); df['is_sold_sheet'] = False
-    else: df = pd.concat(dfs, ignore_index=True)
+    if not dfs: 
+        df = pd.read_csv(CSV_URL)
+        if "車牌" not in df.columns:
+            for idx, row in df.iterrows():
+                vals = [str(x).strip() for x in row.values]
+                if "車牌" in vals:
+                    df.columns = vals
+                    df = df.iloc[idx+1:].reset_index(drop=True)
+                    break
+        df['is_sold_sheet'] = False
+    else: 
+        df = pd.concat(dfs, ignore_index=True)
 
     df.columns = [str(c).strip() for c in df.columns]
     
@@ -159,6 +178,8 @@ def load_and_clean_data():
 
     if '廠牌' in df.columns:
         df['廠牌'] = df['廠牌'].apply(lambda b: re.sub(r'[\u4e00-\u9fa5]', '', str(b).split('/')[0]).strip().upper())
+    elif '品牌' in df.columns:
+        df['廠牌'] = df['品牌'].apply(lambda b: re.sub(r'[\u4e00-\u9fa5]', '', str(b).split('/')[0]).strip().upper())
 
     if '年份' in df.columns:
         df['年份'] = df['年份'].astype(str)
@@ -201,6 +222,8 @@ def load_and_clean_data():
     df['is_reserved'] = df.apply(lambda r: True if '已收訂' in str(r.get('狀態', '')) or '已收訂' in str(r.get('收訂狀態', '')) else False, axis=1)
     
     if '入庫日期' in df.columns: df['入庫_dt'] = df['入庫日期'].apply(parse_roc_date)
+    elif '入庫日' in df.columns: df['入庫_dt'] = df['入庫日'].apply(parse_roc_date)
+    
     df = df.fillna("")
     cached_df = df
     gc.collect() 
@@ -323,7 +346,7 @@ def process_pdf_file(filename: str, contents: bytes):
                     for row in table:
                         cleaned_row = [str(cell).replace('\n', ' ').strip() if cell is not None else "" for cell in row]
                         if not any(cleaned_row): continue
-                        if not headers and any(kw in str(cleaned_row) for kw in ["車牌", "廠牌", "年份", "新編號"]):
+                        if not headers and any(kw in str(cleaned_row) for kw in ["車牌", "廠牌", "品牌", "年份", "新編號"]):
                             headers = cleaned_row
                             continue
                         if headers: all_rows.append(cleaned_row)
@@ -337,10 +360,8 @@ def process_pdf_file(filename: str, contents: bytes):
             row[status_col_idx] = "在庫" 
             data_to_upload.append(row)
 
-        color_requests = [{"repeatCell": {"range": {"sheetId": target_gsheet.id}, "cell": {"userEnteredFormat": {"backgroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}}}, "fields": "userEnteredFormat.backgroundColor"}}]
         target_gsheet.clear()
         target_gsheet.update(values=[[str(cell) for cell in row] for row in data_to_upload], range_name='A1')
-        doc.batch_update({"requests": color_requests})
         
         status_counts = {}
         for row in data_to_upload[1:]:
@@ -384,7 +405,6 @@ def process_excel_file(filename: str, contents: bytes):
         target_tab_name = "新竹車源" if "新竹" in filename else "E車源"
         wb = openpyxl.load_workbook(filename=io.BytesIO(contents), data_only=True)
         ws_main = wb[wb.sheetnames[0]]
-        headers_main = [str(cell.value).strip() if cell.value is not None else "" for cell in ws_main[1]]
         
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)
@@ -393,54 +413,103 @@ def process_excel_file(filename: str, contents: bytes):
 
         data_to_upload_main = []
         
-        # 💡 強制背景白化指令 (徹底清除舊背景顏色)
-        color_requests_main = [{
-            "repeatCell": {
-                "range": { "sheetId": target_gsheet_main.id }, 
-                "cell": {"userEnteredFormat": {"backgroundColor": { "red": 1.0, "green": 1.0, "blue": 1.0 }}}, 
-                "fields": "userEnteredFormat.backgroundColor"
-            }
-        }]
-
-        old_keys = set()
-        is_excel_initial = False
-        try:
-            old_values = target_gsheet_main.get_all_values()
-            if old_values and len(old_values) > 1:
-                old_hdrs = [str(x).strip() for x in old_values[0]]
-                p_idx = old_hdrs.index("車牌") if "車牌" in old_hdrs else -1
-                v_idx = old_hdrs.index("車身") if "車身" in old_hdrs else -1
-                n_idx = old_hdrs.index("新編號") if "新編號" in old_hdrs else -1
-                for row in old_values[1:]:
-                    key = ""
-                    if n_idx != -1 and len(row) > n_idx and str(row[n_idx]).strip(): key = str(row[n_idx]).strip()
-                    elif p_idx != -1 and len(row) > p_idx and str(row[p_idx]).strip(): key = str(row[p_idx]).strip()
-                    elif v_idx != -1 and len(row) > v_idx and str(row[v_idx]).strip(): key = str(row[v_idx]).strip()
-                    if key: old_keys.add(str(key).replace('.0', '').strip())
-            else:
-                is_excel_initial = True
-        except:
-            is_excel_initial = True
-
-        col_model = headers_main.index("車型") if "車型" in headers_main else -1
-        col_version = headers_main.index("版本") if "版本" in headers_main else -1
-        plate_idx = headers_main.index("車牌") if "車牌" in headers_main else -1
-        vin_idx = headers_main.index("車身") if "車身" in headers_main else -1
-        no_idx = headers_main.index("新編號") if "新編號" in headers_main else -1
-        year_idx = headers_main.index("年份") if "年份" in headers_main else -1
-        
-        new_count = 0
-        new_cars_list = []
-
         if target_tab_name == "新竹車源":
+            # ==========================================
+            # 🚗 新竹車源專屬邏輯
+            # ==========================================
+            # 💡 重新上傳時強制將 Google Sheet 底色取消洗白
+            color_requests_main = [{
+                "repeatCell": {
+                    "range": { "sheetId": target_gsheet_main.id }, 
+                    "cell": {"userEnteredFormat": {"backgroundColor": { "red": 1.0, "green": 1.0, "blue": 1.0 }}}, 
+                    "fields": "userEnteredFormat.backgroundColor"
+                }
+            }]
+
+            header_row_idx = -1
+            headers_main = []
+            for i, row in enumerate(ws_main.iter_rows(values_only=True)):
+                vals = [str(v).strip() if v is not None else "" for v in row]
+                if "車牌" in vals and ("車型" in vals or "品牌" in vals or "廠牌" in vals):
+                    header_row_idx = i
+                    headers_main = vals
+                    break
+
+            if header_row_idx == -1:
+                header_row_idx = 0
+                headers_main = [str(cell.value).strip() if cell.value is not None else "" for cell in ws_main[1]]
+
+            old_keys = set()
+            is_excel_initial = False
+            try:
+                old_values = target_gsheet_main.get_all_values()
+                if old_values and len(old_values) > header_row_idx:
+                    old_hdrs = [str(x).strip() for x in old_values[header_row_idx]]
+                    p_idx = old_hdrs.index("車牌") if "車牌" in old_hdrs else -1
+                    v_idx = old_hdrs.index("車身") if "車身" in old_hdrs else -1
+                    n_idx = old_hdrs.index("新編號") if "新編號" in old_hdrs else -1
+                    for row in old_values[header_row_idx+1:]:
+                        key = ""
+                        if n_idx != -1 and len(row) > n_idx and str(row[n_idx]).strip(): key = str(row[n_idx]).strip()
+                        elif p_idx != -1 and len(row) > p_idx and str(row[p_idx]).strip(): key = str(row[p_idx]).strip()
+                        elif v_idx != -1 and len(row) > v_idx and str(row[v_idx]).strip(): key = str(row[v_idx]).strip()
+                        if key and "車款" not in key and "欄" not in key: 
+                            old_keys.add(str(key).replace('.0', '').strip())
+                else:
+                    is_excel_initial = True
+            except:
+                is_excel_initial = True
+
+            col_model = headers_main.index("車型") if "車型" in headers_main else -1
+            col_version = headers_main.index("版本") if "版本" in headers_main else -1
+            plate_idx = headers_main.index("車牌") if "車牌" in headers_main else -1
+            vin_idx = headers_main.index("車身") if "車身" in headers_main else -1
+            no_idx = headers_main.index("新編號") if "新編號" in headers_main else -1
+            year_idx = headers_main.index("年份") if "年份" in headers_main else -1
+            
+            # 💡 尋找顏色欄位以便推播新車資訊
+            col_color = headers_main.index("顏色") if "顏色" in headers_main else -1
+            
             if "收訂狀態" not in headers_main: headers_main.append("收訂狀態")
             status_idx = headers_main.index("收訂狀態")
-            data_to_upload_main = [headers_main]
-            for row in ws_main.iter_rows(min_row=2):
+
+            data_to_upload_main = []
+            new_count = 0
+            new_cars_list = []
+
+            for r_idx, row in enumerate(ws_main.iter_rows()):
                 row_values = [cell.value if cell.value is not None else "" for cell in row]
-                if not any(str(v).strip() for v in row_values): continue
+                while len(row_values) < len(headers_main):
+                    row_values.append("")
+
+                if r_idx < header_row_idx:
+                    data_to_upload_main.append(row_values)
+                    target_row_idx = len(data_to_upload_main) - 1
+                    for c_idx, cell in enumerate(row):
+                        rgb = get_color_rgb(cell)
+                        if rgb:
+                            color_requests_main.append({"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 }, "cell": {"userEnteredFormat": {"backgroundColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}, "fields": "userEnteredFormat.backgroundColor"}})
+                    continue
+
+                if r_idx == header_row_idx:
+                    data_to_upload_main.append(headers_main)
+                    target_row_idx = len(data_to_upload_main) - 1
+                    for c_idx, cell in enumerate(row):
+                        rgb = get_color_rgb(cell)
+                        if rgb:
+                            color_requests_main.append({"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 }, "cell": {"userEnteredFormat": {"backgroundColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}, "fields": "userEnteredFormat.backgroundColor"}})
+                    continue
+
+                if not any(str(v).strip() for v in row_values):
+                    data_to_upload_main.append(row_values)
+                    target_row_idx = len(data_to_upload_main) - 1
+                    for c_idx, cell in enumerate(row):
+                        rgb = get_color_rgb(cell)
+                        if rgb:
+                            color_requests_main.append({"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 }, "cell": {"userEnteredFormat": {"backgroundColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}, "fields": "userEnteredFormat.backgroundColor"}})
+                    continue
+
                 while len(row_values) <= status_idx: row_values.append("")
-                while len(row_values) < len(headers_main): row_values.append("")
                 
                 n_val = str(row_values[no_idx]).replace('.0', '').strip() if no_idx != -1 else ""
                 p_val = str(row_values[plate_idx]).replace('.0', '').strip() if plate_idx != -1 else ""
@@ -448,42 +517,73 @@ def process_excel_file(filename: str, contents: bytes):
                 
                 row_key = n_val if n_val else (p_val if p_val else v_val)
                 
-                if row_key and not is_excel_initial and row_key not in old_keys:
+                is_subheader = False
+                if "車款" in p_val or "車輛數" in str(row_values[0]) or "欄1" in str(row_values):
+                    is_subheader = True
+                    
+                if row_key and not is_subheader and not is_excel_initial and row_key not in old_keys:
                     new_count += 1
                     y_val = str(row_values[year_idx]).replace('.0', '').strip() if year_idx != -1 else ""
                     if len(y_val) == 6 and y_val.isdigit(): y_val = f"{y_val[:4]}年{y_val[4:]}月"
                     elif len(y_val) == 4 and y_val.isdigit(): y_val = f"{y_val}年"
                     disp_plate = p_val if p_val else "(無車牌)"
                     m_val = str(row_values[col_model]).strip() if col_model != -1 else ""
-                    new_cars_list.append(f"{y_val} {m_val} #{disp_plate}")
+                    # 💡 抓取顏色資料
+                    c_val = str(row_values[col_color]).strip() if col_color != -1 else ""
+                    new_cars_list.append(f"{y_val} {m_val} {c_val} #{disp_plate}")
                     old_keys.add(row_key)
                 
-                is_reserved = False
                 target_row_idx = len(data_to_upload_main)
+                
                 for c_idx, cell in enumerate(row):
                     rgb = get_color_rgb(cell)
                     if rgb:
-                        # 💡 只有當前這格 Excel 真的有顏色，才會覆蓋上色
                         color_requests_main.append({"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 }, "cell": {"userEnteredFormat": {"backgroundColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}, "fields": "userEnteredFormat.backgroundColor"}})
-                        if c_idx == col_model or c_idx == col_version: is_reserved = True
-                row_values[status_idx] = "已收訂" if is_reserved else ""
+                            
+                if not is_subheader:
+                    # 💡 完全取消底色邏輯，依據 I 欄 (index 8) 判斷「未售出」或「誰售出」
+                    col_i_val = str(row_values[8]).strip() if len(row_values) > 8 else ""
+                    row_status = "在庫"
+                    
+                    if "未售" in col_i_val:
+                        row_status = "在庫"
+                    elif "收訂" in col_i_val or "客訂" in col_i_val:
+                        row_status = "已收訂"
+                    elif "售" in col_i_val and "未售" not in col_i_val:
+                        row_status = "已售"
+                        
+                    row_values[status_idx] = row_status
+
                 data_to_upload_main.append(row_values)
                 
             messages = []
             try:
                 target_gsheet_main.clear()
                 target_gsheet_main.update(values=[[str(cell) for cell in row] for row in data_to_upload_main], range_name='A1')
-                target_gsheet_main.update_acell('A2', '="共"&SUMPRODUCT(--(LEN(TRIM($C$5:$C$133))>0))&"台"')
-                doc.batch_update({"requests": color_requests_main})
+                
+                if header_row_idx > 0 and len(data_to_upload_main) > 1:
+                    start_data_row = header_row_idx + 2
+                    target_gsheet_main.update_acell('A2', f'="共"&SUMPRODUCT(--(LEN(TRIM($C${start_data_row}:$C$500))>0))&"台"')
+                else:
+                    target_gsheet_main.update_acell('A2', '="共"&SUMPRODUCT(--(LEN(TRIM($C$5:$C$133))>0))&"台"')
+                    
+                if color_requests_main:
+                    doc.batch_update({"requests": color_requests_main})
                 
                 status_counts = {}
-                for row in data_to_upload_main[1:]:
-                    val = str(row[status_idx]).strip()
-                    val = "已收訂" if val == "已收訂" else "在庫"
-                    status_counts[val] = status_counts.get(val, 0) + 1
-                st_msg = "、".join([f"{k}: {v}台" for k, v in status_counts.items()])
+                for row in data_to_upload_main[header_row_idx+1:]:
+                    if len(row) > 0 and ("車輛數" in str(row[0]) or "欄1" in str(row)): continue
+                    if len(row) > status_idx:
+                        val = str(row[status_idx]).strip()
+                        p_val = str(row[plate_idx]).strip() if plate_idx != -1 else ""
+                        n_val = str(row[no_idx]).strip() if no_idx != -1 else ""
+                        if p_val or n_val:
+                            status_counts[val] = status_counts.get(val, 0) + 1
+                            
+                # 💡 專屬新竹車源的在庫與收訂統計
+                st_msg = f"在庫: {status_counts.get('在庫', 0)}台、已收訂: {status_counts.get('已收訂', 0)}台、已售: {status_counts.get('已售', 0)}台"
                 
-                msg = f"「新竹車源」更新成功({len(data_to_upload_main)-1}筆)\n📊 狀態分佈：{st_msg}"
+                msg = f"「新竹車源」更新成功\n📊 狀態分佈：{st_msg}"
                 if new_cars_list:
                     msg += f"\n✨ 新增 {len(new_cars_list)} 台車輛：\n" + "\n".join(new_cars_list[:10])
                     if len(new_cars_list) > 10: msg += f"\n...等共 {len(new_cars_list)} 台"
@@ -491,6 +591,44 @@ def process_excel_file(filename: str, contents: bytes):
             except Exception as e: return {"status": "error", "message": f"新竹寫入失敗：{str(e)}"}
 
         else:
+            # ==========================================
+            # 🚙 E車源專屬邏輯 (原始穩定版，絕對不改邏輯)
+            # ==========================================
+            headers_main = [str(cell.value).strip() if cell.value is not None else "" for cell in ws_main[1]]
+            
+            # 💡 確保 E 車源不會洗白背景
+            color_requests_main = []
+            
+            old_keys = set()
+            is_excel_initial = False
+            try:
+                old_values = target_gsheet_main.get_all_values()
+                if old_values and len(old_values) > 1:
+                    old_hdrs = [str(x).strip() for x in old_values[0]]
+                    p_idx = old_hdrs.index("車牌") if "車牌" in old_hdrs else -1
+                    v_idx = old_hdrs.index("車身") if "車身" in old_hdrs else -1
+                    n_idx = old_hdrs.index("新編號") if "新編號" in old_hdrs else -1
+                    for row in old_values[1:]:
+                        key = ""
+                        if n_idx != -1 and len(row) > n_idx and str(row[n_idx]).strip(): key = str(row[n_idx]).strip()
+                        elif p_idx != -1 and len(row) > p_idx and str(row[p_idx]).strip(): key = str(row[p_idx]).strip()
+                        elif v_idx != -1 and len(row) > v_idx and str(row[v_idx]).strip(): key = str(row[v_idx]).strip()
+                        if key: old_keys.add(str(key).replace('.0', '').strip())
+                else:
+                    is_excel_initial = True
+            except:
+                is_excel_initial = True
+
+            col_model = headers_main.index("車型") if "車型" in headers_main else -1
+            col_version = headers_main.index("版本") if "版本" in headers_main else -1
+            plate_idx = headers_main.index("車牌") if "車牌" in headers_main else -1
+            vin_idx = headers_main.index("車身") if "車身" in headers_main else -1
+            no_idx = headers_main.index("新編號") if "新編號" in headers_main else -1
+            year_idx = headers_main.index("年份") if "年份" in headers_main else -1
+            
+            new_count = 0
+            new_cars_list = []
+
             if "狀態" not in headers_main: headers_main.append("狀態")
             status_col_idx = headers_main.index("狀態")
             data_to_upload_main = [headers_main]
@@ -535,14 +673,14 @@ def process_excel_file(filename: str, contents: bytes):
                 data_to_upload_main.append(row_values)
                 for c_idx, rgb in enumerate(row_colors):
                     if rgb:
-                        # 💡 只有這格真的有顏色才會上色
                         color_requests_main.append({"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 }, "cell": {"userEnteredFormat": {"backgroundColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}, "fields": "userEnteredFormat.backgroundColor"}})
 
             messages = []
             try:
                 target_gsheet_main.clear()
                 target_gsheet_main.update(values=[[str(cell) for cell in row] for row in data_to_upload_main], range_name='A1')
-                doc.batch_update({"requests": color_requests_main})
+                if color_requests_main:
+                    doc.batch_update({"requests": color_requests_main})
                 
                 status_counts = {}
                 for row in data_to_upload_main[1:]:
@@ -782,14 +920,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         target_gsheet_main.clear()
         target_gsheet_main.update(values=data_to_upload_main, range_name='A1')
         
-        # 💡 爬蟲更新時全盤洗白背景
-        doc.batch_update({"requests": [{
-            "repeatCell": {
-                "range": { "sheetId": target_gsheet_main.id },
-                "cell": {"userEnteredFormat": {"backgroundColor": { "red": 1.0, "green": 1.0, "blue": 1.0 }}},
-                "fields": "userEnteredFormat.backgroundColor"
-            }
-        }]})
+        # 💡 爬蟲不再強制洗白背景
         
         status_col_idx = final_headers.index("狀態") if "狀態" in final_headers else -1
         if status_col_idx != -1:

@@ -67,8 +67,8 @@
                         <label class="block text-xs font-semibold text-purple-600 mb-1">折扣設定:</label>
                         <div class="flex gap-4 text-sm">
                             <label class="flex items-center gap-1" :class="{'opacity-40 cursor-not-allowed': isDiscountDisabled}">
-                                <input type="radio" v-model="settings.discount" value="折1.1萬" :disabled="isDiscountDisabled"> 
-                                折1.1萬 <span v-if="isDiscountDisabled" class="text-xs text-red-500">(低於15萬鎖定)</span>
+                                <input type="radio" v-model="settings.discount" value="折1萬" :disabled="isDiscountDisabled"> 
+                                折1萬 <span v-if="isDiscountDisabled" class="text-xs text-red-500">(低於15萬鎖定)</span>
                             </label>
                             <label class="flex items-center gap-1 cursor-pointer">
                                 <input type="radio" v-model="settings.discount" value="不能折"> 不折
@@ -206,7 +206,7 @@
                 ];
 
                 const settings = reactive({
-                    discount: "折1.1萬", subsidy: "不折", tax_2_percent: "不加",
+                    discount: "折1萬", subsidy: "不折", tax_2_percent: "不加",
                     deposit: "2.9", site: "新竹店", trans_store: "新竹店"
                 });
 
@@ -224,20 +224,16 @@
                     return p > 0 && p < 15;
                 });
 
-                // 💡 核心修正：完美自適應高度計算引擎
                 const autoResize = (type, areaId) => {
                     nextTick(() => {
                         let el = document.getElementById(areaId);
                         if (el) {
-                            // 先將高度強制壓回 1px，強迫瀏覽器重新從零計算真實的內容高度
                             el.style.height = '1px'; 
                             let newHeight = el.scrollHeight;
                             
-                            // 套用您的視覺最低高度限制
                             if (type === 'deal' && newHeight < 300) newHeight = 300;
                             if ((type === 'tech' || type === 'admin') && newHeight < 150) newHeight = 150;
                             
-                            // 更新 Vue 綁定資料，並且馬上把算好的高度塞回 DOM 防止畫面抖動
                             heights[type] = newHeight;
                             el.style.height = newHeight + 'px'; 
                         }
@@ -301,7 +297,7 @@
                     let list_price_wan = parseFloat(car.list_price) || 0;
                     let current_price_yuan = list_price_wan * 10000;
 
-                    if (settings.discount === "折1.1萬") current_price_yuan -= 11000;
+                    if (settings.discount === "折1萬") current_price_yuan -= 10000;
                     
                     if (settings.tax_2_percent === "+2%") {
                         current_price_yuan = Math.round(current_price_yuan * 1.02);
@@ -334,10 +330,10 @@
                     let list_price_wan = parseFloat(car.list_price) || 0;
                     let list_price_yuan = list_price_wan * 10000;
 
-                    let price_after_11k = list_price_yuan;
-                    if (settings.discount === "折1.1萬") price_after_11k -= 11000;
+                    let price_after_discount = list_price_yuan;
+                    if (settings.discount === "折1萬") price_after_discount -= 10000;
 
-                    let price_after_tax = price_after_11k;
+                    let price_after_tax = price_after_discount;
                     let has_tax = (settings.tax_2_percent === "+2%");
                     if (has_tax) price_after_tax = Math.round(price_after_tax * 1.02);
 
@@ -392,7 +388,7 @@
                         `顏色： ${car.color}`,
                         `里程： ${m_str}`,
                         `售價：${car.list_price}萬`,
-                        (settings.discount === "折1.1萬" ? "線上折1.1萬" : ""),
+                        (settings.discount === "折1萬" ? "線上折1萬" : ""),
                         (has_tax ? "買公司名加2%稅金" : ""),
                         (has_subsidy ? "貸款補貼息3264元" : ""),
                         "合約車主：",
@@ -408,13 +404,13 @@
                         "———————————",
                         "",
                         "———————————",
-                        (has_subsidy ? "贈交美、好禮二選一補貼息3264元" : "贈交美、好禮二選一")
+                        (has_subsidy ? "贈交美、小保x2補貼息3264元" : "贈交美、小保x2")
                     ].filter(line => line !== "").join("\n");
 
                     let calcStrLines = [
                         "【金額試算明細】",
                         `售價 (網路)： ${list_price_wan} 萬`,
-                        settings.discount === "折1.1萬" ? `折1.1萬後 ： ${Number((price_after_11k/10000).toFixed(2))} 萬` : "",
+                        settings.discount === "折1萬" ? `折1萬後   ： ${Number((price_after_discount/10000).toFixed(2))} 萬` : "",
                         has_tax ? `買公司加2%： ${Math.round(price_after_tax)} 元` : "",
                         has_subsidy ? "貸款補貼息： 有 (折3264)" : "",
                         `合約總價  ： ${use_yuan ? Math.round(price_after_subsidy) + '元' : Number((price_after_subsidy/10000).toFixed(2)) + '萬'}`,

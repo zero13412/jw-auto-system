@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- 💡 強制鎖定標題 -->
     <title>杰運汽車新竹店阿鍇專用 - 內部系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
@@ -236,7 +237,6 @@
                     updateStatus("⏳ 正在產生 Excel...", "text-blue-300 font-bold");
                     
                     try {
-                        // 💡 改成抓取 store_price 當作車前牌的價錢
                         const payload = {
                             brand: parsed.brand,
                             model: parsed.model,
@@ -298,8 +298,6 @@
                     const newPrice = d.new_price || "(新車價)";
                     const storePrice = d.store_price || "(店內價)";
                     const promoPrice = d.promo_price || "(優惠價)";
-                    const loanTerm = d.loan_term || "xx";
-                    const loanMonthly = d.loan_monthly || "xxxx";
 
                     let bodyText = "";
                     if (conditionType.value === "original") {
@@ -309,11 +307,7 @@
                         bodyText = damageText.value;
                     }
 
-                    let discountLine = "購買可當兩萬折抵等於再折扣一萬一\n";
-                    if (parseFloat(promoPrice) < 15.0) {
-                        discountLine = "";
-                    }
-
+                    // 💡 新版影片結尾文案 (移除分期邏輯)
                     videoScript.value = `大家好這裡是杰運汽車日常頻道
 今天來為大家介紹這台
 ${carName}
@@ -330,23 +324,15 @@ ${bodyText}
 價格是${promoPrice}萬
 
 另有線上預約全台賞車專案
-只要刷卡九千元
-就可以免費託運至當地服務據點
-${discountLine}未購買只需依距離負擔一千到兩千五百元拖車保險費用
-
-貸款部分這邊也幫您試算好
-零頭款
-分期${loanTerm}期
-月付金額也只要${loanMonthly}元
-並且關稅戰杰運汽車再加碼
-好禮二選一
-第一十五萬十二期零利率的補貼息三千兩百元
-第二贈送兩次基礎保養市值八千到一萬元
-
+未購買只需依距離負擔1000-2500調度費用
+ 
+加碼兩大優惠
+1. 線上刷卡預約 車價折扣一萬元 (優惠保留六天)
+2. 贈送兩次基礎保養 (市值8000-10000)
+ 
 保固部分
-保固您引擎變速箱方向機三大系統
-2014年以後
-里程數二十萬以內的車型
+保固您引擎 變速箱 方向機三大系統
+2014年以後 里程數20萬以內的車型
 更是加碼只要在店內做自費大保養
 都可以升級成一年的延長保固
 接下來讓我們由車頭開始逐一帶大家來賞車`;

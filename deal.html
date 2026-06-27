@@ -206,8 +206,9 @@
                 ];
 
                 const settings = reactive({
+                    // 💡 預設改為 2.0 萬訂金與折1萬
                     discount: "折1萬", subsidy: "不折", tax_2_percent: "不加",
-                    deposit: "2.9", site: "新竹店", trans_store: "新竹店"
+                    deposit: "2.0", site: "新竹店", trans_store: "新竹店"
                 });
 
                 const car = reactive({
@@ -224,16 +225,20 @@
                     return p > 0 && p < 15;
                 });
 
+                // 💡 核心修正：完美自適應高度計算引擎
                 const autoResize = (type, areaId) => {
                     nextTick(() => {
                         let el = document.getElementById(areaId);
                         if (el) {
+                            // 先將高度強制壓回 1px，強迫瀏覽器重新從零計算真實的內容高度
                             el.style.height = '1px'; 
                             let newHeight = el.scrollHeight;
                             
+                            // 套用您的視覺最低高度限制
                             if (type === 'deal' && newHeight < 300) newHeight = 300;
                             if ((type === 'tech' || type === 'admin') && newHeight < 150) newHeight = 150;
                             
+                            // 更新 Vue 綁定資料，並且馬上把算好的高度塞回 DOM 防止畫面抖動
                             heights[type] = newHeight;
                             el.style.height = newHeight + 'px'; 
                         }
@@ -297,6 +302,7 @@
                     let list_price_wan = parseFloat(car.list_price) || 0;
                     let current_price_yuan = list_price_wan * 10000;
 
+                    // 💡 運算邏輯改為減去 10000
                     if (settings.discount === "折1萬") current_price_yuan -= 10000;
                     
                     if (settings.tax_2_percent === "+2%") {
@@ -404,6 +410,7 @@
                         "———————————",
                         "",
                         "———————————",
+                        // 💡 贈品文字改為 小保x2
                         (has_subsidy ? "贈交美、小保x2補貼息3264元" : "贈交美、小保x2")
                     ].filter(line => line !== "").join("\n");
 

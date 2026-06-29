@@ -451,7 +451,8 @@ def process_excel_file(filename: str, contents: bytes):
                     n_idx = old_hdrs.index("新編號") if "新編號" in old_hdrs else -1
                     for row in old_values[header_row_idx+1:]:
                         key = ""
-                        if n_idx != -1; and len(row) > n_idx and str(row[n_idx]).strip(): key = str(row[n_idx]).strip()
+                        # 💡 已修正語法錯誤：移除了 n_idx != -1 後面的分號
+                        if n_idx != -1 and len(row) > n_idx and str(row[n_idx]).strip(): key = str(row[n_idx]).strip()
                         elif p_idx != -1 and len(row) > p_idx and str(row[p_idx]).strip(): key = str(row[p_idx]).strip()
                         elif v_idx != -1 and len(row) > v_idx and str(row[v_idx]).strip(): key = str(row[v_idx]).strip()
                         if key and "車款" not in key and "欄" not in key: 
@@ -809,7 +810,8 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         pkey_map = {}
         try:
             contract_url = "https://www.jwincar.com.tw/manage/Contract/p14_contract_purchase_list.php"
-            for cp in range(1, 16): # 智慧掃描前 15 頁近期的收購合約
+            cp = 1
+            while True:
                 c_res = session.get(f"{contract_url}?page={cp}", timeout=10)
                 c_res.encoding = 'utf-8'
                 c_soup = BeautifulSoup(c_res.text, "html.parser")
@@ -845,6 +847,10 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                         if v_col != -1 and v_col < len(tds):
                             txt = tds[v_col].text.strip().upper()
                             if txt and txt not in ["—", "-", "NAN"]: pkey_map[txt] = row_pkey
+                            
+                cp += 1
+                # 💡 擴大掃描頁數到 150 頁
+                if cp > 150: break 
         except Exception as e_pkey:
             print("建立查定表對照表失敗:", e_pkey)
 
@@ -1020,7 +1026,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         msg = f"🤖 更新成功！共抓取 {len(all_cars)} 筆車源。{status_msg}"
         if new_count > 0:
             msg += f"\n✨ 自動發現 {new_count} 台新車：\n" + "\n".join(new_cars_list[:10])
-            if new_count > 10: msg += f"\n...等共 {len(new_cars_list)} 台"
+            if new_count > 10: msg += f"\n...等共 {new_count} 台"
         return {"status": "success", "message": msg}
 
     except Exception as e:
@@ -1033,22 +1039,12 @@ def api_sync_car_source(user_id: str = "", u: str = "", p: str = ""):
     if not check_permission(user_id, "更新車源"):
         return {"status": "error", "message": "⛔ 權限不足！請聯繫管理員開通「更新車源」權限。"}
     
-    login_user, login_pwd = (u, p) if u and p else get_or_create_creds()
+    valid_u, valid_p = get_valid_credentials(u, p)
     
-    try:
-        session = requests.Session()
-        login_url = "https://www.jwincar.com.tw/manage/login/index.php"
-        data_url = "https://www.jwincar.com.tw/manage/accounting/accounting_car_list.php?stock=all"
-        session.post(login_url, data={"strID": login_user, "strPW": login_pwd, "Submit": "送出"})
-        res = session.get(data_url + "&page=1", timeout=10)
-        soup = BeautifulSoup(res.text, "html.parser")
-        table = soup.find("table", {"id": "carTable"})
-        if not table:
-            return {"status": "need_login", "message": "公司後台密碼已更改，系統無法登入！\n請重新輸入最新的帳號密碼。"}
-    except Exception as e:
-        return {"status": "error", "message": f"後台驗證連線失敗：{str(e)}"}
-    
-    return core_sync_car_source(user_id, login_user, login_pwd)
+    if not valid_u:
+        return {"status": "need_login", "message": "⚠️ 公司後台密碼已更改，系統自動嘗試了所有備用通行證皆失敗！\n請手動輸入最新的帳號與密碼。"}
+        
+    return core_sync_car_source(user_id, valid_u, valid_p)
 
 def is_valid_price_local(val_str, full_txt, match_obj):
     try:
@@ -1520,7 +1516,7 @@ def handle_text_message(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"❌ 寫入錯誤：{str(e)}"))
         return
 
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🤖 您好！我是自動小幫手。\n\n▶️ 【車源更新】請說：「更新車源」\n▶️ 【我的權限】請說：「我的ID fleece」\n▶️ 【手動記客】客資 / 姓名 / 電話 / 需求"))
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🤖 您好！我是自動小幫手。\n\n▶️ 【車源更新】請說：「更新車源」\n▶️ 【我的權限】請說：「我的ID」\n▶️ 【手動記客】客資 / 姓名 / 電話 / 需求"))
 
 @handler.add(MessageEvent, message=FileMessage)
 def handle_file_message(event):

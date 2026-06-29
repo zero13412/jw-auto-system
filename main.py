@@ -413,11 +413,12 @@ def process_excel_file(filename: str, contents: bytes):
 
         data_to_upload_main = []
         
+        color_requests_main = []
+
         if target_tab_name == "新竹車源":
             # ==========================================
             # 🚗 新竹車源專屬邏輯
             # ==========================================
-            # 💡 重新上傳時強制將 Google Sheet 底色取消洗白
             color_requests_main = [{
                 "repeatCell": {
                     "range": { "sheetId": target_gsheet_main.id }, 
@@ -467,7 +468,6 @@ def process_excel_file(filename: str, contents: bytes):
             no_idx = headers_main.index("新編號") if "新編號" in headers_main else -1
             year_idx = headers_main.index("年份") if "年份" in headers_main else -1
             
-            # 💡 尋找顏色欄位以便推播新車資訊
             col_color = headers_main.index("顏色") if "顏色" in headers_main else -1
             
             if "收訂狀態" not in headers_main: headers_main.append("收訂狀態")
@@ -528,7 +528,6 @@ def process_excel_file(filename: str, contents: bytes):
                     elif len(y_val) == 4 and y_val.isdigit(): y_val = f"{y_val}年"
                     disp_plate = p_val if p_val else "(無車牌)"
                     m_val = str(row_values[col_model]).strip() if col_model != -1 else ""
-                    # 💡 抓取顏色資料
                     c_val = str(row_values[col_color]).strip() if col_color != -1 else ""
                     new_cars_list.append(f"{y_val} {m_val} {c_val} #{disp_plate}")
                     old_keys.add(row_key)
@@ -541,7 +540,6 @@ def process_excel_file(filename: str, contents: bytes):
                         color_requests_main.append({"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 }, "cell": {"userEnteredFormat": {"backgroundColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}, "fields": "userEnteredFormat.backgroundColor"}})
                             
                 if not is_subheader:
-                    # 💡 完全取消底色邏輯，依據 I 欄 (index 8) 判斷「未售出」或「誰售出」
                     col_i_val = str(row_values[8]).strip() if len(row_values) > 8 else ""
                     row_status = "在庫"
                     
@@ -580,7 +578,6 @@ def process_excel_file(filename: str, contents: bytes):
                         if p_val or n_val:
                             status_counts[val] = status_counts.get(val, 0) + 1
                             
-                # 💡 專屬新竹車源的在庫與收訂統計
                 st_msg = f"在庫: {status_counts.get('在庫', 0)}台、已收訂: {status_counts.get('已收訂', 0)}台、已售: {status_counts.get('已售', 0)}台"
                 
                 msg = f"「新竹車源」更新成功\n📊 狀態分佈：{st_msg}"
@@ -592,11 +589,10 @@ def process_excel_file(filename: str, contents: bytes):
 
         else:
             # ==========================================
-            # 🚙 E車源專屬邏輯 (原始穩定版，絕對不改邏輯)
+            # 🚙 E車源專屬邏輯 (原始穩定版)
             # ==========================================
             headers_main = [str(cell.value).strip() if cell.value is not None else "" for cell in ws_main[1]]
             
-            # 💡 確保 E 車源不會洗白背景
             color_requests_main = []
             
             old_keys = set()
@@ -829,21 +825,39 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             if current_first_row == last_first_row: break
             last_first_row = current_first_row
 
-            if page_num == 1: headers = [th.text.replace("⇅", "").strip() for th in rows[0].find_all("th")]
+            # 💡 抓取表頭並增加 "查定表PKey" 欄位
+            if page_num == 1: 
+                headers = [th.text.replace("⇅", "").strip() for th in rows[0].find_all("th")]
+                if "查定表PKey" not in headers:
+                    headers.append("查定表PKey")
                 
             for row in rows[1:]:
                 tds = row.find_all("td")
                 if not tds: continue
                 row_data = []
+                pkey_val = ""
                 for idx, td in enumerate(tds):
                     val = td.text.strip()
                     if val in ["—", "-"]: val = ""
                     if td.has_attr("title"): val = td["title"].strip()
-                    if headers and idx < len(headers) and headers[idx] == "狀態":
+                    
+                    # 💡 掃描按鈕中的 PKey
+                    btn = td.find("input", class_=re.compile(r"btn"))
+                    if btn and btn.has_attr("onclick"):
+                        m = re.search(r'PKey=(\d+)', btn["onclick"])
+                        if m: pkey_val = m.group(1)
+                        
+                    if idx < len(headers) and headers[idx] == "狀態":
                         if td.find("span", class_=re.compile(r"sold|已售")) or td.find(string=re.compile(r"已售")): val = "已售"
                         elif td.find("span", class_=re.compile(r"stock|在庫")): val = "在庫"
                         elif td.find("span", class_=re.compile(r"deposit|收訂")) or td.find(string=re.compile(r"已收訂")): val = "已收訂"
                     row_data.append(val)
+                
+                # 補齊 PKey 欄位
+                while len(row_data) < len(headers) - 1:
+                    row_data.append("")
+                row_data.append(pkey_val)
+                
                 all_cars.append(row_data)
                 
             page_num += 1
@@ -919,8 +933,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         data_to_upload_main = [final_headers] + df_crawled.values.tolist()
         target_gsheet_main.clear()
         target_gsheet_main.update(values=data_to_upload_main, range_name='A1')
-        
-        # 💡 爬蟲不再強制洗白背景
         
         status_col_idx = final_headers.index("狀態") if "狀態" in final_headers else -1
         if status_col_idx != -1:

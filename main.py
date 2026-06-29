@@ -451,7 +451,7 @@ def process_excel_file(filename: str, contents: bytes):
                     n_idx = old_hdrs.index("新編號") if "新編號" in old_hdrs else -1
                     for row in old_values[header_row_idx+1:]:
                         key = ""
-                        if n_idx != -1 and len(row) > n_idx and str(row[n_idx]).strip(): key = str(row[n_idx]).strip()
+                        if n_idx != -1; and len(row) > n_idx and str(row[n_idx]).strip(): key = str(row[n_idx]).strip()
                         elif p_idx != -1 and len(row) > p_idx and str(row[p_idx]).strip(): key = str(row[p_idx]).strip()
                         elif v_idx != -1 and len(row) > v_idx and str(row[v_idx]).strip(): key = str(row[v_idx]).strip()
                         if key and "車款" not in key and "欄" not in key: 
@@ -660,7 +660,7 @@ def process_excel_file(filename: str, contents: bytes):
 
                 status_val = str(row_values[status_col_idx]).strip()
                 if "取證" in status_val: row_values[status_col_idx] = "取證"
-                elif "已收訂" in status_val: row_values[status_col_idx] = "已收訂"
+                elif "Anti已收訂" in status_val or "已收訂" in status_val: row_values[status_col_idx] = "Anti已收訂" if "Anti" in status_val else "已收訂"
                 elif has_color or "已售" in status_val: row_values[status_col_idx] = "已售"
                 else:
                     if not status_val: row_values[status_col_idx] = "在庫"
@@ -805,10 +805,55 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         
         session.post(login_url, data={"strID": login_user, "strPW": login_pwd, "Submit": "送出"})
         
+        # 💡 新增：前往「收購合約列表」建立車牌/車身碼對應 PKey 的記憶體對照表
+        pkey_map = {}
+        try:
+            contract_url = "https://www.jwincar.com.tw/manage/Contract/p14_contract_purchase_list.php"
+            for cp in range(1, 16): # 智慧掃描前 15 頁近期的收購合約
+                c_res = session.get(f"{contract_url}?page={cp}", timeout=10)
+                c_res.encoding = 'utf-8'
+                c_soup = BeautifulSoup(c_res.text, "html.parser")
+                c_table = c_soup.find("table")
+                if not c_table: break
+                c_rows = c_table.find_all("tr")
+                if len(c_rows) <= 1: break
+                
+                # 判斷合約清單的車牌、車身欄位位置
+                c_headers = [th.text.strip() for th in c_rows[0].find_all(["th", "td"])]
+                p_col, v_col = -1, -1
+                for idx, h in enumerate(c_headers):
+                    if any(kw in h for kw in ["車牌", "車號", "牌照"]): p_col = idx
+                    if any(kw in h for kw in ["車身", "車架", "VIN"]): v_col = idx
+                    
+                for row in c_rows[1:]:
+                    tds = row.find_all("td")
+                    if not tds: continue
+                    
+                    row_pkey = ""
+                    for td in tds:
+                        btn = td.find("input", value=re.compile(r"鑑定|查定|表")) or td.find("input", onclick=re.compile(r"PKey"))
+                        if btn and btn.has_attr("onclick"):
+                            m = re.search(r'PKey=(\d+)', btn["onclick"])
+                            if m:
+                                row_pkey = m.group(1)
+                                break
+                                
+                    if row_pkey:
+                        if p_col != -1 and p_col < len(tds):
+                            txt = tds[p_col].text.strip().upper().replace("-", "")
+                            if txt and txt not in ["—", "-", "NAN"]: pkey_map[txt] = row_pkey
+                        if v_col != -1 and v_col < len(tds):
+                            txt = tds[v_col].text.strip().upper()
+                            if txt and txt not in ["—", "-", "NAN"]: pkey_map[txt] = row_pkey
+        except Exception as e_pkey:
+            print("建立查定表對照表失敗:", e_pkey)
+
         all_cars = []
         headers = []
         page_num = 1
         last_first_row = ""
+        plate_idx_main = -1
+        vin_idx_main = -1
         
         while True:
             res = session.get(data_url + f"&page={page_num}")
@@ -828,6 +873,8 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             # 💡 抓取表頭並增加 "查定表PKey" 欄位
             if page_num == 1: 
                 headers = [th.text.replace("⇅", "").strip() for th in rows[0].find_all("th")]
+                plate_idx_main = headers.index("車牌") if "車牌" in headers else -1
+                vin_idx_main = headers.index("車身") if "車身" in headers else -1
                 if "查定表PKey" not in headers:
                     headers.append("查定表PKey")
                 
@@ -835,25 +882,28 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 tds = row.find_all("td")
                 if not tds: continue
                 row_data = []
-                pkey_val = ""
                 for idx, td in enumerate(tds):
                     val = td.text.strip()
                     if val in ["—", "-"]: val = ""
                     if td.has_attr("title"): val = td["title"].strip()
-                    
-                    # 💡 掃描按鈕中的 PKey
-                    btn = td.find("input", class_=re.compile(r"btn"))
-                    if btn and btn.has_attr("onclick"):
-                        m = re.search(r'PKey=(\d+)', btn["onclick"])
-                        if m: pkey_val = m.group(1)
-                        
                     if idx < len(headers) and headers[idx] == "狀態":
                         if td.find("span", class_=re.compile(r"sold|已售")) or td.find(string=re.compile(r"已售")): val = "已售"
                         elif td.find("span", class_=re.compile(r"stock|在庫")): val = "在庫"
                         elif td.find("span", class_=re.compile(r"deposit|收訂")) or td.find(string=re.compile(r"已收訂")): val = "已收訂"
                     row_data.append(val)
                 
-                # 補齊 PKey 欄位
+                # 💡 透過建立好的 pkey_map 進行跨網頁智慧媒合
+                row_plate = ""
+                row_vin = ""
+                if plate_idx_main != -1 and plate_idx_main < len(row_data):
+                    row_plate = str(row_data[plate_idx_main]).strip().upper().replace("-", "")
+                if vin_idx_main != -1 and vin_idx_main < len(row_data):
+                    row_vin = str(row_data[vin_idx_main]).strip().upper()
+                    
+                pkey_val = ""
+                if row_plate in pkey_map: pkey_val = pkey_map[row_plate]
+                elif row_vin in pkey_map: pkey_val = pkey_map[row_vin]
+
                 while len(row_data) < len(headers) - 1:
                     row_data.append("")
                 row_data.append(pkey_val)
@@ -970,7 +1020,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         msg = f"🤖 更新成功！共抓取 {len(all_cars)} 筆車源。{status_msg}"
         if new_count > 0:
             msg += f"\n✨ 自動發現 {new_count} 台新車：\n" + "\n".join(new_cars_list[:10])
-            if new_count > 10: msg += f"\n...等共 {new_count} 台"
+            if new_count > 10: msg += f"\n...等共 {len(new_cars_list)} 台"
         return {"status": "success", "message": msg}
 
     except Exception as e:
@@ -983,12 +1033,22 @@ def api_sync_car_source(user_id: str = "", u: str = "", p: str = ""):
     if not check_permission(user_id, "更新車源"):
         return {"status": "error", "message": "⛔ 權限不足！請聯繫管理員開通「更新車源」權限。"}
     
-    valid_u, valid_p = get_valid_credentials(u, p)
+    login_user, login_pwd = (u, p) if u and p else get_or_create_creds()
     
-    if not valid_u:
-        return {"status": "need_login", "message": "⚠️ 公司後台密碼已更改，系統自動嘗試了所有備用通行證皆失敗！\n請手動輸入最新的帳號與密碼。"}
-        
-    return core_sync_car_source(user_id, valid_u, valid_p)
+    try:
+        session = requests.Session()
+        login_url = "https://www.jwincar.com.tw/manage/login/index.php"
+        data_url = "https://www.jwincar.com.tw/manage/accounting/accounting_car_list.php?stock=all"
+        session.post(login_url, data={"strID": login_user, "strPW": login_pwd, "Submit": "送出"})
+        res = session.get(data_url + "&page=1", timeout=10)
+        soup = BeautifulSoup(res.text, "html.parser")
+        table = soup.find("table", {"id": "carTable"})
+        if not table:
+            return {"status": "need_login", "message": "公司後台密碼已更改，系統無法登入！\n請重新輸入最新的帳號密碼。"}
+    except Exception as e:
+        return {"status": "error", "message": f"後台驗證連線失敗：{str(e)}"}
+    
+    return core_sync_car_source(user_id, login_user, login_pwd)
 
 def is_valid_price_local(val_str, full_txt, match_obj):
     try:
@@ -1460,7 +1520,7 @@ def handle_text_message(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"❌ 寫入錯誤：{str(e)}"))
         return
 
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🤖 您好！我是自動小幫手。\n\n▶️ 【車源更新】請說：「更新車源」\n▶️ 【我的權限】請說：「我的ID」\n▶️ 【手動記客】客資 / 姓名 / 電話 / 需求"))
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🤖 您好！我是自動小幫手。\n\n▶️ 【車源更新】請說：「更新車源」\n▶️ 【我的權限】請說：「我的ID fleece」\n▶️ 【手動記客】客資 / 姓名 / 電話 / 需求"))
 
 @handler.add(MessageEvent, message=FileMessage)
 def handle_file_message(event):

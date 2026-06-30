@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Query, UploadFile, File, Request, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import openpyxl
@@ -415,9 +415,6 @@ def process_excel_file(filename: str, contents: bytes):
         color_requests_main = []
 
         if target_tab_name == "新竹車源":
-            # ==========================================
-            # 🚗 新竹車源專屬邏輯
-            # ==========================================
             color_requests_main = [{
                 "repeatCell": {
                     "range": { "sheetId": target_gsheet_main.id }, 
@@ -561,7 +558,8 @@ def process_excel_file(filename: str, contents: bytes):
                 else:
                     target_gsheet_main.update_acell('A2', '="共"&SUMPRODUCT(--(LEN(TRIM($C$5:$C$133))>0))&"台"')
                     
-                if color_requests_main: doc.batch_update({"requests": color_requests_main})
+                if color_requests_main:
+                    doc.batch_update({"requests": color_requests_main})
                 
                 status_counts = {}
                 for row in data_to_upload_main[header_row_idx+1:]:
@@ -570,9 +568,11 @@ def process_excel_file(filename: str, contents: bytes):
                         val = str(row[status_idx]).strip()
                         p_val = str(row[plate_idx]).strip() if plate_idx != -1 else ""
                         n_val = str(row[no_idx]).strip() if no_idx != -1 else ""
-                        if p_val or n_val: status_counts[val] = status_counts.get(val, 0) + 1
+                        if p_val or n_val:
+                            status_counts[val] = status_counts.get(val, 0) + 1
                             
                 st_msg = f"在庫: {status_counts.get('在庫', 0)}台、已收訂: {status_counts.get('已收訂', 0)}台、已售: {status_counts.get('已售', 0)}台"
+                
                 msg = f"「新竹車源」更新成功\n📊 狀態分佈：{st_msg}"
                 if new_cars_list:
                     msg += f"\n✨ 新增 {len(new_cars_list)} 台車輛：\n" + "\n".join(new_cars_list[:10])
@@ -585,6 +585,7 @@ def process_excel_file(filename: str, contents: bytes):
             # 🚙 E車源專屬邏輯 (原始穩定版)
             # ==========================================
             headers_main = [str(cell.value).strip() if cell.value is not None else "" for cell in ws_main[1]]
+            
             color_requests_main = []
             
             old_keys = set()
@@ -602,8 +603,10 @@ def process_excel_file(filename: str, contents: bytes):
                         elif p_idx != -1 and len(row) > p_idx and str(row[p_idx]).strip(): key = str(row[p_idx]).strip()
                         elif v_idx != -1 and len(row) > v_idx and str(row[v_idx]).strip(): key = str(row[v_idx]).strip()
                         if key: old_keys.add(str(key).replace('.0', '').strip())
-                else: is_excel_initial = True
-            except: is_excel_initial = True
+                else:
+                    is_excel_initial = True
+            except:
+                is_excel_initial = True
 
             col_model = headers_main.index("車型") if "車型" in headers_main else -1
             col_version = headers_main.index("版本") if "版本" in headers_main else -1
@@ -628,6 +631,7 @@ def process_excel_file(filename: str, contents: bytes):
                 n_val = str(row_values[no_idx]).replace('.0', '').strip() if no_idx != -1 else ""
                 p_val = str(row_values[plate_idx]).replace('.0', '').strip() if plate_idx != -1 else ""
                 v_val = str(row_values[vin_idx]).replace('.0', '').strip() if vin_idx != -1 else ""
+                
                 row_key = n_val if n_val else (p_val if p_val else v_val)
                 
                 if row_key and not is_excel_initial and row_key not in old_keys:
@@ -664,7 +668,8 @@ def process_excel_file(filename: str, contents: bytes):
             try:
                 target_gsheet_main.clear()
                 target_gsheet_main.update(values=[[str(cell) for cell in row] for row in data_to_upload_main], range_name='A1')
-                if color_requests_main: doc.batch_update({"requests": color_requests_main})
+                if color_requests_main:
+                    doc.batch_update({"requests": color_requests_main})
                 
                 status_counts = {}
                 for row in data_to_upload_main[1:]:
@@ -793,7 +798,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         
         session.post(login_url, data={"strID": login_user, "strPW": login_pwd, "Submit": "送出"})
         
-        # 💡 智慧跨網頁媒合：高達 3000 頁上限，且具備動態最後一頁偵測煞車！
+        # 💡 新增：前往「收購合約列表」建立車牌/車身碼對應 PKey 的記憶體對照表 (最高動態掃描 3000 頁)
         pkey_map = {}
         try:
             contract_url = "https://www.jwincar.com.tw/manage/Contract/p14_contract_purchase_list.php"
@@ -808,12 +813,10 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 c_rows = c_table.find_all("tr")
                 if len(c_rows) <= 1: break
                 
-                # 動態判斷是否到底 (跟上一頁第一筆一模一樣就停止)
                 curr_c_row = c_rows[1].text.strip()
                 if curr_c_row == last_c_row: break
                 last_c_row = curr_c_row
                 
-                # 判斷合約清單的車牌、車身欄位位置
                 c_headers = [th.text.strip() for th in c_rows[0].find_all(["th", "td"])]
                 p_col, v_col = -1, -1
                 for idx, h in enumerate(c_headers):
@@ -863,7 +866,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             rows = table.find_all("tr")
             if len(rows) <= 1: break 
             
-            # 動態判斷主表是否到底
             current_first_row = rows[1].text.strip()
             if current_first_row == last_first_row: break
             last_first_row = current_first_row
@@ -1024,6 +1026,36 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         return {"status": "error", "message": f"爬蟲發生錯誤：{str(e)}"}
     finally:
         gc.collect()
+
+# 💡 新增 API：免登入直接讀取查定表畫面
+@app.get("/api/view_inspection", response_class=HTMLResponse)
+def view_inspection(PKey: str = ""):
+    if not PKey:
+        return "<h1>❌ 錯誤：缺少查定表 PKey，無法讀取資料</h1>"
+        
+    valid_u, valid_p = get_valid_credentials()
+    if not valid_u:
+        return "<h1>❌ 錯誤：無法自動登入公司後台，請更新帳號密碼。</h1>"
+        
+    try:
+        session = requests.Session()
+        login_url = "https://www.jwincar.com.tw/manage/login/index.php"
+        session.post(login_url, data={"strID": valid_u, "strPW": valid_p, "Submit": "送出"})
+        
+        target_url = f"https://www.jwincar.com.tw/manage/accounting/accounting_car_inspection_view.php?PKey={PKey}"
+        res = session.get(target_url, timeout=10)
+        res.encoding = 'utf-8'
+        html_content = res.text
+        
+        # 植入 base 標籤，讓原網站的 CSS 與圖片路徑能夠正常解析
+        base_tag = '<base href="https://www.jwincar.com.tw/manage/accounting/">'
+        html_content = re.sub(r'(<head[^>]*>)', r'\1\n' + base_tag, html_content, count=1, flags=re.IGNORECASE)
+        if base_tag not in html_content:
+            html_content = base_tag + html_content
+            
+        return html_content
+    except Exception as e:
+        return f"<h1>❌ 抓取查定表時發生錯誤：{str(e)}</h1>"
 
 @app.get("/api/sync_car_source")
 def api_sync_car_source(user_id: str = "", u: str = "", p: str = ""):

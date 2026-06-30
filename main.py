@@ -412,7 +412,6 @@ def process_excel_file(filename: str, contents: bytes):
         except gspread.exceptions.WorksheetNotFound: return {"status": "error", "message": f"找不到分頁「{target_tab_name}」"}
 
         data_to_upload_main = []
-        
         color_requests_main = []
 
         if target_tab_name == "新竹車源":
@@ -451,7 +450,6 @@ def process_excel_file(filename: str, contents: bytes):
                     n_idx = old_hdrs.index("新編號") if "新編號" in old_hdrs else -1
                     for row in old_values[header_row_idx+1:]:
                         key = ""
-                        # 💡 已修正語法錯誤：移除了 n_idx != -1 後面的分號
                         if n_idx != -1 and len(row) > n_idx and str(row[n_idx]).strip(): key = str(row[n_idx]).strip()
                         elif p_idx != -1 and len(row) > p_idx and str(row[p_idx]).strip(): key = str(row[p_idx]).strip()
                         elif v_idx != -1 and len(row) > v_idx and str(row[v_idx]).strip(): key = str(row[v_idx]).strip()
@@ -468,13 +466,11 @@ def process_excel_file(filename: str, contents: bytes):
             vin_idx = headers_main.index("車身") if "車身" in headers_main else -1
             no_idx = headers_main.index("新編號") if "新編號" in headers_main else -1
             year_idx = headers_main.index("年份") if "年份" in headers_main else -1
-            
             col_color = headers_main.index("顏色") if "顏色" in headers_main else -1
             
             if "收訂狀態" not in headers_main: headers_main.append("收訂狀態")
             status_idx = headers_main.index("收訂狀態")
 
-            data_to_upload_main = []
             new_count = 0
             new_cars_list = []
 
@@ -515,7 +511,6 @@ def process_excel_file(filename: str, contents: bytes):
                 n_val = str(row_values[no_idx]).replace('.0', '').strip() if no_idx != -1 else ""
                 p_val = str(row_values[plate_idx]).replace('.0', '').strip() if plate_idx != -1 else ""
                 v_val = str(row_values[vin_idx]).replace('.0', '').strip() if vin_idx != -1 else ""
-                
                 row_key = n_val if n_val else (p_val if p_val else v_val)
                 
                 is_subheader = False
@@ -566,8 +561,7 @@ def process_excel_file(filename: str, contents: bytes):
                 else:
                     target_gsheet_main.update_acell('A2', '="共"&SUMPRODUCT(--(LEN(TRIM($C$5:$C$133))>0))&"台"')
                     
-                if color_requests_main:
-                    doc.batch_update({"requests": color_requests_main})
+                if color_requests_main: doc.batch_update({"requests": color_requests_main})
                 
                 status_counts = {}
                 for row in data_to_upload_main[header_row_idx+1:]:
@@ -576,11 +570,9 @@ def process_excel_file(filename: str, contents: bytes):
                         val = str(row[status_idx]).strip()
                         p_val = str(row[plate_idx]).strip() if plate_idx != -1 else ""
                         n_val = str(row[no_idx]).strip() if no_idx != -1 else ""
-                        if p_val or n_val:
-                            status_counts[val] = status_counts.get(val, 0) + 1
+                        if p_val or n_val: status_counts[val] = status_counts.get(val, 0) + 1
                             
                 st_msg = f"在庫: {status_counts.get('在庫', 0)}台、已收訂: {status_counts.get('已收訂', 0)}台、已售: {status_counts.get('已售', 0)}台"
-                
                 msg = f"「新竹車源」更新成功\n📊 狀態分佈：{st_msg}"
                 if new_cars_list:
                     msg += f"\n✨ 新增 {len(new_cars_list)} 台車輛：\n" + "\n".join(new_cars_list[:10])
@@ -593,7 +585,6 @@ def process_excel_file(filename: str, contents: bytes):
             # 🚙 E車源專屬邏輯 (原始穩定版)
             # ==========================================
             headers_main = [str(cell.value).strip() if cell.value is not None else "" for cell in ws_main[1]]
-            
             color_requests_main = []
             
             old_keys = set()
@@ -611,10 +602,8 @@ def process_excel_file(filename: str, contents: bytes):
                         elif p_idx != -1 and len(row) > p_idx and str(row[p_idx]).strip(): key = str(row[p_idx]).strip()
                         elif v_idx != -1 and len(row) > v_idx and str(row[v_idx]).strip(): key = str(row[v_idx]).strip()
                         if key: old_keys.add(str(key).replace('.0', '').strip())
-                else:
-                    is_excel_initial = True
-            except:
-                is_excel_initial = True
+                else: is_excel_initial = True
+            except: is_excel_initial = True
 
             col_model = headers_main.index("車型") if "車型" in headers_main else -1
             col_version = headers_main.index("版本") if "版本" in headers_main else -1
@@ -639,7 +628,6 @@ def process_excel_file(filename: str, contents: bytes):
                 n_val = str(row_values[no_idx]).replace('.0', '').strip() if no_idx != -1 else ""
                 p_val = str(row_values[plate_idx]).replace('.0', '').strip() if plate_idx != -1 else ""
                 v_val = str(row_values[vin_idx]).replace('.0', '').strip() if vin_idx != -1 else ""
-                
                 row_key = n_val if n_val else (p_val if p_val else v_val)
                 
                 if row_key and not is_excel_initial and row_key not in old_keys:
@@ -676,8 +664,7 @@ def process_excel_file(filename: str, contents: bytes):
             try:
                 target_gsheet_main.clear()
                 target_gsheet_main.update(values=[[str(cell) for cell in row] for row in data_to_upload_main], range_name='A1')
-                if color_requests_main:
-                    doc.batch_update({"requests": color_requests_main})
+                if color_requests_main: doc.batch_update({"requests": color_requests_main})
                 
                 status_counts = {}
                 for row in data_to_upload_main[1:]:
@@ -806,12 +793,13 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         
         session.post(login_url, data={"strID": login_user, "strPW": login_pwd, "Submit": "送出"})
         
-        # 💡 新增：前往「收購合約列表」建立車牌/車身碼對應 PKey 的記憶體對照表
+        # 💡 智慧跨網頁媒合：高達 3000 頁上限，且具備動態最後一頁偵測煞車！
         pkey_map = {}
         try:
             contract_url = "https://www.jwincar.com.tw/manage/Contract/p14_contract_purchase_list.php"
             cp = 1
-            while True:
+            last_c_row = ""
+            while cp <= 3000:
                 c_res = session.get(f"{contract_url}?page={cp}", timeout=10)
                 c_res.encoding = 'utf-8'
                 c_soup = BeautifulSoup(c_res.text, "html.parser")
@@ -819,6 +807,11 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 if not c_table: break
                 c_rows = c_table.find_all("tr")
                 if len(c_rows) <= 1: break
+                
+                # 動態判斷是否到底 (跟上一頁第一筆一模一樣就停止)
+                curr_c_row = c_rows[1].text.strip()
+                if curr_c_row == last_c_row: break
+                last_c_row = curr_c_row
                 
                 # 判斷合約清單的車牌、車身欄位位置
                 c_headers = [th.text.strip() for th in c_rows[0].find_all(["th", "td"])]
@@ -849,8 +842,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                             if txt and txt not in ["—", "-", "NAN"]: pkey_map[txt] = row_pkey
                             
                 cp += 1
-                # 💡 擴大掃描頁數到 150 頁
-                if cp > 150: break 
         except Exception as e_pkey:
             print("建立查定表對照表失敗:", e_pkey)
 
@@ -861,7 +852,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         plate_idx_main = -1
         vin_idx_main = -1
         
-        while True:
+        while page_num <= 3000:
             res = session.get(data_url + f"&page={page_num}")
             res.encoding = 'utf-8'
             soup = BeautifulSoup(res.text, "html.parser")
@@ -872,6 +863,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             rows = table.find_all("tr")
             if len(rows) <= 1: break 
             
+            # 動態判斷主表是否到底
             current_first_row = rows[1].text.strip()
             if current_first_row == last_first_row: break
             last_first_row = current_first_row
@@ -917,7 +909,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 all_cars.append(row_data)
                 
             page_num += 1
-            if page_num > 100: break
 
         if len(all_cars) < 100:
             return {"status": "error", "message": f"🚨 數據異常熔斷！後台只回傳了 {len(all_cars)} 筆。\n為保護您的原始資料庫，系統已自動拒絕寫入。"}

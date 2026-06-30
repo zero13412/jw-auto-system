@@ -228,7 +228,6 @@ def load_and_clean_data():
     cached_df = df
     gc.collect() 
     return df
-
 # ================= 🚀 Excel/PDF 解析模組 =================
 def process_crm_excel(filename: str, contents: bytes):
     wb = None
@@ -699,8 +698,6 @@ def process_excel_file(filename: str, contents: bytes):
         if wb: wb.close()
         del wb
         gc.collect()
-
-
 # ================= 🚀 API 區塊 =================
 def get_backup_credentials_from_sheet():
     try:
@@ -870,8 +867,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         load_and_clean_data()
         return {"status": "success", "message": f"🤖 更新成功！共抓取 {len(all_cars)} 筆車源。{status_msg}"}
     except Exception as e: return {"status": "error", "message": f"爬蟲發生錯誤：{str(e)}"}
-
-
     @app.get("/api/sync_car_source")
 def api_sync_car_source(user_id: str = "", u: str = "", p: str = ""):
     if not check_permission(user_id, "更新車源"): return {"status": "error", "message": "⛔ 權限不足！"}

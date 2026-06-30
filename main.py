@@ -634,8 +634,8 @@ def process_excel_file(filename: str, contents: bytes):
 
                 status_val = str(row_values[status_col_idx]).strip()
                 if "取證" in status_val: row_values[status_col_idx] = "取證"
-                elif "已收訂" in status_val: row_values[status_col_idx] = "已收訂"
-                elif has_color or "已售" in status_val: row_values[status_col_idx] = "已售"
+                elif "Anti已收訂" in status_val or "已收訂" in status_val: row_values[status_col_idx] = "Anti已收訂" if "Anti" in status_val else "已收訂"
+                elif has_color or "已售" in status_val: row_values[status_col_idx] = "開設" if "開設" in status_val else "已售"
                 else:
                     if not status_val: row_values[status_col_idx] = "在庫"
                         
@@ -699,6 +699,7 @@ def process_excel_file(filename: str, contents: bytes):
         if wb: wb.close()
         del wb
         gc.collect()
+
 
 # ================= 🚀 API 區塊 =================
 def get_backup_credentials_from_sheet():
@@ -870,14 +871,27 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         return {"status": "success", "message": f"🤖 更新成功！共抓取 {len(all_cars)} 筆車源。{status_msg}"}
     except Exception as e: return {"status": "error", "message": f"爬蟲發生錯誤：{str(e)}"}
 
-@app.get("/api/sync_car_source")
+
+    @app.get("/api/sync_car_source")
 def api_sync_car_source(user_id: str = "", u: str = "", p: str = ""):
     if not check_permission(user_id, "更新車源"): return {"status": "error", "message": "⛔ 權限不足！"}
     valid_u, valid_p = get_valid_credentials(u, p)
     if not valid_u: return {"status": "need_login", "message": "⚠️ 請手動輸入最新的帳號與密碼。"}
     return core_sync_car_source(user_id, valid_u, valid_p)
 
-# ================= 其餘功能端點 (保持原版設定) =================
+def is_valid_price_local(val_str, full_txt, match_obj):
+    try:
+        val = float(val_str)
+        if not (5.0 <= val <= 5000.0): return False
+        start_pos = match_obj.start()
+        end_pos = match_obj.end()
+        ctx_after = full_txt[end_pos : end_pos + 6]
+        if any(w in ctx_after for w in ['期', '零', '利', '頭', '貸']): return False
+        ctx_before = full_txt[max(0, start_pos - 10) : start_pos]
+        if any(w in ctx_before for w in ['訂閱', '人數', '人', '觀看', '里程', '跑']): return False
+        return True
+    except: return False
+
 @app.post("/api/parse_ad")
 async def parse_ad(request: Request):
     data = await request.json()

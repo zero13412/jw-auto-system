@@ -228,6 +228,7 @@ def load_and_clean_data():
     cached_df = df
     gc.collect() 
     return df
+
 # ================= 🚀 Excel/PDF 解析模組 =================
 def process_crm_excel(filename: str, contents: bytes):
     wb = None
@@ -414,9 +415,6 @@ def process_excel_file(filename: str, contents: bytes):
         color_requests_main = []
 
         if target_tab_name == "新竹車源":
-            # ==========================================
-            # 🚗 新竹車源專屬邏輯
-            # ==========================================
             color_requests_main = [{
                 "repeatCell": {
                     "range": { "sheetId": target_gsheet_main.id }, 
@@ -470,34 +468,14 @@ def process_excel_file(filename: str, contents: bytes):
             if "收訂狀態" not in headers_main: headers_main.append("收訂狀態")
             status_idx = headers_main.index("收訂狀態")
 
-            data_to_upload_main = []
             new_count = 0
             new_cars_list = []
 
             for r_idx, row in enumerate(ws_main.iter_rows()):
                 row_values = [cell.value if cell.value is not None else "" for cell in row]
-                while len(row_values) < len(headers_main):
-                    row_values.append("")
+                while len(row_values) < len(headers_main): row_values.append("")
 
-                if r_idx < header_row_idx:
-                    data_to_upload_main.append(row_values)
-                    target_row_idx = len(data_to_upload_main) - 1
-                    for c_idx, cell in enumerate(row):
-                        rgb = get_color_rgb(cell)
-                        if rgb:
-                            color_requests_main.append({"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 }, "cell": {"userEnteredFormat": {"backgroundColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}, "fields": "userEnteredFormat.backgroundColor"}})
-                    continue
-
-                if r_idx == header_row_idx:
-                    data_to_upload_main.append(headers_main)
-                    target_row_idx = len(data_to_upload_main) - 1
-                    for c_idx, cell in enumerate(row):
-                        rgb = get_color_rgb(cell)
-                        if rgb:
-                            color_requests_main.append({"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 }, "cell": {"userEnteredFormat": {"backgroundColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}, "fields": "userEnteredFormat.backgroundColor"}})
-                    continue
-
-                if not any(str(v).strip() for v in row_values):
+                if r_idx < header_row_idx or r_idx == header_row_idx or not any(str(v).strip() for v in row_values):
                     data_to_upload_main.append(row_values)
                     target_row_idx = len(data_to_upload_main) - 1
                     for c_idx, cell in enumerate(row):
@@ -527,11 +505,9 @@ def process_excel_file(filename: str, contents: bytes):
                     old_keys.add(row_key)
                 
                 target_row_idx = len(data_to_upload_main)
-                
                 for c_idx, cell in enumerate(row):
                     rgb = get_color_rgb(cell)
-                    if rgb:
-                        color_requests_main.append({"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 }, "cell": {"userEnteredFormat": {"backgroundColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}, "fields": "userEnteredFormat.backgroundColor"}})
+                    if rgb: color_requests_main.append({"repeatCell": {"range": { "sheetId": target_gsheet_main.id, "startRowIndex": target_row_idx, "endRowIndex": target_row_idx + 1, "startColumnIndex": c_idx, "endColumnIndex": c_idx + 1 }, "cell": {"userEnteredFormat": {"backgroundColor": { "red": rgb[0], "green": rgb[1], "blue": rgb[2] }}}, "fields": "userEnteredFormat.backgroundColor"}})
                             
                 if not is_subheader:
                     col_i_val = str(row_values[8]).strip() if len(row_values) > 8 else ""
@@ -567,16 +543,14 @@ def process_excel_file(filename: str, contents: bytes):
                             
                 st_msg = f"在庫: {status_counts.get('在庫', 0)}台、已收訂: {status_counts.get('已收訂', 0)}台、已售: {status_counts.get('已售', 0)}台"
                 msg = f"「新竹車源」更新成功\n📊 狀態分佈：{st_msg}"
-                if new_cars_list:
-                    msg += f"\n✨ 新增 {len(new_cars_list)} 台車輛：\n" + "\n".join(new_cars_list[:10])
+                if new_cars_list: msg += f"\n✨ 新增 {len(new_cars_list)} 台車輛：\n" + "\n".join(new_cars_list[:10])
                 messages.append(msg)
             except Exception as e: return {"status": "error", "message": f"新竹寫入失敗：{str(e)}"}
 
         else:
-            # ==========================================
-            # 🚙 E車源專屬邏輯 (原始穩定不洗色版)
-            # ==========================================
             headers_main = [str(cell.value).strip() if cell.value is not None else "" for cell in ws_main[1]]
+            old_keys = set()
+            is_excel_initial = False
             try:
                 old_values = target_gsheet_main.get_all_values()
                 if old_values and len(old_values) > 1:
@@ -602,6 +576,8 @@ def process_excel_file(filename: str, contents: bytes):
             if "狀態" not in headers_main: headers_main.append("狀態")
             status_col_idx = headers_main.index("狀態")
             data_to_upload_main = [headers_main]
+            new_count = 0
+            new_cars_list = []
 
             for row in ws_main.iter_rows(min_row=2):
                 row_values = [cell.value if cell.value is not None else "" for cell in row]
@@ -625,16 +601,14 @@ def process_excel_file(filename: str, contents: bytes):
                     old_keys.add(row_key)
                 
                 has_color = False
-                row_colors = []
                 for cell in row:
                     rgb = get_color_rgb(cell)
-                    row_colors.append(rgb)
                     if rgb: has_color = True
 
                 status_val = str(row_values[status_col_idx]).strip()
                 if "取證" in status_val: row_values[status_col_idx] = "取證"
-                elif "Anti已收訂" in status_val or "已收訂" in status_val: row_values[status_col_idx] = "Anti已收訂" if "Anti" in status_val else "已收訂"
-                elif has_color or "已售" in status_val: row_values[status_col_idx] = "開設" if "開設" in status_val else "已售"
+                elif "已收訂" in status_val: row_values[status_col_idx] = "已收訂"
+                elif has_color or "已售" in status_val: row_values[status_col_idx] = "已售"
                 else:
                     if not status_val: row_values[status_col_idx] = "在庫"
                         
@@ -653,8 +627,7 @@ def process_excel_file(filename: str, contents: bytes):
                 st_msg = "、".join([f"{k}: {v}台" for k, v in status_counts.items()])
                 
                 msg = f"「E車源」成功({len(data_to_upload_main)-1}筆)\n📊 狀態分佈：{st_msg}"
-                if new_cars_list:
-                    msg += f"\n✨ 新增 {len(new_cars_list)} 台車輛：\n" + "\n".join(new_cars_list[:10])
+                if new_cars_list: msg += f"\n✨ 新增 {len(new_cars_list)} 台車輛：\n" + "\n".join(new_cars_list[:10])
                 messages.append(msg)
                 
                 try: sold_gsheet = doc.worksheet("E車源售出")
@@ -698,6 +671,7 @@ def process_excel_file(filename: str, contents: bytes):
         if wb: wb.close()
         del wb
         gc.collect()
+
 # ================= 🚀 API 區塊 =================
 def get_backup_credentials_from_sheet():
     try:
@@ -746,7 +720,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         data_url = "https://www.jwincar.com.tw/manage/accounting/accounting_car_list.php?stock=all"
         session.post(login_url, data={"strID": login_user, "strPW": login_pwd, "Submit": "送出"})
         
-        # 💡 智慧跨網頁媒合：高達 3000 頁上限，且具備動態最後一頁偵測煞車！
         pkey_map = {}
         try:
             contract_url = "https://www.jwincar.com.tw/manage/Contract/p14_contract_purchase_list.php"
@@ -761,7 +734,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 c_rows = c_table.find_all("tr")
                 if len(c_rows) <= 1: break
                 
-                # 動態判斷是否到底 (跟上一頁第一筆一模一樣就停止)
                 curr_c_row = c_rows[1].text.strip()
                 if curr_c_row == last_c_row: break
                 last_c_row = curr_c_row
@@ -807,7 +779,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             rows = table.find_all("tr")
             if len(rows) <= 1: break 
             
-            # 動態判斷主表是否到底
             current_first_row = rows[1].text.strip()
             if current_first_row == last_first_row: break
             last_first_row = current_first_row
@@ -842,8 +813,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 
             page_num += 1
 
-        if len(all_cars) < 100:
-            return {"status": "error", "message": f"🚨 數據異常熔斷！為保護原始資料庫已自動拒絕寫入。"}
+        if len(all_cars) < 100: return {"status": "error", "message": f"🚨 數據異常熔斷！為保護原始資料庫已自動拒絕寫入。"}
 
         df_crawled = pd.DataFrame(all_cars, columns=headers)
         if "操作" in df_crawled.columns: df_crawled = df_crawled.drop(columns=["操作"])
@@ -867,25 +837,13 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         load_and_clean_data()
         return {"status": "success", "message": f"🤖 更新成功！共抓取 {len(all_cars)} 筆車源。{status_msg}"}
     except Exception as e: return {"status": "error", "message": f"爬蟲發生錯誤：{str(e)}"}
-    @app.get("/api/sync_car_source")
+
+@app.get("/api/sync_car_source")
 def api_sync_car_source(user_id: str = "", u: str = "", p: str = ""):
     if not check_permission(user_id, "更新車源"): return {"status": "error", "message": "⛔ 權限不足！"}
     valid_u, valid_p = get_valid_credentials(u, p)
     if not valid_u: return {"status": "need_login", "message": "⚠️ 請手動輸入最新的帳號與密碼。"}
     return core_sync_car_source(user_id, valid_u, valid_p)
-
-def is_valid_price_local(val_str, full_txt, match_obj):
-    try:
-        val = float(val_str)
-        if not (5.0 <= val <= 5000.0): return False
-        start_pos = match_obj.start()
-        end_pos = match_obj.end()
-        ctx_after = full_txt[end_pos : end_pos + 6]
-        if any(w in ctx_after for w in ['期', '零', '利', '頭', '貸']): return False
-        ctx_before = full_txt[max(0, start_pos - 10) : start_pos]
-        if any(w in ctx_before for w in ['訂閱', '人數', '人', '觀看', '里程', '跑']): return False
-        return True
-    except: return False
 
 @app.post("/api/parse_ad")
 async def parse_ad(request: Request):

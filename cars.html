@@ -337,7 +337,7 @@
                     } else { alert("無編號資料！"); }
                 };
 
-                // 💡 串接我們剛剛寫好的免登入中繼 API
+                // 💡 更新：使用中繼 API 免登入直接查看查定表
                 const openInspection = (pkey) => {
                     if (pkey && pkey !== 'nan') {
                         const url = `${API_URL}/view_inspection?PKey=${pkey}`;

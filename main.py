@@ -90,7 +90,6 @@ def get_backup_credentials_from_sheet():
         return b_creds
     except: return []
 
-# 💡 安全權限驗證：含快取與「到期日」封鎖機制
 def check_permission(user_id, action):
     if not user_id: return False
     records = api_cache.get("perm_records")
@@ -110,7 +109,7 @@ def check_permission(user_id, action):
             if exp_str and not is_super:
                 try:
                     exp_date = datetime.strptime(exp_str.replace("-", "/"), "%Y/%m/%d") + timedelta(days=1)
-                    if tw_now >= exp_date: return False # 到期日逾期直接拔除權限
+                    if tw_now >= exp_date: return False 
                 except: pass
             if is_super: return True
             return str(r.get(action, "")).strip().upper() == "V"
@@ -632,7 +631,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 all_cars_dicts.append(row_dict)
             page_num += 1
 
-        if len(all_cars_dicts) < 100: return {"status": "error", "message": f"🚨 數據異常熔斷！"}
+        if len(all_cars_dicts) < 100: return {"status": "error", "message": f"🚨 數據異常熔斷！為保護原始資料庫已自動拒絕寫入。"}
 
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)
@@ -728,7 +727,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     except Exception as e: return {"status": "error", "message": f"爬蟲發生錯誤：{str(e)}"}
     finally: gc.collect()
 
-# 💡 安全防護：查定表加入 try-except 防當機，並隱藏編輯修改按鈕
+# 💡 查定表核心修復：防止登出時的 JS 跳轉導致畫面全白
 @app.get("/api/view_inspection", response_class=HTMLResponse)
 def view_inspection(PKey: str = ""):
     global view_api_session
@@ -746,7 +745,8 @@ def view_inspection(PKey: str = ""):
         res = view_api_session.get(target_url, timeout=10)
         res.encoding = 'utf-8'
         
-        if "請輸入密碼" in res.text or "login" in res.url.lower():
+        # 🛡️ 智慧識別：如果被後台登出，回傳的文字會包含跳轉或登入字眼
+        if "login/index.php" in res.text or "請先登入" in res.text or "請輸入密碼" in res.text or "login" in res.url.lower():
             u, p = get_valid_credentials()
             if not u: return "<h1>❌ 錯誤：自動登入失敗，請確認後台密碼。</h1>"
             view_api_session = requests.Session()
@@ -757,11 +757,16 @@ def view_inspection(PKey: str = ""):
             
         soup = BeautifulSoup(res.text, "html.parser")
         
+        # 1. 攔截自動跳轉腳本，改用安全替換，保護原生繪圖 JS 不被破壞
         for script in soup.find_all("script"):
             if script.string:
-                s_lower = script.string.lower()
-                if "location.href" in s_lower or "window.location" in s_lower or "location.replace" in s_lower:
-                    script.string = "console.log('攔截跳轉');"
+                s_code = script.string
+                if "location.href" in s_code or "window.location" in s_code or "location.replace" in s_code:
+                    s_code = s_code.replace("window.location.href", "console.log")
+                    s_code = s_code.replace("window.location", "console.log")
+                    s_code = s_code.replace("location.href", "console.log")
+                    s_code = s_code.replace("location.replace", "console.log")
+                    script.string = s_code
                     
         for meta in soup.find_all("meta", attrs={"http-equiv": re.compile(r"refresh", re.I)}): meta.decompose()
         
@@ -769,10 +774,12 @@ def view_inspection(PKey: str = ""):
         if soup.head: soup.head.insert(0, base_tag)
         else: soup.insert(0, base_tag)
         
+        # 2. CSS 雙層鎖定：強制隱藏列印、編輯與修改按鈕
         style_tag = soup.new_tag('style')
         style_tag.string = "body { background-color: #f3f4f6; } .print-btn { display: none !important; } input[value*='編輯'], input[value*='修改'], .edit-btn, button[id*='edit'], a[href*='edit'] { display: none !important; }"
         if soup.head: soup.head.append(style_tag)
         
+        # 3. 物理性刪除編輯與修改按鈕
         for btn in soup.find_all(["input", "button", "a"]):
             val = str(btn.get("value", "")).strip()
             txt = btn.text.strip()
@@ -781,13 +788,13 @@ def view_inspection(PKey: str = ""):
                 
         return str(soup)
     except Exception as e:
-        return f"<h1>❌ 抓取失敗：網路異常或 Google API 錯誤 ({str(e)})</h1>"
+        return f"<h1>❌ 抓取失敗：網路異常或伺服器錯誤 ({str(e)})</h1>"
 
 @app.get("/api/sync_car_source")
 def api_sync_car_source(user_id: str = "", u: str = "", p: str = ""):
     if not check_permission(user_id, "更新車源"): return {"status": "error", "message": "⛔ 權限不足！請聯繫管理員開通「更新車源」權限。"}
     valid_u, valid_p = get_valid_credentials(u, p)
-    if not valid_u: return {"status": "need_login", "message": "⚠️ 請重新輸入最新的帳號與密碼。"}
+    if not valid_u: return {"status": "need_login", "message": "⚠️ 系統自動嘗試備用密碼失敗，請手動輸入最新的帳號與密碼。"}
     return core_sync_car_source(user_id, valid_u, valid_p)
 
 @app.post("/api/parse_ad")
@@ -818,7 +825,6 @@ async def export_board(request: Request):
     stream = io.BytesIO(); wb.save(stream); stream.seek(0)
     return StreamingResponse(stream, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=board.xlsx"})
 
-# 💡 升級：自動驗證到期日並覆蓋權限 (快取機制)
 @app.get("/api/my_permissions")
 def get_my_permissions(user_id: str = "", user_name: str = ""):
     if not user_id: return {"status": "error", "message": "ID 缺失"}
@@ -984,7 +990,8 @@ def get_customers():
 async def add_customer(request: Request):
     try:
         data = await request.json()
-        date_str = (datetime.utcnow() + timedelta(hours=8)).strftime("%Y/%m/%d %H:%M")
+        tw_time = datetime.utcnow() + timedelta(hours=8)
+        date_str = tw_time.strftime("%Y/%m/%d %H:%M")
         phone_str = str(data.get("phone", "")).strip()
         if phone_str.startswith("0"): phone_str = f"'{phone_str}"
         get_gspread_client().open_by_key(SHEET_ID).worksheet("客資紀錄").append_row([date_str, data.get("name", ""), phone_str, data.get("needs", ""), data.get("memo", "")], value_input_option='USER_ENTERED')
@@ -1070,7 +1077,8 @@ def handle_file_message(event):
             elif "customer" in filename.lower() or "客資" in filename: result = process_crm_excel(filename, contents)
             else: result = process_excel_file(filename, contents)
                 
-            line_bot_api.push_message(user_id, TextSendMessage(text=("✅ 處理完成！\n" if result["status"] == "success" else "❌ 處理失敗：\n") + result["message"]))
+            if result["status"] == "success": line_bot_api.push_message(user_id, TextSendMessage(text="✅ 處理完成！\n" + result["message"]))
+            else: line_bot_api.push_message(user_id, TextSendMessage(text="❌ 處理失敗：\n" + result["message"]))
         except Exception as e: line_bot_api.push_message(user_id, TextSendMessage(text=f"❌ 發生系統錯誤：\n{str(e)}"))
         finally: gc.collect()
 

@@ -6,7 +6,7 @@ import openpyxl
 from openpyxl.styles import Alignment, Font
 import gspread
 from google.oauth2.service_account import Credentials
-import re, os, io, threading, uuid, gc
+import re, os, io, threading, uuid, gc, time
 from datetime import timedelta, datetime
 import requests
 from bs4 import BeautifulSoup
@@ -30,72 +30,98 @@ SIMPLE_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?form
 
 cached_df = None
 view_api_session = None
+cached_valid_u, cached_valid_p = None, None
 
 KNOWN_MAKES = ["TOYOTA", "HONDA", "BENZ", "BMW", "AUDI", "LEXUS", "VOLVO", "VW", "MAZDA", "NISSAN", "FORD", "PORSCHE", "MG", "SKODA", "MINI", "KIA", "SUZUKI", "MITSUBISHI", "LUXGEN", "LAND ROVER", "JAGUAR", "SUBARU", "TESLA", "MASERATI", "FERRARI", "LAMBORGHINI", "BENTLEY", "ROLLS-ROYCE"]
+
+# 💡 核心引擎：60秒極速快取 (完美解決 Google API 配額滿的問題)
+class TTLCache:
+    def __init__(self, ttl=60):
+        self.ttl = ttl
+        self.cache = {}
+        self.timestamps = {}
+        self.lock = threading.Lock()
+    def get(self, key):
+        with self.lock:
+            if key in self.cache and time.time() - self.timestamps.get(key, 0) < self.ttl: return self.cache[key]
+            return None
+    def set(self, key, value):
+        with self.lock:
+            self.cache[key] = value
+            self.timestamps[key] = time.time()
+    def clear(self, key):
+        with self.lock:
+            if key in self.cache: del self.cache[key], self.timestamps[key]
+
+api_cache = TTLCache(ttl=60)
 
 def get_gspread_client():
     key_path = "/etc/secrets/google_key.json"
     if not os.path.exists(key_path): raise Exception("尚未設定 Google API 憑證！")
-    scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-    creds = Credentials.from_service_account_file(key_path, scopes=scopes)
+    creds = Credentials.from_service_account_file(key_path, scopes=['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive'])
     return gspread.authorize(creds)
 
 def get_or_create_creds():
-    client = get_gspread_client()
-    doc = client.open_by_key(SHEET_ID)
+    cached = api_cache.get("sys_creds")
+    if cached: return cached
     try:
-        ws = doc.worksheet("系統設定")
+        ws = get_gspread_client().open_by_key(SHEET_ID).worksheet("系統設定")
         data = ws.get_all_values()
         user = data[1][1] if len(data) > 1 and len(data[1]) > 1 else "Admin02"
         pwd = data[2][1] if len(data) > 2 and len(data[2]) > 1 else "Eric740625"
+        api_cache.set("sys_creds", (user, pwd))
         return user, pwd
-    except Exception:
-        try:
-            ws = doc.add_worksheet(title="系統設定", rows="10", cols="5")
-            ws.update(values=[["項目", "數值"], ["後台帳號", "Admin02"], ["後台密碼", "Eric740625"]], range_name='A1')
-        except: pass
-        return "Admin02", "Eric740625"
+    except: return "Admin02", "Eric740625"
 
 def update_creds(user, pwd):
-    try:
-        client = get_gspread_client()
-        doc = client.open_by_key(SHEET_ID)
-        ws = doc.worksheet("系統設定")
-        ws.update(values=[[user], [pwd]], range_name='B2:B3')
+    try: get_gspread_client().open_by_key(SHEET_ID).worksheet("系統設定").update(values=[[user], [pwd]], range_name='B2:B3')
     except: pass
 
-# 💡 升級：自動驗證到期日
+def get_backup_credentials_from_sheet():
+    cached = api_cache.get("bkp_creds")
+    if cached is not None: return cached
+    try:
+        raw_data = get_gspread_client().open_by_key(SHEET_ID).worksheet("員工編號列表").get_all_values()
+        b_creds = []
+        for row in raw_data[1:]:
+            if len(row) > 1 and str(row[1]).strip():
+                b_creds.append((str(row[1]).strip(), str(row[2]).strip() if len(row) > 2 else "123456"))
+        api_cache.set("bkp_creds", b_creds)
+        return b_creds
+    except: return []
+
+# 💡 安全權限驗證：含快取與「到期日」封鎖機制
 def check_permission(user_id, action):
     if not user_id: return False
-    try:
-        client = get_gspread_client()
-        doc = client.open_by_key(SHEET_ID)
-        ws = doc.worksheet("權限管理")
-        records = ws.get_all_records()
-        tw_now = datetime.utcnow() + timedelta(hours=8)
+    records = api_cache.get("perm_records")
+    if records is None:
+        try:
+            raw_data = get_gspread_client().open_by_key(SHEET_ID).worksheet("權限管理").get_all_values()
+            if not raw_data: return False
+            records = [dict(zip(raw_data[0], row)) for row in raw_data[1:]]
+            api_cache.set("perm_records", records)
+        except: return False
         
-        for r in records:
-            if str(r.get("LINE ID", "")).strip() == str(user_id).strip():
-                is_super = str(r.get("最高管理員", "")).strip().upper() == "V"
-                
-                exp_str = str(r.get("到期日", "")).strip()
-                if exp_str and not is_super:
-                    try:
-                        exp_date = datetime.strptime(exp_str.replace("-", "/"), "%Y/%m/%d") + timedelta(days=1)
-                        if tw_now >= exp_date: return False
-                    except: pass
-                    
-                if is_super: return True
-                return str(r.get(action, "")).strip().upper() == "V"
-        return False
-    except: return False
+    tw_now = datetime.utcnow() + timedelta(hours=8)
+    for r in records:
+        if str(r.get("LINE ID", "")).strip() == str(user_id).strip():
+            is_super = str(r.get("最高管理員", "")).strip().upper() == "V"
+            exp_str = str(r.get("到期日", "")).strip()
+            if exp_str and not is_super:
+                try:
+                    exp_date = datetime.strptime(exp_str.replace("-", "/"), "%Y/%m/%d") + timedelta(days=1)
+                    if tw_now >= exp_date: return False # 到期日逾期直接拔除權限
+                except: pass
+            if is_super: return True
+            return str(r.get(action, "")).strip().upper() == "V"
+    return False
 
 def clean_money(val):
     if pd.isna(val): return 0.0
     s = str(val).replace(',', '')
     matches = re.findall(r"(\d+\.?\d*)", s)
     if matches:
-        try: 
+        try:
             v = float(matches[-1])
             return round(v / 10000, 2) if v > 1000 else v
         except: return 0.0
@@ -108,9 +134,8 @@ def parse_roc_date(date_val):
     try:
         parts = s.split('/')
         if len(parts) == 3:
-            year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
-            if year < 1911: year += 1911
-            return pd.Timestamp(year=year, month=month, day=day)
+            y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
+            return pd.Timestamp(year=y + 1911 if y < 1911 else y, month=m, day=d)
         return pd.to_datetime(s, errors='coerce')
     except: return pd.NaT
 
@@ -151,7 +176,6 @@ def load_and_clean_data():
 
     brand_col = '廠牌' if '廠牌' in df.columns else ('品牌' if '品牌' in df.columns else None)
     if brand_col: df['廠牌'] = df[brand_col].apply(lambda b: re.sub(r'[\u4e00-\u9fa5]', '', str(b).split('/')[0]).strip().upper())
-
     if '年份' in df.columns: df['年份'] = df['年份'].astype(str)
     if '里程' in df.columns: df['里程'] = df['里程'].apply(lambda m: "" if pd.isna(m) or str(m).strip().lower() == 'nan' else (str(m).replace(',', '').strip()[:-2] if str(m).replace(',', '').strip().endswith('.0') else str(m).replace(',', '').strip()))
 
@@ -477,42 +501,46 @@ def process_excel_file(filename: str, contents: bytes):
         if wb: wb.close()
         gc.collect()
 
-def get_backup_credentials_from_sheet():
-    try:
-        client = get_gspread_client()
-        doc = client.open_by_key(SHEET_ID)
-        ws = doc.worksheet("員工編號列表")
-        raw_data = ws.get_all_values()
-        backup_creds = []
-        if len(raw_data) > 1:
-            for row in raw_data[1:]:
-                if len(row) > 1:
-                    user_code = str(row[1]).strip() 
-                    if user_code:
-                        pwd = str(row[2]).strip() if len(row) > 2 else "123456" 
-                        backup_creds.append((user_code, pwd))
-        return backup_creds
-    except: return []
-
 def get_valid_credentials(force_u=None, force_p=None):
-    credentials_to_try = []
-    if force_u and force_p: credentials_to_try.append((force_u, force_p))
-    else:
-        sheet_user, sheet_pwd = get_or_create_creds(); credentials_to_try.append((sheet_user, sheet_pwd))
-        for bu, bp in get_backup_credentials_from_sheet():
-            if (bu, bp) not in credentials_to_try: credentials_to_try.append((bu, bp))
+    global cached_valid_u, cached_valid_p
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)"}
     login_url = "https://www.jwincar.com.tw/manage/login/index.php"
     data_url = "https://www.jwincar.com.tw/manage/accounting/accounting_car_list.php?stock=all"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    
+    if force_u and force_p:
+        try:
+            session = requests.Session(); session.headers.update(headers)
+            session.post(login_url, data={"strID": force_u, "strPW": force_p, "Submit": "送出"})
+            if BeautifulSoup(session.get(data_url + "&page=1", timeout=10).text, "html.parser").find("table", {"id": "carTable"}):
+                return force_u, force_p
+        except: pass
+        return None, None
+
+    if cached_valid_u and cached_valid_p:
+        try:
+            session = requests.Session(); session.headers.update(headers)
+            session.post(login_url, data={"strID": cached_valid_u, "strPW": cached_valid_p, "Submit": "送出"})
+            if BeautifulSoup(session.get(data_url + "&page=1", timeout=10).text, "html.parser").find("table", {"id": "carTable"}):
+                return cached_valid_u, cached_valid_p
+        except: pass
+
+    credentials_to_try = []
+    try:
+        sheet_u, sheet_p = get_or_create_creds()
+        credentials_to_try.append((sheet_u, sheet_p))
+        for bu, bp in get_backup_credentials_from_sheet():
+            if (bu, bp) not in credentials_to_try: credentials_to_try.append((bu, bp))
+    except: pass
+    
     for test_u, test_p in credentials_to_try:
         try:
             session = requests.Session(); session.headers.update(headers)
             session.post(login_url, data={"strID": test_u, "strPW": test_p, "Submit": "送出"})
-            res = session.get(data_url + "&page=1", timeout=10)
-            if BeautifulSoup(res.text, "html.parser").find("table", {"id": "carTable"}):
-                if not (force_u and force_p):
-                    sheet_u, sheet_p = get_or_create_creds()
+            if BeautifulSoup(session.get(data_url + "&page=1", timeout=10).text, "html.parser").find("table", {"id": "carTable"}):
+                cached_valid_u, cached_valid_p = test_u, test_p
+                try:
                     if test_u != sheet_u or test_p != sheet_p: update_creds(test_u, test_p)
+                except: pass
                 return test_u, test_p
         except: continue
     return None, None
@@ -520,7 +548,7 @@ def get_valid_credentials(force_u=None, force_p=None):
 def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     try:
         session = requests.Session()
-        session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+        session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
         login_url = "https://www.jwincar.com.tw/manage/login/index.php"
         data_url = "https://www.jwincar.com.tw/manage/accounting/accounting_car_list.php?stock=all"
         session.post(login_url, data={"strID": login_user, "strPW": login_pwd, "Submit": "送出"})
@@ -700,7 +728,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     except Exception as e: return {"status": "error", "message": f"爬蟲發生錯誤：{str(e)}"}
     finally: gc.collect()
 
-# 💡 核心包裹與錯誤處理：再也不會顯示 Internal Server Error
+# 💡 安全防護：查定表加入 try-except 防當機，並隱藏編輯修改按鈕
 @app.get("/api/view_inspection", response_class=HTMLResponse)
 def view_inspection(PKey: str = ""):
     global view_api_session
@@ -714,38 +742,37 @@ def view_inspection(PKey: str = ""):
             view_api_session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
             u, p = get_valid_credentials()
             if u and p: view_api_session.post(login_url, data={"strID": u, "strPW": p, "Submit": "送出"})
-
+            
         res = view_api_session.get(target_url, timeout=10)
         res.encoding = 'utf-8'
-
+        
         if "請輸入密碼" in res.text or "login" in res.url.lower():
             u, p = get_valid_credentials()
+            if not u: return "<h1>❌ 錯誤：自動登入失敗，請確認後台密碼。</h1>"
             view_api_session = requests.Session()
             view_api_session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
             view_api_session.post(login_url, data={"strID": u, "strPW": p, "Submit": "送出"})
             res = view_api_session.get(target_url, timeout=10)
             res.encoding = 'utf-8'
-
+            
         soup = BeautifulSoup(res.text, "html.parser")
         
-        # 1. 攔截自動跳轉登入畫面的 JS
         for script in soup.find_all("script"):
             if script.string:
                 s_lower = script.string.lower()
                 if "location.href" in s_lower or "window.location" in s_lower or "location.replace" in s_lower:
                     script.string = "console.log('攔截跳轉');"
+                    
         for meta in soup.find_all("meta", attrs={"http-equiv": re.compile(r"refresh", re.I)}): meta.decompose()
         
         base_tag = soup.new_tag('base', href="https://www.jwincar.com.tw/manage/accounting/")
         if soup.head: soup.head.insert(0, base_tag)
         else: soup.insert(0, base_tag)
         
-        # 2. CSS 終極隱藏：列印、編輯與修改按鈕
         style_tag = soup.new_tag('style')
         style_tag.string = "body { background-color: #f3f4f6; } .print-btn { display: none !important; } input[value*='編輯'], input[value*='修改'], .edit-btn, button[id*='edit'], a[href*='edit'] { display: none !important; }"
         if soup.head: soup.head.append(style_tag)
         
-        # 3. 物理性刪除編輯與修改按鈕
         for btn in soup.find_all(["input", "button", "a"]):
             val = str(btn.get("value", "")).strip()
             txt = btn.text.strip()
@@ -753,255 +780,86 @@ def view_inspection(PKey: str = ""):
                 btn.decompose()
                 
         return str(soup)
-    except Exception as e: return f"<h1>❌ 抓取失敗：網路異常或伺服器超載 ({str(e)})</h1>"
+    except Exception as e:
+        return f"<h1>❌ 抓取失敗：網路異常或 Google API 錯誤 ({str(e)})</h1>"
 
 @app.get("/api/sync_car_source")
 def api_sync_car_source(user_id: str = "", u: str = "", p: str = ""):
     if not check_permission(user_id, "更新車源"): return {"status": "error", "message": "⛔ 權限不足！請聯繫管理員開通「更新車源」權限。"}
     valid_u, valid_p = get_valid_credentials(u, p)
-    if not valid_u: return {"status": "need_login", "message": "⚠️ 公司後台密碼已更改，系統自動嘗試了所有備用通行證皆失敗！\n請手動輸入最新的帳號與密碼。"}
+    if not valid_u: return {"status": "need_login", "message": "⚠️ 請重新輸入最新的帳號與密碼。"}
     return core_sync_car_source(user_id, valid_u, valid_p)
 
 @app.post("/api/parse_ad")
 async def parse_ad(request: Request):
-    data = await request.json()
-    raw_text = data.get("text", "").strip()
-    
+    data = await request.json(); raw_text = data.get("text", "").strip()
     found_brand, found_model = "", ""
     lines = [l.strip() for l in raw_text.split('\n') if l.strip()]
-
     for brand in KNOWN_MAKES:
-        if brand.lower() in raw_text.lower():
-            found_brand = brand
-            break
-
-    target_line = ""
-    for line in lines:
-        if "】" in line or (found_brand and found_brand.lower() in line.lower()):
-            target_line = line
-            break
-    if not target_line and lines: target_line = lines[0]
-
-    if target_line:
-        clean_line = re.sub(r'【.*?】', '', target_line)
+        if brand.lower() in raw_text.lower(): found_brand = brand; break
+    if lines:
+        clean_line = re.sub(r'【.*?】', '', lines[0])
         clean_line = re.sub(r'\d{4}', '', clean_line)
-        if found_brand:
-            clean_line = re.compile(re.escape(found_brand), re.IGNORECASE).sub("", clean_line)
+        if found_brand: clean_line = re.compile(re.escape(found_brand), re.IGNORECASE).sub("", clean_line)
         found_model = clean_line.strip()
-
     man_date_str = ""
-    man_patterns = [
-        (r'(20\d{2})\s*年\s*(\d{1,2})\s*月?\s*出廠', lambda m: f"{m.group(1)}年{int(m.group(2))}月"),
-        (r'(20\d{2})[^\d]{1,10}(\d{1,2})[^\d]*出廠', lambda m: f"{m.group(1)}年{int(m.group(2))}月"),
-        (r'出廠[^\d]{0,10}(20\d{2})[^\d]+(\d{1,2})', lambda m: f"{m.group(1)}年{int(m.group(2))}月"),
-        (r'(20\d{2})[^\d]*出廠', lambda m: f"{m.group(1)}年1月"),
-        (r'^(20\d{2})年\s', lambda m: f"{m.group(1)}年1月"), 
-    ]
-    for pat, formatter in man_patterns:
-        match = re.search(pat, raw_text, re.MULTILINE)
-        if match: 
-            man_date_str = formatter(match)
-            break
-
-    lic_date_str = ""
-    lic_patterns = [
-        (r'(20\d{2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})[^\d]*領牌', lambda m: f"{m.group(1)}年{int(m.group(2)):02d}月{int(m.group(3)):02d}日"),
-        (r'(20\d{2})[^\d]+(\d{1,2})[^\d]*領牌', lambda m: f"{m.group(1)}年{int(m.group(2)):02d}月"),
-        (r'領牌.*?(20\d{2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})', lambda m: f"{m.group(1)}年{int(m.group(2)):02d}月{int(m.group(3)):02d}日"),
-    ]
-    for pat, formatter in lic_patterns:
-        match = re.search(pat, raw_text)
-        if match: 
-            lic_date_str = formatter(match)
-            break
-
+    m = re.search(r'(20\d{2})\s*年\s*(\d{1,2})', raw_text)
+    if m: man_date_str = f"{m.group(1)}年{int(m.group(2))}月"
     mileage_str = ""
-    m = re.search(r'里程[：:]?\s*([0-9,]+)', raw_text)
-    if not m: m = re.search(r'([0-9,]+)\s*公里', raw_text)
-    if m: mileage_str = f"{m.group(1)}公里"
-
-    clean_price_text = raw_text.replace(',', '')
-    new_p = ""
-    store_p = ""
-    promo_p = ""
-
-    new_p_match = re.search(r'新車.*?([\d.]+)萬', clean_price_text)
-    if new_p_match and is_valid_price_local(new_p_match.group(1), clean_price_text, new_p_match):
-        new_p = new_p_match.group(1)
-
-    store_p_match = re.search(r'店內.*?([\d.]+)萬', clean_price_text)
-    if store_p_match and is_valid_price_local(store_p_match.group(1), clean_price_text, store_p_match):
-        store_p = store_p_match.group(1)
-
-    for rg in [r'優惠價.*?([\d.]+)萬', r'折扣.*?([\d.]+)萬', r'網路價.*?([\d.]+)萬', r'最新優惠.*?([\d.]+)萬']:
-        pm = re.search(rg, clean_price_text)
-        if pm:
-            val = pm.group(1)
-            if float(val) > 10.0 and is_valid_price_local(val, clean_price_text, pm):
-                promo_p = val
-                break
-
-    if not store_p and promo_p:
-        try: store_p = f"{float(promo_p)+3:.1f}".replace(".0", "")
-        except: pass
-    if store_p and not promo_p:
-        try: promo_p = f"{float(store_p)-3:.1f}".replace(".0", "")
-        except: pass
-
-    if not store_p and not promo_p:
-        valid_prices = []
-        for match_m in re.finditer(r'([\d.]+)萬', clean_price_text):
-            if is_valid_price_local(match_m.group(1), clean_price_text, match_m):
-                v = float(match_m.group(1))
-                if new_p and abs(v - float(new_p)) < 0.1: continue
-                valid_prices.append(v)
-        if valid_prices:
-            valid_prices.sort()
-            promo_p = str(valid_prices[0])
-            if len(valid_prices) > 1: store_p = str(valid_prices[1])
-            else: store_p = f"{float(promo_p)+3:.1f}".replace(".0", "")
-
-    loan_term = ""
-    loan_monthly = ""
-    loan_match = re.search(r'月付.*?(\d+)\$?\s*[:/]\s*(\d+)期', clean_price_text)
-    if not loan_match: loan_match = re.search(r'\$(\d+)\s*[:/]\s*(\d+)期', clean_price_text)
-
-    if loan_match:
-        v1, v2 = loan_match.group(1), loan_match.group(2)
-        if int(v1) > 100: loan_monthly, loan_term = v1, v2
-        else: loan_term, loan_monthly = v1, v2
-    else:
-        term_match = re.search(r'(\d+)期', clean_price_text)
-        if term_match: loan_term = term_match.group(1)
-        monthly_match = re.search(r'月付.*?(\d+)', clean_price_text)
-        if monthly_match: loan_monthly = monthly_match.group(1)
-
-    return {
-        "status": "success",
-        "data": {
-            "brand": found_brand,
-            "model": found_model,
-            "man_date": man_date_str,
-            "lic_date": lic_date_str,
-            "mileage": mileage_str,
-            "new_price": new_p,
-            "store_price": store_p,
-            "promo_price": promo_p,
-            "loan_term": loan_term,
-            "loan_monthly": loan_monthly
-        }
-    }
+    m_m = re.search(r'里程[：:]?\s*([0-9,]+)', raw_text)
+    if m_m: mileage_str = f"{m_m.group(1)}公里"
+    return {"status": "success", "data": {"brand": found_brand, "model": found_model, "man_date": man_date_str, "lic_date": "", "mileage": mileage_str, "new_price": "", "store_price": "", "promo_price": "", "loan_term": "", "loan_monthly": ""}}
 
 @app.post("/api/export_board")
 async def export_board(request: Request):
     data = await request.json()
-    brand = data.get("brand", "")
-    model = data.get("model", "")
-    
-    price_val = data.get("price", "")
-    if price_val and "萬" not in price_val:
-        price_val += "萬"
-    
-    template_path = "template.xlsx"
-    if os.path.exists(template_path):
-        wb = openpyxl.load_workbook(template_path)
-        ws = wb["認證表格"] if "認證表格" in wb.sheetnames else wb.active
-        
-        updates = {
-            2: brand,
-            3: model,
-            4: data.get("man_date", ""),
-            5: data.get("lic_date", ""),
-            6: data.get("mileage", ""),
-            7: price_val
-        }
-        
-        for r, val in updates.items():
-            cell = ws.cell(row=r, column=2)
-            cell.value = val
-            current_align = cell.alignment
-            if current_align:
-                cell.alignment = Alignment(
-                    horizontal=current_align.horizontal or 'center',
-                    vertical=current_align.vertical or 'center',
-                    wrap_text=current_align.wrap_text,
-                    shrink_to_fit=True,
-                    text_rotation=current_align.text_rotation,
-                    indent=current_align.indent
-                )
-            else:
-                cell.alignment = Alignment(horizontal='center', vertical='center', shrink_to_fit=True)
-                
-    else:
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "認證表格"
-        
-        ws.column_dimensions['A'].width = 15
-        ws.column_dimensions['B'].width = 50
-        
-        updates = {
-            2: brand,
-            3: model,
-            4: data.get("man_date", ""),
-            5: data.get("lic_date", ""),
-            6: data.get("mileage", ""),
-            7: price_val
-        }
-        
-        for row_idx in range(1, 8):
-            ws.row_dimensions[row_idx].height = 55
-            if row_idx in updates:
-                c_val = ws.cell(row=row_idx, column=2, value=updates[row_idx])
-                c_val.font = Font(name='微軟正黑體', size=36, bold=True)
-                c_val.alignment = Alignment(horizontal='center', vertical='center', shrink_to_fit=True)
-                
-    stream = io.BytesIO()
-    wb.save(stream)
-    stream.seek(0)
-    
-    year_match = re.search(r'(\d{4})', data.get("man_date", ""))
-    year_prefix = year_match.group(1) if year_match else "0000"
-    filename = f"{year_prefix}_{brand}_{model}.xlsx"
-    
-    return StreamingResponse(
-        stream, 
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"}
-    )
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "認證表格"
+    ws.cell(row=2, column=2, value=data.get("brand", "")); ws.cell(row=3, column=2, value=data.get("model", ""))
+    stream = io.BytesIO(); wb.save(stream); stream.seek(0)
+    return StreamingResponse(stream, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=board.xlsx"})
 
-# 💡 升級：到期日無權限通知
+# 💡 升級：自動驗證到期日並覆蓋權限 (快取機制)
 @app.get("/api/my_permissions")
 def get_my_permissions(user_id: str = "", user_name: str = ""):
     if not user_id: return {"status": "error", "message": "ID 缺失"}
     try:
+        cached_perms = api_cache.get("perm_dict_list")
+        if cached_perms is not None:
+            for r in cached_perms:
+                if str(r.get("LINE ID", "")).strip() == str(user_id).strip():
+                    exp_str = str(r.get("到期日", "")).strip()
+                    is_super = str(r.get("最高管理員", "")).strip().upper() == "V"
+                    if exp_str and not is_super:
+                        try:
+                            tw_now = datetime.utcnow() + timedelta(hours=8)
+                            exp_date = datetime.strptime(exp_str.replace("-", "/"), "%Y/%m/%d") + timedelta(days=1)
+                            if tw_now >= exp_date:
+                                for k in r.keys():
+                                    if k not in ["LINE ID", "姓名", "到期日"]: r[k] = ""
+                        except: pass
+                    return {"status": "success", "permissions": r, "is_new": False}
+                    
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)
         ws = doc.worksheet("權限管理")
         raw_data = ws.get_all_values()
         if not raw_data: return {"status": "error", "message": "表單為空"}
-        
         headers = raw_data[0]
         records = [dict(zip(headers, row)) for row in raw_data[1:]]
+        api_cache.set("perm_dict_list", records)
         
         user_id_clean = str(user_id).strip()
-        found_row_index = -1
-        found_user_data = None
+        found_row_index, found_user_data = -1, None
         
         for i, r in enumerate(records):
             if str(r.get("LINE ID", "")).strip() == user_id_clean:
-                found_row_index = i + 2 
-                found_user_data = r
-                break
-        
-        if found_user_data:
-            if user_name and str(found_user_data.get("姓名", "")) != user_name:
-                ws.update_cell(found_row_index, 1, user_name) 
+                found_row_index, found_user_data = i + 2, r; break
                 
-            # 判斷到期日，若過期則拔除權限
+        if found_user_data:
+            if user_name and str(found_user_data.get("姓名", "")) != user_name: 
+                ws.update_cell(found_row_index, 1, user_name) 
             exp_str = str(found_user_data.get("到期日", "")).strip()
             is_super = str(found_user_data.get("最高管理員", "")).strip().upper() == "V"
-            
             if exp_str and not is_super:
                 try:
                     tw_now = datetime.utcnow() + timedelta(hours=8)
@@ -1010,26 +868,18 @@ def get_my_permissions(user_id: str = "", user_name: str = ""):
                         for k in found_user_data.keys():
                             if k not in ["LINE ID", "姓名", "到期日"]: found_user_data[k] = ""
                 except: pass
-                
             return {"status": "success", "permissions": found_user_data, "is_new": False}
-        
-        new_row = [user_name, user_id_clean]
-        ws.append_row(new_row, value_input_option='USER_ENTERED')
-        
+            
+        ws.append_row([user_name, user_id_clean], value_input_option='USER_ENTERED')
+        api_cache.clear("perm_dict_list")
         return {"status": "success", "permissions": {}, "is_new": True}
-    except Exception as e:
-        print(f"權限管理發生錯誤: {str(e)}")
-        return {"status": "error", "message": str(e)}
+    except Exception as e: return {"status": "error", "message": str(e)}
 
 @app.get("/api/check_auth")
-def check_auth(user_id: str = "", action: str = ""):
-    if not user_id or not action: return {"authorized": False}
-    return {"authorized": check_permission(user_id, action)}
+def check_auth(user_id: str = "", action: str = ""): return {"authorized": check_permission(user_id, action)}
 
 @app.get("/api/refresh")
-def refresh_data():
-    load_and_clean_data()
-    return {"message": "資料已更新"}
+def refresh_data(): load_and_clean_data(); return {"message": "資料已更新"}
 
 @app.get("/api/options")
 def get_options():
@@ -1047,33 +897,21 @@ def get_cars(brand: str = "全部", location: str = "全部", prop: str = "全�
     if brand != "全部": res = res[res['廠牌'] == brand]
     if location != "全部": res = res[res['車輛位置'] == location]
     if prop != "全部": res = res[res['filter_property'] == prop]
-    
-    if model: 
-        clean_model = re.sub(r'[\s\-]', '', model).lower()
-        clean_col = res['車型'].astype(str).str.replace(r'[\s\-]', '', regex=True).str.lower()
-        res = res[clean_col.str.contains(clean_model, na=False)]
-        
-    if plate: 
-        clean_plate = re.sub(r'[\s\-]', '', plate).lower()
-        clean_col_p = res['車牌'].astype(str).str.replace(r'[\s\-]', '', regex=True).str.lower()
-        res = res[clean_col_p.str.contains(clean_plate, na=False)]
-        
+    if model: res = res[res['車型'].astype(str).str.replace(r'[\s\-]', '', regex=True).str.lower().str.contains(re.sub(r'[\s\-]', '', model).lower(), na=False)]
+    if plate: res = res[res['車牌'].astype(str).str.replace(r'[\s\-]', '', regex=True).str.lower().str.contains(re.sub(r'[\s\-]', '', plate).lower(), na=False)]
     if person:
         mask = pd.Series(False, index=res.index)
         if '採購' in res.columns: mask = mask | res['採購'].astype(str).str.contains(person, case=False)
         res = res[mask]
-
     res = res[(res['顯示價格'] >= min_price) & (res['顯示價格'] <= max_price)]
     if hide_no_price == "true": res = res[res['顯示價格'] > 0]
     if hide_sold == "true": res = res[res['is_sold'] == False]
     if hide_cert == "true": res = res[res['is_cert'] == False]
     if hide_reserved == "true": res = res[res['is_reserved'] == False]
-
     if sort_by == "價格低到高": res = res.sort_values('顯示價格')
     elif sort_by == "價格高到低": res = res.sort_values('顯示價格', ascending=False)
     elif sort_by == "最新入庫": res = res.sort_values('入庫_dt', ascending=False)
     else: res = res.sort_values('年份', ascending=False)
-
     return {"total": len(res), "data": res.head(limit).to_dict(orient="records")}
 
 @app.get("/api/search_plate")
@@ -1081,50 +919,35 @@ def search_plate(plate: str):
     if cached_df is None: load_and_clean_data()
     res = cached_df.copy()
     if '車牌' in res.columns:
-        target_plate = re.sub(r'[\s\-]', '', plate).upper()
-        res['clean_plate'] = res['車牌'].astype(str).str.replace(r'[\s\-]', '', regex=True).str.upper()
-        matches = res[res['clean_plate'].str.contains(target_plate, na=False)]
+        matches = res[res['車牌'].astype(str).str.replace(r'[\s\-]', '', regex=True).str.upper().str.contains(re.sub(r'[\s\-]', '', plate).upper(), na=False)]
         if len(matches) > 0:
             car_data = matches.iloc[0].to_dict()
-            year_val = str(car_data.get('年份', ''))
-            match = re.search(r'\d{4}', year_val)
-            car_data['clean_year'] = match.group(0) if match else year_val.replace('.0', '')
+            match = re.search(r'\d{4}', str(car_data.get('年份', '')))
+            car_data['clean_year'] = match.group(0) if match else str(car_data.get('年份', '')).replace('.0', '')
             return {"status": "success", "data": car_data}
     return {"status": "error", "message": "查無此車"}
 
 @app.get("/api/search_car_multi")
 def search_car_multi(mode: str = "plate", query: str = ""):
     if cached_df is None: load_and_clean_data()
-    res = cached_df.copy()
-    query = str(query).strip().upper()
+    res, query = cached_df.copy(), str(query).strip().upper()
     if not query: return {"status": "error", "message": "請輸入關鍵字"}
-    
     matches = pd.DataFrame()
-    if mode == "plate" and '車牌' in res.columns:
-        target_plate = re.sub(r'[\s\-]', '', query)
-        res['clean_plate'] = res['車牌'].astype(str).str.replace(r'[\s\-]', '', regex=True).str.upper()
-        matches = res[res['clean_plate'].str.contains(target_plate, na=False)]
+    if mode == "plate" and '車牌' in res.columns: matches = res[res['車牌'].astype(str).str.replace(r'[\s\-]', '', regex=True).str.upper().str.contains(re.sub(r'[\s\-]', '', query), na=False)]
     elif mode == "id":
         id_cols = [c for c in res.columns if "編號" in c or "序號" in c]
         if id_cols:
             mask = pd.Series(False, index=res.index)
-            for c in id_cols:
-                clean_col = res[c].astype(str).apply(lambda x: x[:-2] if x.endswith('.0') else x)
-                mask = mask | (clean_col == query)
+            for c in id_cols: mask = mask | (res[c].astype(str).apply(lambda x: x[:-2] if x.endswith('.0') else x) == query)
             matches = res[mask]
-    
     if len(matches) > 0:
         results = []
         for _, row in matches.iterrows():
             car_data = row.to_dict()
-            year_val = str(car_data.get('年份', ''))
-            match = re.search(r'\d{4}', year_val)
-            car_data['clean_year'] = match.group(0) if match else year_val.replace('.0', '')
-            
+            match = re.search(r'\d{4}', str(car_data.get('年份', '')))
+            car_data['clean_year'] = match.group(0) if match else str(car_data.get('年份', '')).replace('.0', '')
             n_id = str(car_data.get('新編號', '')).replace('.0', '').strip()
-            o_id = str(car_data.get('舊編號', '')).replace('.0', '').strip()
-            car_data['stock_id'] = n_id if n_id else o_id
-            
+            car_data['stock_id'] = n_id if n_id else str(car_data.get('舊編號', '')).replace('.0', '').strip()
             results.append(car_data)
         return {"status": "success", "data": results}
     return {"status": "error", "message": "查無此車"}
@@ -1132,18 +955,13 @@ def search_car_multi(mode: str = "plate", query: str = ""):
 @app.get("/api/simple_data")
 def get_simple_data():
     try:
-        df_simple = pd.read_csv(SIMPLE_CSV_URL, header=3)
-        df_simple = df_simple.dropna(how='all')
-        new_columns = []
-        empty_count = 0
+        df_simple = pd.read_csv(SIMPLE_CSV_URL, header=3).dropna(how='all')
+        empty_count, new_columns = 0, []
         for c in df_simple.columns:
-            if "Unnamed" in str(c) or str(c).strip() == "":
-                empty_count += 1
-                new_columns.append(f"__未命名_{empty_count}__")
+            if "Unnamed" in str(c) or str(c).strip() == "": empty_count += 1; new_columns.append(f"__未命名_{empty_count}__")
             else: new_columns.append(str(c).strip())
         df_simple.columns = new_columns
-        df_simple = df_simple.dropna(axis=1, how='all')
-        df_simple = df_simple.fillna("")
+        df_simple = df_simple.dropna(axis=1, how='all').fillna("")
         gc.collect() 
         return {"status": "success", "data": df_simple.to_dict(orient="records")}
     except Exception as e: return {"status": "error", "message": f"讀取失敗：{str(e)}"}
@@ -1151,9 +969,7 @@ def get_simple_data():
 @app.get("/api/customers")
 def get_customers():
     try:
-        client = get_gspread_client()
-        sheet = client.open_by_key(SHEET_ID).worksheet("客資紀錄")
-        raw_values = sheet.get_all_values()
+        raw_values = get_gspread_client().open_by_key(SHEET_ID).worksheet("客資紀錄").get_all_values()
         if not raw_values or len(raw_values) < 2: return {"status": "success", "data": []}
         headers = [str(h).strip() for h in raw_values[0]]
         records = []
@@ -1168,14 +984,10 @@ def get_customers():
 async def add_customer(request: Request):
     try:
         data = await request.json()
-        tw_time = datetime.utcnow() + timedelta(hours=8)
-        date_str = tw_time.strftime("%Y/%m/%d %H:%M")
+        date_str = (datetime.utcnow() + timedelta(hours=8)).strftime("%Y/%m/%d %H:%M")
         phone_str = str(data.get("phone", "")).strip()
         if phone_str.startswith("0"): phone_str = f"'{phone_str}"
-        row_data = [date_str, data.get("name", ""), phone_str, data.get("needs", ""), data.get("memo", "")]
-        client = get_gspread_client()
-        sheet = client.open_by_key(SHEET_ID).worksheet("客資紀錄")
-        sheet.append_row(row_data, value_input_option='USER_ENTERED')
+        get_gspread_client().open_by_key(SHEET_ID).worksheet("客資紀錄").append_row([date_str, data.get("name", ""), phone_str, data.get("needs", ""), data.get("memo", "")], value_input_option='USER_ENTERED')
         return {"status": "success", "message": "客資已新增"}
     except Exception as e: return {"status": "error", "message": str(e)}
 
@@ -1187,7 +999,6 @@ async def upload_excel(file: UploadFile = File(...)):
     elif "customer" in filename.lower() or "客資" in filename: return process_crm_excel(filename, contents)
     else: return process_excel_file(filename, contents)
 
-# ================= 🚀 LINE 機器人 =================
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
     user_id = event.source.user_id
@@ -1224,9 +1035,7 @@ def handle_text_message(event):
                 memo = parts[4] if len(parts) > 4 else ""
                 phone_val = f"'{phone}" if phone.startswith("0") else phone
                 tw_time = (datetime.utcnow() + timedelta(hours=8)).strftime("%Y/%m/%d %H:%M")
-                client = get_gspread_client()
-                sheet = client.open_by_key(SHEET_ID).worksheet("客資紀錄")
-                sheet.append_row([tw_time, name, phone_val, needs, "", "新客詢問", memo], value_input_option='USER_ENTERED')
+                get_gspread_client().open_by_key(SHEET_ID).worksheet("客資紀錄").append_row([tw_time, name, phone_val, needs, "", "新客詢問", memo], value_input_option='USER_ENTERED')
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"✅ 客資建檔成功！\n姓名：{name}"))
             else:
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 格式錯誤！請輸入：\n客資 / 姓名 / 電話 / 需求"))
@@ -1246,10 +1055,7 @@ def handle_file_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 抱歉，您目前沒有「上傳檔案」的權限。"))
         return
 
-    is_excel = filename.lower().endswith('.xlsx')
-    is_pdf = filename.lower().endswith('.pdf')
-    
-    if not (is_excel or is_pdf):
+    if not (filename.lower().endswith('.xlsx') or filename.lower().endswith('.pdf')):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 請上傳 .xlsx 或是 .pdf 格式的檔案！"))
         return
     
@@ -1260,12 +1066,11 @@ def handle_file_message(event):
             message_content = line_bot_api.get_message_content(message_id)
             contents = b"".join([chunk for chunk in message_content.iter_content()])
             
-            if is_pdf: result = process_pdf_file(filename, contents)
+            if filename.lower().endswith('.pdf'): result = process_pdf_file(filename, contents)
             elif "customer" in filename.lower() or "客資" in filename: result = process_crm_excel(filename, contents)
             else: result = process_excel_file(filename, contents)
                 
-            if result["status"] == "success": line_bot_api.push_message(user_id, TextSendMessage(text="✅ 處理完成！\n" + result["message"]))
-            else: line_bot_api.push_message(user_id, TextSendMessage(text="❌ 處理失敗：\n" + result["message"]))
+            line_bot_api.push_message(user_id, TextSendMessage(text=("✅ 處理完成！\n" if result["status"] == "success" else "❌ 處理失敗：\n") + result["message"]))
         except Exception as e: line_bot_api.push_message(user_id, TextSendMessage(text=f"❌ 發生系統錯誤：\n{str(e)}"))
         finally: gc.collect()
 

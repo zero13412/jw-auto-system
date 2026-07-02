@@ -29,6 +29,7 @@ SIMPLE_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?form
 
 cached_df = None
 view_api_session = None
+
 KNOWN_MAKES = ["TOYOTA", "HONDA", "BENZ", "BMW", "AUDI", "LEXUS", "VOLVO", "VW", "MAZDA", "NISSAN", "FORD", "PORSCHE", "MG", "SKODA", "MINI", "KIA", "SUZUKI", "MITSUBISHI", "LUXGEN", "LAND ROVER", "JAGUAR", "SUBARU", "TESLA", "MASERATI", "FERRARI", "LAMBORGHINI", "BENTLEY", "ROLLS-ROYCE"]
 
 def get_gspread_client():
@@ -47,7 +48,7 @@ def get_or_create_creds():
         user = data[1][1] if len(data) > 1 and len(data[1]) > 1 else "Admin02"
         pwd = data[2][1] if len(data) > 2 and len(data[2]) > 1 else "Eric740625"
         return user, pwd
-    except:
+    except Exception:
         try:
             ws = doc.add_worksheet(title="系統設定", rows="10", cols="5")
             ws.update(values=[["項目", "數值"], ["後台帳號", "Admin02"], ["後台密碼", "Eric740625"]], range_name='A1')
@@ -129,15 +130,12 @@ def load_and_clean_data():
 
     df.columns = [str(c).strip() for c in df.columns]
     if '採購' not in df.columns: df['採購'] = df.get('採購人', df.get('車輛負責人', df.get('負責人', "")))
-
     df['編號'] = df.apply(lambda r: f"{str(r.get('舊編號','')).replace('.0','')} ({str(r.get('新編號','')).replace('.0','')})" if str(r.get('新編號','')).strip() and str(r.get('舊編號','')).strip() else (str(r.get('新編號','')) or str(r.get('舊編號',''))), axis=1)
-    
     price_col = '網路' if '網路' in df.columns else ('售價' if '售價' in df.columns else ('價格' if '價格' in df.columns else '底價'))
     df['顯示價格'] = df[price_col].apply(clean_money) if price_col in df.columns else 0.0
 
     brand_col = '廠牌' if '廠牌' in df.columns else ('品牌' if '品牌' in df.columns else None)
     if brand_col: df['廠牌'] = df[brand_col].apply(lambda b: re.sub(r'[\u4e00-\u9fa5]', '', str(b).split('/')[0]).strip().upper())
-
     if '年份' in df.columns: df['年份'] = df['年份'].astype(str)
     if '里程' in df.columns: df['里程'] = df['里程'].apply(lambda m: "" if pd.isna(m) or str(m).strip().lower() == 'nan' else (str(m).replace(',', '').strip()[:-2] if str(m).replace(',', '').strip().endswith('.0') else str(m).replace(',', '').strip()))
 
@@ -525,11 +523,9 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 curr_c_row = c_rows[1].text.strip()
                 if curr_c_row == last_c_row: break
                 last_c_row = curr_c_row
-                
                 c_headers = [th.text.strip() for th in c_rows[0].find_all(["th", "td"])]
                 p_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["車牌", "車號", "牌照"])), -1)
                 v_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["車身", "車架", "VIN"])), -1)
-                    
                 for row in c_rows[1:]:
                     tds = row.find_all("td")
                     if not tds: continue
@@ -590,7 +586,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 row_vin = str(row_dict.get("車身", "")).strip().upper()
                 row_dict["查定表PKey"] = pkey_map.get(row_plate) or pkey_map.get(row_vin) or ""
                 all_cars_dicts.append(row_dict)
-                
             page_num += 1
 
         if len(all_cars_dicts) < 100: return {"status": "error", "message": f"🚨 數據異常熔斷！"}
@@ -680,7 +675,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 sold_gsheet.update(values=final_sold_data, range_name='A1')
 
         load_and_clean_data()
-        
         msg = f"🤖 更新成功！共抓取 {len(all_cars_dicts)} 筆車源。{status_msg}"
         if new_count > 0:
             msg += f"\n✨ 自動發現 {new_count} 台新車：\n" + "\n".join(new_cars_list[:10])
@@ -711,7 +705,14 @@ def view_inspection(PKey: str = ""):
             view_api_session.post(login_url, data={"strID": u, "strPW": p, "Submit": "送出"})
             res = view_api_session.get(target_url, timeout=10); res.encoding = 'utf-8'
         soup = BeautifulSoup(res.text, "html.parser")
-        for script in soup.find_all("script"): script.decompose()
+        
+        # 🎯 精準狙擊：只移除會跳轉的腳本，保留畫面的繪圖腳本
+        for script in soup.find_all("script"):
+            if script.string:
+                s_lower = script.string.lower()
+                if "location.href" in s_lower or "window.location" in s_lower or "location.replace" in s_lower:
+                    script.string = "console.log('攔截跳轉');"
+                    
         for meta in soup.find_all("meta", attrs={"http-equiv": re.compile(r"refresh", re.I)}): meta.decompose()
         base_tag = soup.new_tag('base', href="https://www.jwincar.com.tw/manage/accounting/")
         if soup.head: soup.head.insert(0, base_tag)

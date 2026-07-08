@@ -34,7 +34,6 @@ cached_valid_u, cached_valid_p = None, None
 
 KNOWN_MAKES = ["TOYOTA", "HONDA", "BENZ", "BMW", "AUDI", "LEXUS", "VOLVO", "VW", "MAZDA", "NISSAN", "FORD", "PORSCHE", "MG", "SKODA", "MINI", "KIA", "SUZUKI", "MITSUBISHI", "LUXGEN", "LAND ROVER", "JAGUAR", "SUBARU", "TESLA", "MASERATI", "FERRARI", "LAMBORGHINI", "BENTLEY", "ROLLS-ROYCE"]
 
-# 💡 核心引擎：60秒極速快取 (完美解決 Google API 配額滿的問題)
 class TTLCache:
     def __init__(self, ttl=60):
         self.ttl = ttl
@@ -502,7 +501,7 @@ def process_excel_file(filename: str, contents: bytes):
 
 def get_valid_credentials(force_u=None, force_p=None):
     global cached_valid_u, cached_valid_p
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)"}
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
     login_url = "https://www.jwincar.com.tw/manage/login/index.php"
     data_url = "https://www.jwincar.com.tw/manage/accounting/accounting_car_list.php?stock=all"
     
@@ -727,7 +726,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     except Exception as e: return {"status": "error", "message": f"爬蟲發生錯誤：{str(e)}"}
     finally: gc.collect()
 
-# 💡 查定表核心修復：防止登出時的 JS 跳轉導致畫面全白
 @app.get("/api/view_inspection", response_class=HTMLResponse)
 def view_inspection(PKey: str = ""):
     global view_api_session
@@ -745,7 +743,6 @@ def view_inspection(PKey: str = ""):
         res = view_api_session.get(target_url, timeout=10)
         res.encoding = 'utf-8'
         
-        # 🛡️ 智慧識別：如果被後台登出，回傳的文字會包含跳轉或登入字眼
         if "login/index.php" in res.text or "請先登入" in res.text or "請輸入密碼" in res.text or "login" in res.url.lower():
             u, p = get_valid_credentials()
             if not u: return "<h1>❌ 錯誤：自動登入失敗，請確認後台密碼。</h1>"
@@ -757,7 +754,6 @@ def view_inspection(PKey: str = ""):
             
         soup = BeautifulSoup(res.text, "html.parser")
         
-        # 1. 攔截自動跳轉腳本，改用安全替換，保護原生繪圖 JS 不被破壞
         for script in soup.find_all("script"):
             if script.string:
                 s_code = script.string
@@ -774,12 +770,10 @@ def view_inspection(PKey: str = ""):
         if soup.head: soup.head.insert(0, base_tag)
         else: soup.insert(0, base_tag)
         
-        # 2. CSS 雙層鎖定：強制隱藏列印、編輯與修改按鈕
         style_tag = soup.new_tag('style')
         style_tag.string = "body { background-color: #f3f4f6; } .print-btn { display: none !important; } input[value*='編輯'], input[value*='修改'], .edit-btn, button[id*='edit'], a[href*='edit'] { display: none !important; }"
         if soup.head: soup.head.append(style_tag)
         
-        # 3. 物理性刪除編輯與修改按鈕
         for btn in soup.find_all(["input", "button", "a"]):
             val = str(btn.get("value", "")).strip()
             txt = btn.text.strip()
@@ -788,7 +782,7 @@ def view_inspection(PKey: str = ""):
                 
         return str(soup)
     except Exception as e:
-        return f"<h1>❌ 抓取失敗：網路異常或伺服器錯誤 ({str(e)})</h1>"
+        return f"<h1>❌ 抓取失敗：網路異常 ({str(e)})</h1>"
 
 @app.get("/api/sync_car_source")
 def api_sync_car_source(user_id: str = "", u: str = "", p: str = ""):
@@ -797,25 +791,112 @@ def api_sync_car_source(user_id: str = "", u: str = "", p: str = ""):
     if not valid_u: return {"status": "need_login", "message": "⚠️ 系統自動嘗試備用密碼失敗，請手動輸入最新的帳號與密碼。"}
     return core_sync_car_source(user_id, valid_u, valid_p)
 
+# 💡 最新強化的 Regex 解析引擎
 @app.post("/api/parse_ad")
 async def parse_ad(request: Request):
     data = await request.json(); raw_text = data.get("text", "").strip()
     found_brand, found_model = "", ""
     lines = [l.strip() for l in raw_text.split('\n') if l.strip()]
+
     for brand in KNOWN_MAKES:
-        if brand.lower() in raw_text.lower(): found_brand = brand; break
-    if lines:
-        clean_line = re.sub(r'【.*?】', '', lines[0])
+        if brand.lower() in raw_text.lower():
+            found_brand = brand; break
+
+    target_line = ""
+    for line in lines:
+        if "】" in line or (found_brand and found_brand.lower() in line.lower()):
+            target_line = line; break
+    if not target_line and lines: target_line = lines[0]
+
+    if target_line:
+        clean_line = re.sub(r'【.*?】', '', target_line)
         clean_line = re.sub(r'\d{4}', '', clean_line)
         if found_brand: clean_line = re.compile(re.escape(found_brand), re.IGNORECASE).sub("", clean_line)
         found_model = clean_line.strip()
+
     man_date_str = ""
-    m = re.search(r'(20\d{2})\s*年\s*(\d{1,2})', raw_text)
-    if m: man_date_str = f"{m.group(1)}年{int(m.group(2))}月"
+    man_patterns = [
+        (r'(20\d{2})\s*年\s*(\d{1,2})\s*月?\s*出廠', lambda m: f"{m.group(1)}年{int(m.group(2))}月"),
+        (r'(20\d{2})[^\d]{1,10}(\d{1,2})[^\d]*出廠', lambda m: f"{m.group(1)}年{int(m.group(2))}月"),
+        (r'出廠[^\d]{0,10}(20\d{2})[^\d]+(\d{1,2})', lambda m: f"{m.group(1)}年{int(m.group(2))}月"),
+        (r'(20\d{2})[^\d]*出廠', lambda m: f"{m.group(1)}年1月"),
+        (r'^(20\d{2})年\s', lambda m: f"{m.group(1)}年1月"), 
+        (r'(20\d{2})\s*年\s*/?\s*(\d{1,2})\s*月出廠', lambda m: f"{m.group(1)}年{int(m.group(2))}月"),
+    ]
+    for pat, formatter in man_patterns:
+        match = re.search(pat, raw_text, re.MULTILINE)
+        if match: man_date_str = formatter(match); break
+
+    lic_date_str = ""
+    lic_patterns = [
+        (r'(20\d{2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})[^\d]*領牌', lambda m: f"{m.group(1)}年{int(m.group(2)):02d}月{int(m.group(3)):02d}日"),
+        (r'(20\d{2})[^\d]+(\d{1,2})[^\d]*領牌', lambda m: f"{m.group(1)}年{int(m.group(2)):02d}月"),
+        (r'領牌.*?(20\d{2})[^\d]+(\d{1,2})[^\d]+(\d{1,2})', lambda m: f"{m.group(1)}年{int(m.group(2)):02d}月{int(m.group(3)):02d}日"),
+        (r'(20\d{2})\s*年\s*/?\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日領牌', lambda m: f"{m.group(1)}年{int(m.group(2)):02d}月{int(m.group(3)):02d}日"),
+    ]
+    for pat, formatter in lic_patterns:
+        match = re.search(pat, raw_text)
+        if match: lic_date_str = formatter(match); break
+
     mileage_str = ""
-    m_m = re.search(r'里程[：:]?\s*([0-9,]+)', raw_text)
-    if m_m: mileage_str = f"{m_m.group(1)}公里"
-    return {"status": "success", "data": {"brand": found_brand, "model": found_model, "man_date": man_date_str, "lic_date": "", "mileage": mileage_str, "new_price": "", "store_price": "", "promo_price": "", "loan_term": "", "loan_monthly": ""}}
+    m = re.search(r'里程[：:]?\s*([0-9,]+)', raw_text)
+    if not m: m = re.search(r'([0-9,]+)\s*公里', raw_text)
+    if not m: m = re.search(r'([0-9,]+)\s*km', raw_text, re.IGNORECASE)
+    if m: mileage_str = f"{m.group(1)}公里"
+
+    clean_price_text = raw_text.replace(',', '')
+    new_p = ""
+    store_p = ""
+    promo_p = ""
+
+    new_p_match = re.search(r'新車.*?([\d.]+)萬', clean_price_text)
+    if new_p_match: new_p = new_p_match.group(1)
+
+    store_p_match = re.search(r'店[內面].*?([\d.]+)萬', clean_price_text)
+    if store_p_match: store_p = store_p_match.group(1)
+
+    for rg in [r'優惠價.*?([\d.]+)萬', r'折扣.*?([\d.]+)萬', r'網路[促銷價].*?([\d.]+)萬', r'最新優惠.*?([\d.]+)萬']:
+        pm = re.search(rg, clean_price_text)
+        if pm: promo_p = pm.group(1); break
+
+    if not store_p and promo_p:
+        try: store_p = f"{float(promo_p)+3:.1f}".replace(".0", "")
+        except: pass
+    if store_p and not promo_p:
+        try: promo_p = f"{float(store_p)-3:.1f}".replace(".0", "")
+        except: pass
+
+    if not store_p and not promo_p:
+        valid_prices = []
+        for match_m in re.finditer(r'([\d.]+)萬', clean_price_text):
+            try:
+                v = float(match_m.group(1))
+                if not (5.0 <= v <= 5000.0): continue
+                if new_p and abs(v - float(new_p)) < 0.1: continue
+                valid_prices.append(v)
+            except: pass
+        if valid_prices:
+            valid_prices.sort()
+            promo_p = str(valid_prices[0])
+            if len(valid_prices) > 1: store_p = str(valid_prices[1])
+            else: store_p = f"{float(promo_p)+3:.1f}".replace(".0", "")
+
+    loan_term = ""
+    loan_monthly = ""
+    loan_match = re.search(r'月付.*?(\d+)\$?\s*[:/]\s*(\d+)期', clean_price_text)
+    if not loan_match: loan_match = re.search(r'\$(\d+)\s*[:/]\s*(\d+)期', clean_price_text)
+
+    if loan_match:
+        v1, v2 = loan_match.group(1), loan_match.group(2)
+        if int(v1) > 100: loan_monthly, loan_term = v1, v2
+        else: loan_term, loan_monthly = v1, v2
+    else:
+        term_match = re.search(r'(\d+)期', clean_price_text)
+        if term_match: loan_term = term_match.group(1)
+        monthly_match = re.search(r'月付.*?(\d+)', clean_price_text)
+        if monthly_match: loan_monthly = monthly_match.group(1)
+
+    return {"status": "success", "data": {"brand": found_brand, "model": found_model, "man_date": man_date_str, "lic_date": lic_date_str, "mileage": mileage_str, "new_price": new_p, "store_price": store_p, "promo_price": promo_p, "loan_term": loan_term, "loan_monthly": loan_monthly}}
 
 @app.post("/api/export_board")
 async def export_board(request: Request):
@@ -975,7 +1056,9 @@ def get_simple_data():
 @app.get("/api/customers")
 def get_customers():
     try:
-        raw_values = get_gspread_client().open_by_key(SHEET_ID).worksheet("客資紀錄").get_all_values()
+        client = get_gspread_client()
+        sheet = client.open_by_key(SHEET_ID).worksheet("客資紀錄")
+        raw_values = sheet.get_all_values()
         if not raw_values or len(raw_values) < 2: return {"status": "success", "data": []}
         headers = [str(h).strip() for h in raw_values[0]]
         records = []
@@ -994,7 +1077,10 @@ async def add_customer(request: Request):
         date_str = tw_time.strftime("%Y/%m/%d %H:%M")
         phone_str = str(data.get("phone", "")).strip()
         if phone_str.startswith("0"): phone_str = f"'{phone_str}"
-        get_gspread_client().open_by_key(SHEET_ID).worksheet("客資紀錄").append_row([date_str, data.get("name", ""), phone_str, data.get("needs", ""), data.get("memo", "")], value_input_option='USER_ENTERED')
+        row_data = [date_str, data.get("name", ""), phone_str, data.get("needs", ""), data.get("memo", "")]
+        client = get_gspread_client()
+        sheet = client.open_by_key(SHEET_ID).worksheet("客資紀錄")
+        sheet.append_row(row_data, value_input_option='USER_ENTERED')
         return {"status": "success", "message": "客資已新增"}
     except Exception as e: return {"status": "error", "message": str(e)}
 
@@ -1042,7 +1128,9 @@ def handle_text_message(event):
                 memo = parts[4] if len(parts) > 4 else ""
                 phone_val = f"'{phone}" if phone.startswith("0") else phone
                 tw_time = (datetime.utcnow() + timedelta(hours=8)).strftime("%Y/%m/%d %H:%M")
-                get_gspread_client().open_by_key(SHEET_ID).worksheet("客資紀錄").append_row([tw_time, name, phone_val, needs, "", "新客詢問", memo], value_input_option='USER_ENTERED')
+                client = get_gspread_client()
+                sheet = client.open_by_key(SHEET_ID).worksheet("客資紀錄")
+                sheet.append_row([tw_time, name, phone_val, needs, "", "新客詢問", memo], value_input_option='USER_ENTERED')
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"✅ 客資建檔成功！\n姓名：{name}"))
             else:
                 line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 格式錯誤！請輸入：\n客資 / 姓名 / 電話 / 需求"))
@@ -1062,7 +1150,10 @@ def handle_file_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 抱歉，您目前沒有「上傳檔案」的權限。"))
         return
 
-    if not (filename.lower().endswith('.xlsx') or filename.lower().endswith('.pdf')):
+    is_excel = filename.lower().endswith('.xlsx')
+    is_pdf = filename.lower().endswith('.pdf')
+    
+    if not (is_excel or is_pdf):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text="❌ 請上傳 .xlsx 或是 .pdf 格式的檔案！"))
         return
     
@@ -1073,7 +1164,7 @@ def handle_file_message(event):
             message_content = line_bot_api.get_message_content(message_id)
             contents = b"".join([chunk for chunk in message_content.iter_content()])
             
-            if filename.lower().endswith('.pdf'): result = process_pdf_file(filename, contents)
+            if is_pdf: result = process_pdf_file(filename, contents)
             elif "customer" in filename.lower() or "客資" in filename: result = process_crm_excel(filename, contents)
             else: result = process_excel_file(filename, contents)
                 

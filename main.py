@@ -3,7 +3,7 @@ from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import openpyxl
-from openpyxl.styles import Alignment, Font
+from openpyxl.styles import Alignment, Font, Border, Side, PatternFill
 import gspread
 from google.oauth2.service_account import Credentials
 import re, os, io, threading, uuid, gc, time
@@ -11,12 +11,21 @@ from datetime import timedelta, datetime
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import quote
+
+# LINE Bot 官方套件
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, FileMessage
 
 app = FastAPI(title="🚗 杰運汽車新竹店阿鍇專用 - 內部系統")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 LINE_CHANNEL_ACCESS_TOKEN = "Vetc+mW1cmCmkEkXI7GcWpVtqqCkSEDSp/wQuOrQB0SA2GCanyXBmMczQzRW+CK8Obpv2gOMap4rtxRQIa/8/8eqCpdBm/zwozhJndUIEe+NSwPITjCVkPDbKG3usLC/jkh8KlqEkbDoAM8XFYTLRwdB04t89/1O/w1cDnyilFU="
 LINE_CHANNEL_SECRET = "ff5426c6ab3102189f8d45f0eca69652"
@@ -30,9 +39,15 @@ SIMPLE_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?form
 
 cached_df = None
 view_api_session = None
-cached_valid_u, cached_valid_p = None, None
+cached_valid_u = None
+cached_valid_p = None
 
-KNOWN_MAKES = ["TOYOTA", "HONDA", "BENZ", "BMW", "AUDI", "LEXUS", "VOLVO", "VW", "MAZDA", "NISSAN", "FORD", "PORSCHE", "MG", "SKODA", "MINI", "KIA", "SUZUKI", "MITSUBISHI", "LUXGEN", "LAND ROVER", "JAGUAR", "SUBARU", "TESLA", "MASERATI", "FERRARI", "LAMBORGHINI", "BENTLEY", "ROLLS-ROYCE"]
+KNOWN_MAKES = [
+    "TOYOTA", "HONDA", "BENZ", "BMW", "AUDI", "LEXUS", "VOLVO", "VW", "MAZDA", 
+    "NISSAN", "FORD", "PORSCHE", "MG", "SKODA", "MINI", "KIA", "SUZUKI", 
+    "MITSUBISHI", "LUXGEN", "LAND ROVER", "JAGUAR", "SUBARU", "TESLA", 
+    "MASERATI", "FERRARI", "LAMBORGHINI", "BENTLEY", "ROLLS-ROYCE"
+]
 
 class TTLCache:
     def __init__(self, ttl=60):
@@ -40,24 +55,34 @@ class TTLCache:
         self.cache = {}
         self.timestamps = {}
         self.lock = threading.Lock()
+        
     def get(self, key):
         with self.lock:
-            if key in self.cache and time.time() - self.timestamps.get(key, 0) < self.ttl: return self.cache[key]
+            if key in self.cache and time.time() - self.timestamps.get(key, 0) < self.ttl:
+                return self.cache[key]
             return None
+            
     def set(self, key, value):
         with self.lock:
             self.cache[key] = value
             self.timestamps[key] = time.time()
+            
     def clear(self, key):
         with self.lock:
-            if key in self.cache: del self.cache[key], self.timestamps[key]
+            if key in self.cache:
+                del self.cache[key]
+                del self.timestamps[key]
 
 api_cache = TTLCache(ttl=60)
 
 def get_gspread_client():
     key_path = "/etc/secrets/google_key.json"
-    if not os.path.exists(key_path): raise Exception("尚未設定 Google API 憑證！")
-    creds = Credentials.from_service_account_file(key_path, scopes=['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive'])
+    if not os.path.exists(key_path):
+        raise Exception("尚未設定 Google API 憑證！")
+    creds = Credentials.from_service_account_file(
+        key_path, 
+        scopes=['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+    )
     return gspread.authorize(creds)
 
 def get_or_create_creds():
@@ -70,11 +95,12 @@ def get_or_create_creds():
         pwd = data[2][1] if len(data) > 2 and len(data[2]) > 1 else "Eric740625"
         api_cache.set("sys_creds", (user, pwd))
         return user, pwd
-    except: return "Admin02", "Eric740625"
+    except Exception:
+        return "Admin02", "Eric740625"
 
 def update_creds(user, pwd):
     try: get_gspread_client().open_by_key(SHEET_ID).worksheet("系統設定").update(values=[[user], [pwd]], range_name='B2:B3')
-    except: pass
+    except Exception: pass
 
 def get_backup_credentials_from_sheet():
     cached = api_cache.get("bkp_creds")
@@ -87,7 +113,7 @@ def get_backup_credentials_from_sheet():
                 b_creds.append((str(row[1]).strip(), str(row[2]).strip() if len(row) > 2 else "123456"))
         api_cache.set("bkp_creds", b_creds)
         return b_creds
-    except: return []
+    except Exception: return []
 
 def check_permission(user_id, action):
     if not user_id: return False
@@ -98,18 +124,20 @@ def check_permission(user_id, action):
             if not raw_data: return False
             records = [dict(zip(raw_data[0], row)) for row in raw_data[1:]]
             api_cache.set("perm_records", records)
-        except: return False
-        
+        except Exception: return False
+            
     tw_now = datetime.utcnow() + timedelta(hours=8)
     for r in records:
         if str(r.get("LINE ID", "")).strip() == str(user_id).strip():
             is_super = str(r.get("最高管理員", "")).strip().upper() == "V"
             exp_str = str(r.get("到期日", "")).strip()
+            
             if exp_str and not is_super:
                 try:
                     exp_date = datetime.strptime(exp_str.replace("-", "/"), "%Y/%m/%d") + timedelta(days=1)
                     if tw_now >= exp_date: return False 
-                except: pass
+                except Exception: pass
+                    
             if is_super: return True
             return str(r.get(action, "")).strip().upper() == "V"
     return False
@@ -122,7 +150,7 @@ def clean_money(val):
         try:
             v = float(matches[-1])
             return round(v / 10000, 2) if v > 1000 else v
-        except: return 0.0
+        except Exception: return 0.0
     return 0.0
 
 def parse_roc_date(date_val):
@@ -135,13 +163,14 @@ def parse_roc_date(date_val):
             y, m, d = int(parts[0]), int(parts[1]), int(parts[2])
             return pd.Timestamp(year=y + 1911 if y < 1911 else y, month=m, day=d)
         return pd.to_datetime(s, errors='coerce')
-    except: return pd.NaT
+    except Exception: return pd.NaT
 
 def load_and_clean_data():
     global cached_df
     client = get_gspread_client()
     doc = client.open_by_key(SHEET_ID)
     dfs = []
+    
     try:
         ws_main = doc.worksheet("E車源")
         df_main = pd.read_csv(f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={ws_main.id}")
@@ -149,10 +178,12 @@ def load_and_clean_data():
             for idx, row in df_main.iterrows():
                 vals = [str(x).strip() for x in row.values]
                 if "車牌" in vals and ("廠牌" in vals or "品牌" in vals or "車型" in vals):
-                    df_main.columns = vals; df_main = df_main.iloc[idx+1:].reset_index(drop=True); break
+                    df_main.columns = vals
+                    df_main = df_main.iloc[idx+1:].reset_index(drop=True)
+                    break
         df_main['is_sold_sheet'] = False
         dfs.append(df_main)
-    except: pass
+    except Exception: pass
 
     if not dfs: 
         df = pd.read_csv(CSV_URL)
@@ -160,22 +191,38 @@ def load_and_clean_data():
             for idx, row in df.iterrows():
                 vals = [str(x).strip() for x in row.values]
                 if "車牌" in vals:
-                    df.columns = vals; df = df.iloc[idx+1:].reset_index(drop=True); break
+                    df.columns = vals
+                    df = df.iloc[idx+1:].reset_index(drop=True)
+                    break
         df['is_sold_sheet'] = False
-    else: df = pd.concat(dfs, ignore_index=True)
+    else: 
+        df = pd.concat(dfs, ignore_index=True)
 
     df.columns = [str(c).strip() for c in df.columns]
-    if '採購' not in df.columns: df['採購'] = df.get('採購人', df.get('車輛負責人', df.get('負責人', "")))
+    if '採購' not in df.columns: 
+        df['採購'] = df.get('採購人', df.get('車輛負責人', df.get('負責人', "")))
 
-    df['編號'] = df.apply(lambda r: f"{str(r.get('舊編號','')).replace('.0','')} ({str(r.get('新編號','')).replace('.0','')})" if str(r.get('新編號','')).strip() and str(r.get('舊編號','')).strip() else (str(r.get('新編號','')) or str(r.get('舊編號',''))), axis=1)
+    df['編號'] = df.apply(
+        lambda r: f"{str(r.get('舊編號','')).replace('.0','')} ({str(r.get('新編號','')).replace('.0','')})" 
+        if str(r.get('新編號','')).strip() and str(r.get('舊編號','')).strip() 
+        else (str(r.get('新編號','')) or str(r.get('舊編號',''))), 
+        axis=1
+    )
     
     price_col = '網路' if '網路' in df.columns else ('售價' if '售價' in df.columns else ('價格' if '價格' in df.columns else '底價'))
     df['顯示價格'] = df[price_col].apply(clean_money) if price_col in df.columns else 0.0
 
     brand_col = '廠牌' if '廠牌' in df.columns else ('品牌' if '品牌' in df.columns else None)
-    if brand_col: df['廠牌'] = df[brand_col].apply(lambda b: re.sub(r'[\u4e00-\u9fa5]', '', str(b).split('/')[0]).strip().upper())
+    if brand_col: 
+        df['廠牌'] = df[brand_col].apply(lambda b: re.sub(r'[\u4e00-\u9fa5]', '', str(b).split('/')[0]).strip().upper())
+        
     if '年份' in df.columns: df['年份'] = df['年份'].astype(str)
-    if '里程' in df.columns: df['里程'] = df['里程'].apply(lambda m: "" if pd.isna(m) or str(m).strip().lower() == 'nan' else (str(m).replace(',', '').strip()[:-2] if str(m).replace(',', '').strip().endswith('.0') else str(m).replace(',', '').strip()))
+        
+    if '里程' in df.columns: 
+        df['里程'] = df['里程'].apply(
+            lambda m: "" if pd.isna(m) or str(m).strip().lower() == 'nan' 
+            else (str(m).replace(',', '').strip()[:-2] if str(m).replace(',', '').strip().endswith('.0') else str(m).replace(',', '').strip())
+        )
 
     if '車輛位置' in df.columns:
         def clean_loc(loc):
@@ -193,6 +240,7 @@ def load_and_clean_data():
         if '展帆' in full: return '展帆'
         if '租車' in full or '杰租' in full: return '杰租'
         return '杰運' if '杰' in full else '其他'
+        
     df['filter_property'] = df.apply(normalize_property, axis=1)
     
     if '狀態' in df.columns:
@@ -224,7 +272,9 @@ def process_crm_excel(filename: str, contents: bytes):
             for k, v in r_dict.items():
                 if ("手機" in k or "電話" in k) and v:
                     clean_p = re.sub(r'\D', '', v)
-                    if clean_p.startswith("09") and len(clean_p) >= 10: phone = clean_p[:10]; break
+                    if clean_p.startswith("09") and len(clean_p) >= 10: 
+                        phone = clean_p[:10]
+                        break
             if not phone: continue 
             date_val = r_dict.get("生效日", "") or r_dict.get("建立時間", "")
             memo = r_dict.get("附註", "")
@@ -250,8 +300,10 @@ def process_crm_excel(filename: str, contents: bytes):
                     padded = list(r)
                     while len(padded) < len(hdrs): padded.append("")
                     old_records.append(dict(zip(hdrs, padded)))
-        except:
-            sheet = doc.add_worksheet("客資紀錄", 1000, 10); old_records = []
+        except Exception:
+            sheet = doc.add_worksheet("客資紀錄", 1000, 10)
+            old_records = []
+            
         merged_dict = {str(rec.get("電話", "")).replace("'", "").strip(): rec for rec in old_records if str(rec.get("電話", "")).replace("'", "").strip()}
         update_count, add_count = 0, 0
         for nc in new_customers:
@@ -261,6 +313,7 @@ def process_crm_excel(filename: str, contents: bytes):
                 merged_dict[p].update({k: v for k, v in nc.items() if v and (k != "狀態" or v != "新客詢問")})
             else:
                 add_count += 1; merged_dict[p] = nc
+                
         headers_crm = ["日期", "姓名", "電話", "需求車款", "負責業務", "狀態", "備註"]
         final_data = [headers_crm] + [[str(rec.get(h, "")) for h in headers_crm] for rec in merged_dict.values()]
         sheet.clear(); sheet.update(values=final_data, range_name="A1")
@@ -278,7 +331,7 @@ def process_pdf_file(filename: str, contents: bytes):
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)
         try: target_gsheet = doc.worksheet(target_tab_name)
-        except: return {"status": "error", "message": f"找不到 {target_tab_name}"}
+        except Exception: return {"status": "error", "message": f"找不到 {target_tab_name}"}
         all_rows, headers = [], []
         with pdfplumber.open(io.BytesIO(contents)) as pdf:
             for page in pdf.pages:
@@ -324,7 +377,7 @@ def get_color_rgb(cell):
             if rgb_hex in ['00000000', 'FFFFFFFF']: return None
             if len(rgb_hex) == 8: rgb_hex = rgb_hex[2:] 
             if len(rgb_hex) == 6: return (int(rgb_hex[0:2], 16) / 255.0, int(rgb_hex[2:4], 16) / 255.0, int(rgb_hex[4:6], 16) / 255.0)
-    except: pass
+    except Exception: pass
     return None
 
 def process_excel_file(filename: str, contents: bytes):
@@ -336,7 +389,7 @@ def process_excel_file(filename: str, contents: bytes):
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)
         try: target_gsheet_main = doc.worksheet(target_tab_name)
-        except: return {"status": "error", "message": f"找不到分頁「{target_tab_name}」"}
+        except Exception: return {"status": "error", "message": f"找不到分頁「{target_tab_name}」"}
 
         data_to_upload_main, color_requests_main = [], []
 
@@ -365,7 +418,7 @@ def process_excel_file(filename: str, contents: bytes):
                         elif v_idx != -1 and len(row) > v_idx and str(row[v_idx]).strip(): key = str(row[v_idx]).strip()
                         if key and "車款" not in key and "欄" not in key: old_keys.add(str(key).replace('.0', '').strip())
                 else: is_excel_initial = True
-            except: is_excel_initial = True
+            except Exception: is_excel_initial = True
 
             col_model = headers_main.index("車型") if "車型" in headers_main else -1
             plate_idx = headers_main.index("車牌") if "車牌" in headers_main else -1
@@ -447,7 +500,7 @@ def process_excel_file(filename: str, contents: bytes):
                         elif v_idx != -1 and len(row) > v_idx and str(row[v_idx]).strip(): key = str(row[v_idx]).strip()
                         if key: old_keys.add(str(key).replace('.0', '').strip())
                 else: is_excel_initial = True
-            except: is_excel_initial = True
+            except Exception: is_excel_initial = True
 
             col_model = headers_main.index("車型") if "車型" in headers_main else -1
             plate_idx = headers_main.index("車牌") if "車牌" in headers_main else -1
@@ -511,7 +564,7 @@ def get_valid_credentials(force_u=None, force_p=None):
             session.post(login_url, data={"strID": force_u, "strPW": force_p, "Submit": "送出"})
             if BeautifulSoup(session.get(data_url + "&page=1", timeout=10).text, "html.parser").find("table", {"id": "carTable"}):
                 return force_u, force_p
-        except: pass
+        except Exception: pass
         return None, None
 
     if cached_valid_u and cached_valid_p:
@@ -520,7 +573,7 @@ def get_valid_credentials(force_u=None, force_p=None):
             session.post(login_url, data={"strID": cached_valid_u, "strPW": cached_valid_p, "Submit": "送出"})
             if BeautifulSoup(session.get(data_url + "&page=1", timeout=10).text, "html.parser").find("table", {"id": "carTable"}):
                 return cached_valid_u, cached_valid_p
-        except: pass
+        except Exception: pass
 
     credentials_to_try = []
     try:
@@ -528,7 +581,7 @@ def get_valid_credentials(force_u=None, force_p=None):
         credentials_to_try.append((sheet_u, sheet_p))
         for bu, bp in get_backup_credentials_from_sheet():
             if (bu, bp) not in credentials_to_try: credentials_to_try.append((bu, bp))
-    except: pass
+    except Exception: pass
     
     for test_u, test_p in credentials_to_try:
         try:
@@ -538,9 +591,9 @@ def get_valid_credentials(force_u=None, force_p=None):
                 cached_valid_u, cached_valid_p = test_u, test_p
                 try:
                     if test_u != sheet_u or test_p != sheet_p: update_creds(test_u, test_p)
-                except: pass
+                except Exception: pass
                 return test_u, test_p
-        except: continue
+        except Exception: continue
     return None, None
 
 def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
@@ -560,14 +613,17 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 c_soup = BeautifulSoup(c_res.text, "html.parser")
                 c_table = c_soup.find("table")
                 if not c_table: break
+                
                 c_rows = c_table.find_all("tr")
                 if len(c_rows) <= 1: break
                 curr_c_row = c_rows[1].text.strip()
                 if curr_c_row == last_c_row: break
                 last_c_row = curr_c_row
+                
                 c_headers = [th.text.strip() for th in c_rows[0].find_all(["th", "td"])]
                 p_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["車牌", "車號", "牌照"])), -1)
                 v_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["車身", "車架", "VIN"])), -1)
+                
                 for row in c_rows[1:]:
                     tds = row.find_all("td")
                     if not tds: continue
@@ -577,6 +633,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                         if btn and btn.has_attr("onclick"):
                             m = re.search(r'PKey=(\d+)', btn["onclick"])
                             if m: row_pkey = m.group(1); break
+                            
                     if row_pkey:
                         if p_col != -1 and p_col < len(tds):
                             txt = tds[p_col].text.strip().upper().replace("-", "")
@@ -585,7 +642,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                             txt = tds[v_col].text.strip().upper()
                             if txt and txt not in ["—", "-", "NAN"]: pkey_map[txt] = row_pkey
                 cp += 1
-        except: pass
+        except Exception: pass
 
         all_cars_dicts = []
         website_headers = []
@@ -597,6 +654,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             soup = BeautifulSoup(res.text, "html.parser")
             table = soup.find("table", {"id": "carTable"})
             if not table: break
+            
             rows = table.find_all("tr")
             if len(rows) <= 1: break 
             
@@ -630,7 +688,8 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 all_cars_dicts.append(row_dict)
             page_num += 1
 
-        if len(all_cars_dicts) < 100: return {"status": "error", "message": f"🚨 數據異常熔斷！為保護原始資料庫已自動拒絕寫入。"}
+        if len(all_cars_dicts) < 100: 
+            return {"status": "error", "message": f"🚨 數據異常熔斷！為保護原始資料庫已自動拒絕寫入。"}
 
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)
@@ -688,9 +747,9 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         status_col_idx = final_headers.index("狀態") if "狀態" in final_headers else -1
         if status_col_idx != -1:
             try: sold_gsheet = doc.worksheet("E車源售出")
-            except: sold_gsheet = doc.add_worksheet(title="E車源售出", rows="1000", cols="30")
+            except Exception: sold_gsheet = doc.add_worksheet(title="E車源售出", rows="1000", cols="30")
             try: old_records = sold_gsheet.get_all_records()
-            except: old_records = []
+            except Exception: old_records = []
             
             new_records = []
             for row in data_to_upload[1:]:
@@ -723,8 +782,10 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             if new_count > 10: msg += f"\n...等共 {new_count} 台"
         return {"status": "success", "message": msg}
 
-    except Exception as e: return {"status": "error", "message": f"爬蟲發生錯誤：{str(e)}"}
-    finally: gc.collect()
+    except Exception as e: 
+        return {"status": "error", "message": f"爬蟲發生錯誤：{str(e)}"}
+    finally: 
+        gc.collect()
 
 @app.get("/api/view_inspection", response_class=HTMLResponse)
 def view_inspection(PKey: str = ""):
@@ -791,28 +852,34 @@ def api_sync_car_source(user_id: str = "", u: str = "", p: str = ""):
     if not valid_u: return {"status": "need_login", "message": "⚠️ 系統自動嘗試備用密碼失敗，請手動輸入最新的帳號與密碼。"}
     return core_sync_car_source(user_id, valid_u, valid_p)
 
-# 💡 最新強化的 Regex 解析引擎
+# 💡 最新強化的 Regex 解析引擎，防止車名抓到奇怪字眼
 @app.post("/api/parse_ad")
 async def parse_ad(request: Request):
-    data = await request.json(); raw_text = data.get("text", "").strip()
+    data = await request.json()
+    raw_text = data.get("text", "").strip()
     found_brand, found_model = "", ""
     lines = [l.strip() for l in raw_text.split('\n') if l.strip()]
 
     for brand in KNOWN_MAKES:
         if brand.lower() in raw_text.lower():
-            found_brand = brand; break
+            found_brand = brand
+            break
 
     target_line = ""
     for line in lines:
         if "】" in line or (found_brand and found_brand.lower() in line.lower()):
-            target_line = line; break
-    if not target_line and lines: target_line = lines[0]
+            target_line = line
+            break
+            
+    if not target_line and lines: 
+        target_line = lines[0]
 
     if target_line:
         clean_line = re.sub(r'【.*?】', '', target_line)
-        clean_line = re.sub(r'\d{4}', '', clean_line)
-        if found_brand: clean_line = re.compile(re.escape(found_brand), re.IGNORECASE).sub("", clean_line)
-        found_model = clean_line.strip()
+        clean_line = re.sub(r'\d{4}\s*[年式]*', '', clean_line)
+        if found_brand: 
+            clean_line = re.compile(re.escape(found_brand), re.IGNORECASE).sub("", clean_line)
+        found_model = re.sub(r'^[\s\-式年]*', '', clean_line).strip()
 
     man_date_str = ""
     man_patterns = [
@@ -825,7 +892,9 @@ async def parse_ad(request: Request):
     ]
     for pat, formatter in man_patterns:
         match = re.search(pat, raw_text, re.MULTILINE)
-        if match: man_date_str = formatter(match); break
+        if match: 
+            man_date_str = formatter(match)
+            break
 
     lic_date_str = ""
     lic_patterns = [
@@ -836,7 +905,9 @@ async def parse_ad(request: Request):
     ]
     for pat, formatter in lic_patterns:
         match = re.search(pat, raw_text)
-        if match: lic_date_str = formatter(match); break
+        if match: 
+            lic_date_str = formatter(match)
+            break
 
     mileage_str = ""
     m = re.search(r'里程[：:]?\s*([0-9,]+)', raw_text)
@@ -855,9 +926,11 @@ async def parse_ad(request: Request):
     store_p_match = re.search(r'店[內面].*?([\d.]+)萬', clean_price_text)
     if store_p_match: store_p = store_p_match.group(1)
 
-    for rg in [r'優惠價.*?([\d.]+)萬', r'折扣.*?([\d.]+)萬', r'網路[促銷價].*?([\d.]+)萬', r'最新優惠.*?([\d.]+)萬']:
+    for rg in [r'網路(?:促銷|價).*?([\d.]+)萬', r'(?:網路)?促銷價.*?([\d.]+)萬', r'優惠價.*?([\d.]+)萬', r'折扣.*?([\d.]+)萬', r'最新優惠.*?([\d.]+)萬']:
         pm = re.search(rg, clean_price_text)
-        if pm: promo_p = pm.group(1); break
+        if pm: 
+            promo_p = pm.group(1)
+            break
 
     if not store_p and promo_p:
         try: store_p = f"{float(promo_p)+3:.1f}".replace(".0", "")
@@ -898,13 +971,102 @@ async def parse_ad(request: Request):
 
     return {"status": "success", "data": {"brand": found_brand, "model": found_model, "man_date": man_date_str, "lic_date": lic_date_str, "mileage": mileage_str, "new_price": new_p, "store_price": store_p, "promo_price": promo_p, "loan_term": loan_term, "loan_monthly": loan_monthly}}
 
+# 💡 無損寫入防護：完美保留您的 Excel 樣式
 @app.post("/api/export_board")
 async def export_board(request: Request):
-    data = await request.json()
-    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "認證表格"
-    ws.cell(row=2, column=2, value=data.get("brand", "")); ws.cell(row=3, column=2, value=data.get("model", ""))
-    stream = io.BytesIO(); wb.save(stream); stream.seek(0)
-    return StreamingResponse(stream, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers={"Content-Disposition": "attachment; filename=board.xlsx"})
+    try:
+        data = await request.json()
+        brand = str(data.get("brand", ""))
+        model = str(data.get("model", ""))
+        
+        price_val = str(data.get("price", ""))
+        if price_val and "萬" not in price_val:
+            price_val += "萬"
+        
+        template_path = "template.xlsx"
+        
+        if os.path.exists(template_path):
+            wb = openpyxl.load_workbook(template_path)
+            ws = wb["認證表格"] if "認證表格" in wb.sheetnames else wb.active
+            
+            updates = {
+                2: brand,
+                3: model,
+                4: str(data.get("man_date", "")),
+                5: str(data.get("lic_date", "")),
+                6: str(data.get("mileage", "")),
+                7: price_val
+            }
+            
+            for r, val in updates.items():
+                cell = ws.cell(row=r, column=2)
+                cell.value = val
+                
+                # 保留所有格式，僅加上強制縮放 (shrink_to_fit) 防止字被截斷
+                if cell.alignment:
+                    cell.alignment = Alignment(
+                        horizontal=cell.alignment.horizontal,
+                        vertical=cell.alignment.vertical,
+                        text_rotation=cell.alignment.text_rotation,
+                        wrap_text=cell.alignment.wrap_text,
+                        shrink_to_fit=True, 
+                        indent=cell.alignment.indent
+                    )
+                else:
+                    cell.alignment = Alignment(shrink_to_fit=True)
+                
+        else:
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "認證表格"
+            
+            ws.column_dimensions['A'].width = 18
+            ws.column_dimensions['B'].width = 75
+            
+            updates_list = [
+                (2, "廠牌", brand),
+                (3, "車型", model),
+                (4, "出廠日期", str(data.get("man_date", ""))),
+                (5, "領牌日期", str(data.get("lic_date", ""))),
+                (6, "里程數", str(data.get("mileage", ""))),
+                (7, "售價", price_val)
+            ]
+            
+            thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+            fill_label = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+            
+            for row_idx, label, val in updates_list:
+                ws.row_dimensions[row_idx].height = 70
+                
+                c_label = ws.cell(row=row_idx, column=1, value=label)
+                c_label.font = Font(name='微軟正黑體', size=36, bold=True)
+                c_label.alignment = Alignment(horizontal='center', vertical='center')
+                c_label.border = thin_border
+                c_label.fill = fill_label
+                
+                c_val = ws.cell(row=row_idx, column=2, value=val)
+                color = "FF0000" if label == "售價" else "000000"
+                c_val.font = Font(name='微軟正黑體', size=40, bold=True, color=color)
+                c_val.alignment = Alignment(horizontal='center', vertical='center', shrink_to_fit=True, wrap_text=True)
+                c_val.border = thin_border
+                
+        stream = io.BytesIO()
+        wb.save(stream)
+        stream.seek(0)
+        
+        year_match = re.search(r'(\d{4})', str(data.get("man_date", "")))
+        year_prefix = year_match.group(1) if year_match else "0000"
+        safe_model = re.sub(r'[\\/*?:"<>|]', "", model) 
+        filename = f"{year_prefix}_{brand}_{safe_model}.xlsx"
+        
+        return StreamingResponse(
+            stream, 
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", 
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"}
+        )
+    except Exception as e:
+        print(f"Export Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
 @app.get("/api/my_permissions")
 def get_my_permissions(user_id: str = "", user_name: str = ""):
@@ -1179,15 +1341,22 @@ def handle_file_message(event):
 async def callback(request: Request):
     signature = request.headers.get("X-Line-Signature", "")
     body = await request.body()
-    try: handler.handle(body.decode("utf-8"), signature)
-    except InvalidSignatureError: raise HTTPException(status_code=400)
+    try: 
+        handler.handle(body.decode("utf-8"), signature)
+    except InvalidSignatureError: 
+        raise HTTPException(status_code=400)
     return "OK"
 
 @app.get("/")
-def serve_home(): return FileResponse("index.html")
+def serve_home(): 
+    return FileResponse("index.html")
+
 @app.get("/ping")
-def ping(): return {"status": "ok"}
+def ping(): 
+    return {"status": "ok"}
+
 @app.get("/{path}")
 def serve_pages(path: str):
-    if os.path.exists(f"{path}.html"): return FileResponse(f"{path}.html")
+    if os.path.exists(f"{path}.html"): 
+        return FileResponse(f"{path}.html")
     return FileResponse("index.html")

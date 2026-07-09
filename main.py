@@ -7,6 +7,7 @@ from openpyxl.styles import Alignment, Font, Border, Side, PatternFill
 import gspread
 from google.oauth2.service_account import Credentials
 import re, os, io, threading, uuid, gc, time
+import concurrent.futures
 from datetime import timedelta, datetime
 import requests
 from bs4 import BeautifulSoup
@@ -703,6 +704,9 @@ def get_valid_credentials(force_u=None, force_p=None):
             
     return None, None
 
+# =========================================================================
+# 💡 終極核心同步引擎 (雙軌並行抓取 PKey)
+# =========================================================================
 def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     try:
         session = requests.Session()
@@ -711,6 +715,9 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         data_url = "https://www.jwincar.com.tw/manage/accounting/accounting_car_list.php?stock=all"
         session.post(login_url, data={"strID": login_user, "strPW": login_pwd, "Submit": "送出"})
         
+        # ----------------------------------------------------
+        # 軌道 1：從「收購合約」抓取查定表的 PKey
+        # ----------------------------------------------------
         pkey_map = {}
         try:
             contract_url = "https://www.jwincar.com.tw/manage/Contract/p14_contract_purchase_list.php"
@@ -750,9 +757,12 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                             txt = tds[v_col].text.strip().upper()
                             if txt and txt not in ["—", "-", "NAN"]: pkey_map[txt] = row_pkey
                 cp += 1
-        except Exception: 
-            pass
+        except Exception as e: 
+            print(f"Contract PKey fetch error: {e}")
 
+        # ----------------------------------------------------
+        # 軌道 2：從「在庫車輛清單」抓取基本車輛資料
+        # ----------------------------------------------------
         all_cars_dicts = []
         website_headers = []
         page_num, last_first_row = 1, ""
@@ -782,55 +792,89 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                     if idx < len(website_headers):
                         h = website_headers[idx]
                         if not h or h == "操作": continue
-                        val = td.text.strip()
-                        if val in ["—", "-"]: val = ""
-                        if td.has_attr("title"): val = td["title"].strip()
-                        if h == "狀態":
-                            if td.find("span", class_=re.compile(r"sold|已售")): val = "已售"
-                            elif td.find("span", class_=re.compile(r"stock|在庫")): val = "在庫"
-                            elif td.find("span", class_=re.compile(r"deposit|收訂")): val = "已收訂"
-                        row_dict[h] = val
-                
-                row_plate = str(row_dict.get("車牌", "")).strip().upper().replace("-", "")
-                row_vin = str(row_dict.get("車身", "")).strip().upper()
-                
-                # 💡 終極強力探測器：抓出真實的車輛 ID
-                row_html_str = str(row)
-                car_pkey = ""
-                
-                # 1. 找 PKey 或 pkey
-                m = re.search(r'PKey=([0-9]+)', row_html_str, re.IGNORECASE)
-                if m:
-                    car_pkey = m.group(1)
-                else:
-                    # 2. 找包含數字的 edit 連結
-                    m2 = re.search(r'edit[^>]*?([0-9]{3,})', row_html_str, re.IGNORECASE)
-                    if m2:
-                        car_pkey = m2.group(1)
-                    else:
-                        # 3. 抓取任何 checkbox 的 value
-                        chk = re.search(r'type=["\']?checkbox["\']?[^>]*value=["\']?([0-9]{3,})["\']?', row_html_str, re.IGNORECASE)
-                        if chk:
-                            car_pkey = chk.group(1)
-                        else:
-                            # 4. 暴力抓取看起來像 ID 的數字 (3位數以上)
-                            fallback = re.search(r'["\']=?([0-9]{3,8})["\']?', row_html_str)
-                            if fallback:
-                                car_pkey = fallback.group(1)
-                
                 pkey_val = pkey_map.get(row_plate) or pkey_map.get(row_vin) or ""
-                row_dict["查定表PKey"] = pkey_val
                 
-                # 💡 同步寫入原本的「連結」與新的「官網連結」，確保欄位不空白
                 link_url = f"https://www.jwincar.com.tw/p1_buy_detail.php?detail_PKey={car_pkey}" if car_pkey else ""
+                
+                # 💡 將網址精準寫入原有的「連結」欄位
+                row_dict["查定表PKey"] = pkey_val
                 row_dict["連結"] = link_url
-                row_dict["官網連結"] = link_url
                 
                 all_cars_dicts.append(row_dict)
             page_num += 1
 
         if len(all_cars_dicts) < 100: 
             return {"status": "error", "message": f"🚨 數據異常熔斷！為保護原始資料庫已自動拒絕寫入。"}
+
+        # ----------------------------------------------------
+        # 軌道 3：🚀 官網前台多執行緒掃描器 (抓取廣告 detail_PKey)
+        # ----------------------------------------------------
+        frontend_map = {}
+        known_plates = set(car.get('車牌', '').strip().upper().replace('-', '') for car in all_cars_dicts)
+        known_plates = {p for p in known_plates if p} # 建立已知車牌清單
+
+        try:
+            front_session = requests.Session()
+            front_session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            
+            detail_links = set()
+            # 遍歷官網找尋所有的廣告網址
+            for base_url in ["https://www.jwincar.com.tw/buy_car.php", "https://www.jwincar.com.tw/p1_buy.php", "https://www.jwincar.com.tw/index.php"]:
+                for page in range(1, 60):
+                    try:
+                        f_url = f"{base_url}?page={page}" if "?" not in base_url else f"{base_url}&page={page}"
+                        f_res = front_session.get(f_url, timeout=5)
+                        f_res.encoding = 'utf-8'
+                        if "detail_PKey=" not in f_res.text:
+                            break
+                        
+                        links = re.findall(r'(p1_buy_detail\.php\?detail_PKey=\d+)', f_res.text)
+                        if not links: break
+                        for link in links: detail_links.add("https://www.jwincar.com.tw/" + link)
+                    except Exception:
+                        break
+                if detail_links: break # 找到了就不用再試其他入口
+                    
+            # 執行緒任務：進入每台車廣告抓取車牌
+            def fetch_detail(url):
+                try:
+                    res = front_session.get(url, timeout=5)
+                    html = res.text.upper()
+                    # 直接跟已知車牌比對，只要出現在廣告頁面上，就綁定這個網址
+                    for plate in known_plates:
+                        if len(plate) >= 4:
+                            parts = re.findall(r'[A-Z]+|\d+', plate)
+                            dashed_plate = f"{parts[0]}-{parts[1]}" if len(parts) == 2 else plate
+                            if dashed_plate in html or plate in html:
+                                frontend_map[plate] = url
+                                break
+                except Exception:
+                    pass
+            
+            # 使用 10 個工人並發抓取，速度極快
+            if detail_links:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                    executor.map(fetch_detail, list(detail_links))
+                    
+        except Exception as e:
+            print(f"Frontend scraping error: {e}")
+
+        # ----------------------------------------------------
+        # 軌道 4：將所有資料雙向合併並寫入 Google Sheets
+        # ----------------------------------------------------
+        for car in all_cars_dicts:
+            row_plate = str(car.get("車牌", "")).strip().upper().replace("-", "")
+            row_vin = str(car.get("車身", "")).strip().upper()
+            
+            # 寫入查定表 PKey (來源：軌道1 收購合約)
+            pkey_val = pkey_map.get(row_plate) or pkey_map.get(row_vin) or ""
+            car["查定表PKey"] = pkey_val
+            
+            # 寫入官網廣告網址 (來源：軌道3 官網前台掃描)
+            # 同時寫入兩個欄位，確保不論新舊版表格都不會遺漏
+            link_url = frontend_map.get(row_plate, "")
+            car["連結"] = link_url
+            car["官網連結"] = link_url
 
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)
@@ -878,10 +922,9 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             if col not in final_headers: final_headers.append(col)
         if not final_headers: final_headers = list(df_crawled.columns)
         
-        # 💡 同時寫入雙欄位
+        # 確保功能性欄位都有被建立
         if "查定表PKey" not in final_headers: final_headers.append("查定表PKey")
         if "連結" not in final_headers: final_headers.append("連結")
-        if "官網連結" not in final_headers: final_headers.append("官網連結")
 
         df_aligned = df_crawled.reindex(columns=final_headers).fillna("")
         data_to_upload = [final_headers] + df_aligned.values.tolist()

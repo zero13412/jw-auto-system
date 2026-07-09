@@ -50,7 +50,6 @@ KNOWN_MAKES = [
     "MASERATI", "FERRARI", "LAMBORGHINI", "BENTLEY", "ROLLS-ROYCE"
 ]
 
-# 💡 核心引擎：60秒極速快取
 class TTLCache:
     def __init__(self, ttl=60):
         self.ttl = ttl
@@ -704,9 +703,6 @@ def get_valid_credentials(force_u=None, force_p=None):
             
     return None, None
 
-# =========================================================================
-# 💡 終極核心同步引擎 (雙軌並行抓取 PKey)
-# =========================================================================
 def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     try:
         session = requests.Session()
@@ -758,7 +754,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                             if txt and txt not in ["—", "-", "NAN"]: pkey_map[txt] = row_pkey
                 cp += 1
         except Exception as e: 
-            print(f"Contract PKey fetch error: {e}")
+            pass
 
         # ----------------------------------------------------
         # 軌道 2：從「在庫車輛清單」抓取基本車輛資料
@@ -801,16 +797,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                             elif td.find("span", class_=re.compile(r"deposit|收訂")): val = "已收訂"
                         row_dict[h] = val
                 
-                # 取得車牌與車身，準備後續配對
-                row_plate = str(row_dict.get("車牌", "")).strip().upper().replace("-", "")
-                row_vin = str(row_dict.get("車身", "")).strip().upper()
-                
-                all_cars_dicts.append({
-                    "row_dict": row_dict,
-                    "row_plate": row_plate,
-                    "row_vin": row_vin
-                })
-                
+                all_cars_dicts.append(row_dict)
             page_num += 1
 
         if len(all_cars_dicts) < 100: 
@@ -820,40 +807,69 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         # 軌道 3：🚀 官網前台多執行緒掃描器 (抓取廣告 detail_PKey)
         # ----------------------------------------------------
         frontend_map = {}
-        known_plates = set(car["row_plate"] for car in all_cars_dicts if car["row_plate"])
-        
+        known_identifiers = {}
+        for car in all_cars_dicts:
+            plate = re.sub(r'[^A-Z0-9]', '', str(car.get('車牌', '')).upper())
+            vin = re.sub(r'[^A-Z0-9]', '', str(car.get('車身', '')).upper())
+            
+            if len(plate) >= 4:
+                known_identifiers[plate] = plate
+            if len(vin) >= 6:
+                known_identifiers[vin] = plate
+                
         try:
             front_session = requests.Session()
-            front_session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            front_session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"})
             
             detail_links = set()
-            for base_url in ["https://www.jwincar.com.tw/buy_car.php", "https://www.jwincar.com.tw/p1_buy.php", "https://www.jwincar.com.tw/index.php"]:
-                for page in range(1, 60):
-                    try:
-                        f_url = f"{base_url}?page={page}" if "?" not in base_url else f"{base_url}&page={page}"
-                        f_res = front_session.get(f_url, timeout=5)
-                        f_res.encoding = 'utf-8'
-                        if "detail_PKey=" not in f_res.text:
-                            break
+            visited_pages = set()
+            pages_to_visit = {"https://www.jwincar.com.tw/buy_car.php", "https://www.jwincar.com.tw/p1_buy.php", "https://www.jwincar.com.tw/index.php"}
+            
+            # 動態解析官網所有的分頁按鈕，尋找所有可能的分頁
+            while pages_to_visit and len(visited_pages) < 100:
+                url = pages_to_visit.pop()
+                visited_pages.add(url)
+                try:
+                    f_res = front_session.get(url, timeout=5)
+                    f_res.encoding = 'utf-8'
+                    html = f_res.text
+                    
+                    # 抓下所有單台車的廣告連結
+                    links = re.findall(r'(p1_buy_detail\.php\?detail_PKey=\d+)', html)
+                    for link in links: 
+                        detail_links.add("https://www.jwincar.com.tw/" + link)
                         
+                    # 找尋分頁按鈕 (如 ?page=2 或 ?p=2) 確保不會錯過任何一頁
+                    page_links = re.findall(r'href=["\'](buy_car\.php\?[^"\']+|p1_buy\.php\?[^"\']+)["\']', html)
+                    for pl in page_links:
+                        pl_url = "https://www.jwincar.com.tw/" + pl.replace('&amp;', '&')
+                        if pl_url not in visited_pages:
+                            pages_to_visit.add(pl_url)
+                except Exception:
+                    pass
+            
+            # 保險機制：如果找不到動態分頁按鈕，暴力硬上參數掃前 30 頁
+            if len(visited_pages) <= 2:
+                for page in range(2, 31):
+                    try:
+                        f_url = f"https://www.jwincar.com.tw/buy_car.php?page={page}"
+                        f_res = front_session.get(f_url, timeout=5)
                         links = re.findall(r'(p1_buy_detail\.php\?detail_PKey=\d+)', f_res.text)
                         if not links: break
                         for link in links: detail_links.add("https://www.jwincar.com.tw/" + link)
-                    except Exception:
-                        break
-                if detail_links: break 
+                    except: pass
                     
+            # 暴力比對：去除廣告裡所有的網頁標籤、空白跟橫槓，直接配對純車牌字元
             def fetch_detail(url):
                 try:
                     res = front_session.get(url, timeout=5)
-                    html = res.text.upper()
-                    for plate in known_plates:
-                        if len(plate) >= 4:
-                            parts = re.findall(r'[A-Z]+|\d+', plate)
-                            dashed_plate = f"{parts[0]}-{parts[1]}" if len(parts) == 2 else plate
-                            if dashed_plate in html or plate in html:
-                                frontend_map[plate] = url
-                                break
+                    html = res.text
+                    stripped_html = re.sub(r'<[^>]+>', '', html).replace(' ', '').replace('\n', '').replace('-', '').upper()
+                    
+                    for identifier, plate_key in known_identifiers.items():
+                        if identifier in stripped_html:
+                            frontend_map[plate_key] = url
+                            break
                 except Exception:
                     pass
             
@@ -862,26 +878,27 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                     executor.map(fetch_detail, list(detail_links))
                     
         except Exception as e:
-            print(f"Frontend scraping error: {e}")
+            pass
 
         # ----------------------------------------------------
         # 軌道 4：將所有資料雙向合併並寫入 Google Sheets
         # ----------------------------------------------------
         final_cars_list = []
-        for car_wrapper in all_cars_dicts:
-            row_dict = car_wrapper["row_dict"]
-            row_plate = car_wrapper["row_plate"]
-            row_vin = car_wrapper["row_vin"]
+        for car in all_cars_dicts:
+            row_plate = str(car.get("車牌", "")).strip().upper().replace("-", "")
+            row_vin = str(car.get("車身", "")).strip().upper()
             
-            # 寫入查定表 PKey (來源：軌道1 收購合約)
+            clean_plate = re.sub(r'[^A-Z0-9]', '', row_plate)
+            
+            # 寫入查定表 PKey (來源：軌道1)
             pkey_val = pkey_map.get(row_plate) or pkey_map.get(row_vin) or ""
-            row_dict["查定表PKey"] = pkey_val
+            car["查定表PKey"] = pkey_val
             
-            # 寫入官網廣告網址 (來源：軌道3 官網前台掃描) 到「連結」欄位
-            link_url = frontend_map.get(row_plate, "")
-            row_dict["連結"] = link_url
+            # 寫入官網廣告網址 (來源：軌道3)
+            # 💡 直接寫入原有的「連結」欄位
+            car["連結"] = frontend_map.get(clean_plate, "")
             
-            final_cars_list.append(row_dict)
+            final_cars_list.append(car)
 
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)

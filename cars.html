@@ -232,9 +232,9 @@
                                         📝 查看查定表
                                     </button>
 
-                                    <!-- 💡 新增的官網連結按鈕 -->
-                                    <button v-if="car.官網連結 && car.官網連結 !== 'nan'" @click="openLink(car.官網連結)" class="w-full sm:w-auto text-xs sm:text-sm bg-indigo-50 hover:bg-indigo-100 border border-indigo-300 px-3 py-1.5 sm:px-3 sm:py-1 rounded shadow-sm text-indigo-700 transition font-bold text-center">
-                                        🌐 官網連結
+                                    <!-- 💡 官網廣告按鈕 (讀取「連結」欄位) -->
+                                    <button v-if="car.連結 && String(car.連結).trim() !== '' && String(car.連結).trim() !== 'nan'" @click="openLink(car.連結)" class="w-full sm:w-auto text-xs sm:text-sm bg-indigo-50 hover:bg-indigo-100 border border-indigo-300 px-3 py-1.5 sm:px-3 sm:py-1 rounded shadow-sm text-indigo-700 transition font-bold text-center">
+                                        🌐 官網廣告
                                     </button>
 
                                     <button @click="copyId(car.編號)" class="w-full sm:w-auto text-xs sm:text-sm bg-white hover:bg-gray-100 border border-gray-300 px-3 py-1.5 sm:px-3 sm:py-1 rounded shadow-sm text-gray-700 transition font-bold text-center">
@@ -352,12 +352,12 @@
                     }
                 };
 
-                // 💡 新增：打開官網廣告連結的功能
+                // 💡 讀取「連結」欄位並開啟官網
                 const openLink = (url) => {
-                    if (url && url !== 'nan') {
+                    if (url && String(url).trim() !== '' && String(url).trim() !== 'nan') {
                         window.open(url, '_blank');
                     } else {
-                        alert("這台車目前沒有官網連結喔！");
+                        alert("這台車目前沒有官網廣告連結喔！");
                     }
                 };
 

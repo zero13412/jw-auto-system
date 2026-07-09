@@ -799,26 +799,30 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 car_pkey = ""
                 
                 # 1. 找 PKey 或 pkey
-                m = re.search(r'(?:PKey|pkey|id)=([0-9]+)', row_html_str, re.IGNORECASE)
+                m = re.search(r'PKey=([0-9]+)', row_html_str, re.IGNORECASE)
                 if m:
                     car_pkey = m.group(1)
                 else:
-                    # 2. 找 checkbox value
-                    chk = re.search(r'type=["\']checkbox["\'][^>]*value=["\']([0-9]+)["\']', row_html_str, re.IGNORECASE)
-                    if chk:
-                        car_pkey = chk.group(1)
+                    # 2. 找包含數字的 edit 連結
+                    m2 = re.search(r'edit[^>]*?([0-9]{3,})', row_html_str, re.IGNORECASE)
+                    if m2:
+                        car_pkey = m2.group(1)
                     else:
-                        # 3. 找 href 裡最後的數字 (4位數以上)
-                        href = re.search(r'href=["\'][^"\']*?([0-9]{4,})["\']', row_html_str)
-                        if href:
-                            car_pkey = href.group(1)
+                        # 3. 抓取任何 checkbox 的 value
+                        chk = re.search(r'type=["\']?checkbox["\']?[^>]*value=["\']?([0-9]{3,})["\']?', row_html_str, re.IGNORECASE)
+                        if chk:
+                            car_pkey = chk.group(1)
+                        else:
+                            # 4. 暴力抓取看起來像 ID 的數字 (3位數以上)
+                            fallback = re.search(r'["\']=?([0-9]{3,8})["\']?', row_html_str)
+                            if fallback:
+                                car_pkey = fallback.group(1)
                 
                 pkey_val = pkey_map.get(row_plate) or pkey_map.get(row_vin) or ""
-                
-                link_url = f"https://www.jwincar.com.tw/p1_buy_detail.php?detail_PKey={car_pkey}" if car_pkey else ""
-                
-                # 💡 同時寫入舊版「連結」與新版「官網連結」，確保絕對不留白！
                 row_dict["查定表PKey"] = pkey_val
+                
+                # 💡 同步寫入原本的「連結」與新的「官網連結」，確保欄位不空白
+                link_url = f"https://www.jwincar.com.tw/p1_buy_detail.php?detail_PKey={car_pkey}" if car_pkey else ""
                 row_dict["連結"] = link_url
                 row_dict["官網連結"] = link_url
                 
@@ -874,7 +878,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             if col not in final_headers: final_headers.append(col)
         if not final_headers: final_headers = list(df_crawled.columns)
         
-        # 💡 同時寫入兩個網址欄位，絕不錯漏
+        # 💡 同時寫入雙欄位
         if "查定表PKey" not in final_headers: final_headers.append("查定表PKey")
         if "連結" not in final_headers: final_headers.append("連結")
         if "官網連結" not in final_headers: final_headers.append("官網連結")

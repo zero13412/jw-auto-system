@@ -227,8 +227,14 @@
                                 </div>
                                 <div class="flex flex-col items-end gap-2 sm:gap-1 w-auto shrink-0">
                                     
+                                    <!-- 💡 查定表按鈕 -->
                                     <button v-if="car.查定表PKey && car.查定表PKey !== 'nan'" @click="openInspection(car.查定表PKey)" class="w-full sm:w-auto text-xs sm:text-sm bg-teal-50 hover:bg-teal-100 border border-teal-300 px-3 py-1.5 sm:px-3 sm:py-1 rounded shadow-sm text-teal-700 transition font-bold text-center">
                                         📝 查看查定表
+                                    </button>
+
+                                    <!-- 💡 新增的官網連結按鈕 -->
+                                    <button v-if="car.官網連結 && car.官網連結 !== 'nan'" @click="openLink(car.官網連結)" class="w-full sm:w-auto text-xs sm:text-sm bg-indigo-50 hover:bg-indigo-100 border border-indigo-300 px-3 py-1.5 sm:px-3 sm:py-1 rounded shadow-sm text-indigo-700 transition font-bold text-center">
+                                        🌐 官網連結
                                     </button>
 
                                     <button @click="copyId(car.編號)" class="w-full sm:w-auto text-xs sm:text-sm bg-white hover:bg-gray-100 border border-gray-300 px-3 py-1.5 sm:px-3 sm:py-1 rounded shadow-sm text-gray-700 transition font-bold text-center">
@@ -337,13 +343,21 @@
                     } else { alert("無編號資料！"); }
                 };
 
-                // 💡 更新：使用中繼 API 免登入直接查看查定表
                 const openInspection = (pkey) => {
                     if (pkey && pkey !== 'nan') {
                         const url = `${API_URL}/view_inspection?PKey=${pkey}`;
                         window.open(url, '_blank');
                     } else {
                         alert("這台車目前沒有查定表資料喔！");
+                    }
+                };
+
+                // 💡 新增：打開官網廣告連結的功能
+                const openLink = (url) => {
+                    if (url && url !== 'nan') {
+                        window.open(url, '_blank');
+                    } else {
+                        alert("這台車目前沒有官網連結喔！");
                     }
                 };
 
@@ -361,7 +375,8 @@
 
                 return { 
                     cars, options, filters, loading, loadingText, statusMessage, showMobileFilters,
-                    searchCars, searchCarsMobile, resetFilters, refreshData, copyPlate, copyId, openInspection, formatCondition, isWarning
+                    searchCars, searchCarsMobile, resetFilters, refreshData, copyPlate, copyId, 
+                    openInspection, openLink, formatCondition, isWarning
                 };
             }
         }).mount('#app');

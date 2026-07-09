@@ -705,7 +705,7 @@ def get_valid_credentials(force_u=None, force_p=None):
     return None, None
 
 # =========================================================================
-# 💡 終極核心同步引擎 (雙軌並行抓取，結合前台車牌探測)
+# 💡 終極核心同步引擎 (雙軌並行抓取，結合前台車牌探測 Spider)
 # =========================================================================
 def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     try:
@@ -801,7 +801,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                             elif td.find("span", class_=re.compile(r"deposit|收訂")): val = "已收訂"
                         row_dict[h] = val
                 
-                # 取得車牌與車身，準備後續配對
                 row_plate = str(row_dict.get("車牌", "")).strip().upper().replace("-", "")
                 row_vin = str(row_dict.get("車身", "")).strip().upper()
                 
@@ -810,14 +809,13 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                     "row_plate": row_plate,
                     "row_vin": row_vin
                 })
-                
             page_num += 1
 
         if len(all_cars_dicts) < 100: 
             return {"status": "error", "message": f"🚨 數據異常熔斷！為保護原始資料庫已自動拒絕寫入。"}
 
         # ----------------------------------------------------
-        # 軌道 3：🚀 官網前台多執行緒掃描器 (阿鍇的黃金線索)
+        # 軌道 3：🚀 官網前台多執行緒掃描器 (自動找分頁 + 黃金線索)
         # ----------------------------------------------------
         frontend_map = {}
         known_plates = set(car["row_plate"] for car in all_cars_dicts if car["row_plate"])
@@ -827,62 +825,84 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             front_session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
             
             detail_links = set()
-            for base_url in ["https://www.jwincar.com.tw/buy_car.php", "https://www.jwincar.com.tw/p1_buy.php", "https://www.jwincar.com.tw/index.php"]:
-                for page in range(1, 60):
-                    try:
-                        f_url = f"{base_url}?page={page}" if "?" not in base_url else f"{base_url}&page={page}"
-                        f_res = front_session.get(f_url, timeout=5)
-                        f_res.encoding = 'utf-8'
-                        if "detail_PKey=" not in f_res.text:
-                            break
-                        
-                        links = re.findall(r'(p1_buy_detail\.php\?detail_PKey=\d+)', f_res.text)
-                        if not links: break
-                        for link in links: detail_links.add("https://www.jwincar.com.tw/" + link)
-                    except Exception:
-                        break
-                if detail_links: break 
+            visited_list_pages = set()
+            pages_to_visit = [
+                "https://www.jwincar.com.tw/p1_buy.php",
+                "https://www.jwincar.com.tw/buy_car.php"
+            ]
+            
+            # 第一階段：掃描 Sitemap (最快)
+            try:
+                sm_res = front_session.get("https://www.jwincar.com.tw/sitemap.xml", timeout=3)
+                links = re.findall(r'(p1_buy_detail\.php\?detail_PKey=\d+)', sm_res.text)
+                for link in links: detail_links.add("https://www.jwincar.com.tw/" + link)
+            except Exception: pass
+            
+            # 第二階段：蜘蛛爬蟲動態掃描所有分頁
+            while pages_to_visit and len(visited_list_pages) < 50:
+                current_url = pages_to_visit.pop(0)
+                if current_url in visited_list_pages: continue
+                visited_list_pages.add(current_url)
+                
+                try:
+                    f_res = front_session.get(current_url, timeout=5)
+                    text = f_res.text
                     
+                    # 抓取廣告連結
+                    links = re.findall(r'(p1_buy_detail\.php\?detail_PKey=\d+)', text)
+                    for link in links: detail_links.add("https://www.jwincar.com.tw/" + link)
+                    
+                    # 自動尋找「下一頁」之類的分頁按鈕
+                    page_links = re.findall(r'href=["\']([^"\']*?(?:page|p|nowPage)=\d+[^"\']*)["\']', text, re.IGNORECASE)
+                    for pl in page_links:
+                        pl_clean = pl.replace("&amp;", "&").lstrip('/')
+                        if not pl_clean.startswith('http'):
+                            if pl_clean.startswith('?'):
+                                full_pl = current_url.split('?')[0] + pl_clean
+                            else:
+                                full_pl = "https://www.jwincar.com.tw/" + pl_clean
+                        else:
+                            full_pl = pl_clean
+                            
+                        if full_pl not in visited_list_pages:
+                            pages_to_visit.append(full_pl)
+                except Exception: pass
+                    
+            # 第三階段：進入每台車廣告，執行「黃金線索」匹配
             def fetch_detail(url):
                 try:
                     res = front_session.get(url, timeout=5)
-                    html = res.text.upper()
-                    
+                    html = res.text
                     plate_found = ""
-                    # 💡 黃金線索：「提供車身號碼驗證」後面其實放的是車牌 (例如 BNA-0571)
-                    idx = html.find("提供車身號碼驗證")
-                    if idx != -1:
-                        # 只搜尋接下來的 200 字元，避免找錯
-                        window = html[idx:idx+200]
-                        # 尋找像 BNA-0571 或是 BNA 0571 這種格式的車牌
-                        m = re.search(r'([A-Z0-9]{2,4}[-\s]+[A-Z0-9]{2,4})', window)
-                        if m:
-                            plate_found = m.group(1).replace('-', '').replace(' ', '').strip()
                     
-                    if plate_found:
+                    # 💡 黃金線索：前台網頁寫「提供車身號碼驗證：」，但其實後面接的是「車牌」！
+                    m = re.search(r'提供車身號碼驗證[：:]?\s*([A-Za-z0-9]{2,4}[-\s]*[A-Za-z0-9]{2,4})', html)
+                    if m:
+                        plate_found = m.group(1).replace('-', '').replace(' ', '').strip().upper()
+                        
+                    if plate_found and plate_found in known_plates:
                         frontend_map[plate_found] = url
                     else:
                         # 備用保險方案：用已經存在的車牌庫去暴力比對廣告內文
+                        html_upper = html.upper()
                         for plate in known_plates:
                             if len(plate) >= 4:
                                 parts = re.findall(r'[A-Z]+|\d+', plate)
                                 dashed_plate = f"{parts[0]}-{parts[1]}" if len(parts) == 2 else plate
-                                if dashed_plate in html:
+                                if dashed_plate in html_upper or plate in html_upper:
                                     frontend_map[plate] = url
                                     break
-                except Exception:
-                    pass
-            
-            # 10 個工人同時掃描，速度超快且不會扣配額
+                except Exception: pass
+
             if detail_links:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
                     executor.map(fetch_detail, list(detail_links))
                     
         except Exception as e:
             print(f"Frontend scraping error: {e}")
 
         # ----------------------------------------------------
-        # 軌道 4：將所有資料合併並寫入 Google Sheets (只留「連結」欄位)
+        # 軌道 4：將所有資料雙向合併並寫入 Google Sheets (只留「連結」欄位)
         # ----------------------------------------------------
         final_cars_list = []
         for car_wrapper in all_cars_dicts:

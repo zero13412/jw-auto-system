@@ -289,8 +289,7 @@ def process_crm_excel(filename: str, contents: bytes):
         for row in ws.iter_rows(min_row=2, values_only=True):
             r_dict = {headers[i]: str(row[i]).strip() if row[i] is not None else "" for i in range(min(len(headers), len(row)))}
             name = r_dict.get("姓名", "")
-            if not name: 
-                continue
+            if not name: continue
                 
             phone = ""
             for k, v in r_dict.items():
@@ -299,8 +298,7 @@ def process_crm_excel(filename: str, contents: bytes):
                     if clean_p.startswith("09") and len(clean_p) >= 10: 
                         phone = clean_p[:10]
                         break
-            if not phone: 
-                continue 
+            if not phone: continue 
                 
             date_val = r_dict.get("生效日", "") or r_dict.get("建立時間", "")
             memo = r_dict.get("附註", "")
@@ -796,21 +794,29 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 row_plate = str(row_dict.get("車牌", "")).strip().upper().replace("-", "")
                 row_vin = str(row_dict.get("車身", "")).strip().upper()
                 
-                # 💡 雙軌智慧探測機制：抓取車輛實際的 detail_PKey，並合成官網連結
+                # 💡 終極強力探測器：抓出真實的車輛 ID
                 row_html_str = str(row)
                 car_pkey = ""
                 
-                preview_match = re.search(r'detail_PKey=(\d+)', row_html_str)
-                if preview_match:
-                    car_pkey = preview_match.group(1)
-                else:
-                    car_id_match = re.search(r'accounting_car_edit\.php\?PKey=(\d+)', row_html_str)
-                    if car_id_match:
-                        car_pkey = car_id_match.group(1)
-                    else:
-                        chk_match = re.search(r'type=["\']checkbox["\'][^>]*value=["\'](\d+)["\']', row_html_str)
-                        if chk_match:
-                            car_pkey = chk_match.group(1)
+                # 1. 直接抓所有已知參數名稱
+                m = re.search(r'(?:detail_PKey|PKey|pkey|id|v|sn)=([0-9]{4,})', row_html_str, re.IGNORECASE)
+                if m:
+                    car_pkey = m.group(1)
+                
+                # 2. 如果沒有，找任何 checkbox / hidden 的 value (通常是 4~6 位數 ID)
+                if not car_pkey:
+                    for inp in row.find_all("input"):
+                        v_type = str(inp.get("type", "")).lower()
+                        v_val = str(inp.get("value", "")).strip()
+                        if v_type in ["checkbox", "hidden"] and v_val.isdigit() and len(v_val) >= 4:
+                            car_pkey = v_val
+                            break
+                            
+                # 3. 還是沒有？暴力找 href 或 onclick 裡面的 ID
+                if not car_pkey:
+                    m2 = re.search(r'(?:href|onclick)=["\'][^"\']*?(?:edit|view|detail)[^"\']*?([0-9]{4,})', row_html_str, re.IGNORECASE)
+                    if m2:
+                        car_pkey = m2.group(1)
                 
                 pkey_val = pkey_map.get(row_plate) or pkey_map.get(row_vin) or ""
                 row_dict["查定表PKey"] = pkey_val

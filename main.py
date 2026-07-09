@@ -798,29 +798,29 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 row_html_str = str(row)
                 car_pkey = ""
                 
-                # 1. 直接抓所有已知參數名稱
-                m = re.search(r'(?:detail_PKey|PKey|pkey|id|v|sn)=([0-9]{4,})', row_html_str, re.IGNORECASE)
+                # 1. 找 PKey 或 pkey
+                m = re.search(r'(?:PKey|pkey|id)=([0-9]+)', row_html_str, re.IGNORECASE)
                 if m:
                     car_pkey = m.group(1)
-                
-                # 2. 如果沒有，找任何 checkbox / hidden 的 value (通常是 4~6 位數 ID)
-                if not car_pkey:
-                    for inp in row.find_all("input"):
-                        v_type = str(inp.get("type", "")).lower()
-                        v_val = str(inp.get("value", "")).strip()
-                        if v_type in ["checkbox", "hidden"] and v_val.isdigit() and len(v_val) >= 4:
-                            car_pkey = v_val
-                            break
-                            
-                # 3. 還是沒有？暴力找 href 或 onclick 裡面的 ID
-                if not car_pkey:
-                    m2 = re.search(r'(?:href|onclick)=["\'][^"\']*?(?:edit|view|detail)[^"\']*?([0-9]{4,})', row_html_str, re.IGNORECASE)
-                    if m2:
-                        car_pkey = m2.group(1)
+                else:
+                    # 2. 找 checkbox value
+                    chk = re.search(r'type=["\']checkbox["\'][^>]*value=["\']([0-9]+)["\']', row_html_str, re.IGNORECASE)
+                    if chk:
+                        car_pkey = chk.group(1)
+                    else:
+                        # 3. 找 href 裡最後的數字 (4位數以上)
+                        href = re.search(r'href=["\'][^"\']*?([0-9]{4,})["\']', row_html_str)
+                        if href:
+                            car_pkey = href.group(1)
                 
                 pkey_val = pkey_map.get(row_plate) or pkey_map.get(row_vin) or ""
+                
+                link_url = f"https://www.jwincar.com.tw/p1_buy_detail.php?detail_PKey={car_pkey}" if car_pkey else ""
+                
+                # 💡 同時寫入舊版「連結」與新版「官網連結」，確保絕對不留白！
                 row_dict["查定表PKey"] = pkey_val
-                row_dict["官網連結"] = f"https://www.jwincar.com.tw/p1_buy_detail.php?detail_PKey={car_pkey}" if car_pkey else ""
+                row_dict["連結"] = link_url
+                row_dict["官網連結"] = link_url
                 
                 all_cars_dicts.append(row_dict)
             page_num += 1
@@ -873,7 +873,10 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         for col in df_crawled.columns:
             if col not in final_headers: final_headers.append(col)
         if not final_headers: final_headers = list(df_crawled.columns)
+        
+        # 💡 同時寫入兩個網址欄位，絕不錯漏
         if "查定表PKey" not in final_headers: final_headers.append("查定表PKey")
+        if "連結" not in final_headers: final_headers.append("連結")
         if "官網連結" not in final_headers: final_headers.append("官網連結")
 
         df_aligned = df_crawled.reindex(columns=final_headers).fillna("")

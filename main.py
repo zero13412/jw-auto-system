@@ -792,15 +792,25 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                     if idx < len(website_headers):
                         h = website_headers[idx]
                         if not h or h == "操作": continue
-                pkey_val = pkey_map.get(row_plate) or pkey_map.get(row_vin) or ""
+                        val = td.text.strip()
+                        if val in ["—", "-"]: val = ""
+                        if td.has_attr("title"): val = td["title"].strip()
+                        if h == "狀態":
+                            if td.find("span", class_=re.compile(r"sold|已售")): val = "已售"
+                            elif td.find("span", class_=re.compile(r"stock|在庫")): val = "在庫"
+                            elif td.find("span", class_=re.compile(r"deposit|收訂")): val = "已收訂"
+                        row_dict[h] = val
                 
-                link_url = f"https://www.jwincar.com.tw/p1_buy_detail.php?detail_PKey={car_pkey}" if car_pkey else ""
+                # 取得車牌與車身，準備後續配對
+                row_plate = str(row_dict.get("車牌", "")).strip().upper().replace("-", "")
+                row_vin = str(row_dict.get("車身", "")).strip().upper()
                 
-                # 💡 將網址精準寫入原有的「連結」欄位
-                row_dict["查定表PKey"] = pkey_val
-                row_dict["連結"] = link_url
+                all_cars_dicts.append({
+                    "row_dict": row_dict,
+                    "row_plate": row_plate,
+                    "row_vin": row_vin
+                })
                 
-                all_cars_dicts.append(row_dict)
             page_num += 1
 
         if len(all_cars_dicts) < 100: 
@@ -810,15 +820,13 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         # 軌道 3：🚀 官網前台多執行緒掃描器 (抓取廣告 detail_PKey)
         # ----------------------------------------------------
         frontend_map = {}
-        known_plates = set(car.get('車牌', '').strip().upper().replace('-', '') for car in all_cars_dicts)
-        known_plates = {p for p in known_plates if p} # 建立已知車牌清單
-
+        known_plates = set(car["row_plate"] for car in all_cars_dicts if car["row_plate"])
+        
         try:
             front_session = requests.Session()
             front_session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
             
             detail_links = set()
-            # 遍歷官網找尋所有的廣告網址
             for base_url in ["https://www.jwincar.com.tw/buy_car.php", "https://www.jwincar.com.tw/p1_buy.php", "https://www.jwincar.com.tw/index.php"]:
                 for page in range(1, 60):
                     try:
@@ -833,14 +841,12 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                         for link in links: detail_links.add("https://www.jwincar.com.tw/" + link)
                     except Exception:
                         break
-                if detail_links: break # 找到了就不用再試其他入口
+                if detail_links: break 
                     
-            # 執行緒任務：進入每台車廣告抓取車牌
             def fetch_detail(url):
                 try:
                     res = front_session.get(url, timeout=5)
                     html = res.text.upper()
-                    # 直接跟已知車牌比對，只要出現在廣告頁面上，就綁定這個網址
                     for plate in known_plates:
                         if len(plate) >= 4:
                             parts = re.findall(r'[A-Z]+|\d+', plate)
@@ -851,7 +857,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 except Exception:
                     pass
             
-            # 使用 10 個工人並發抓取，速度極快
             if detail_links:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
                     executor.map(fetch_detail, list(detail_links))
@@ -862,19 +867,21 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         # ----------------------------------------------------
         # 軌道 4：將所有資料雙向合併並寫入 Google Sheets
         # ----------------------------------------------------
-        for car in all_cars_dicts:
-            row_plate = str(car.get("車牌", "")).strip().upper().replace("-", "")
-            row_vin = str(car.get("車身", "")).strip().upper()
+        final_cars_list = []
+        for car_wrapper in all_cars_dicts:
+            row_dict = car_wrapper["row_dict"]
+            row_plate = car_wrapper["row_plate"]
+            row_vin = car_wrapper["row_vin"]
             
             # 寫入查定表 PKey (來源：軌道1 收購合約)
             pkey_val = pkey_map.get(row_plate) or pkey_map.get(row_vin) or ""
-            car["查定表PKey"] = pkey_val
+            row_dict["查定表PKey"] = pkey_val
             
-            # 寫入官網廣告網址 (來源：軌道3 官網前台掃描)
-            # 同時寫入兩個欄位，確保不論新舊版表格都不會遺漏
+            # 寫入官網廣告網址 (來源：軌道3 官網前台掃描) 到「連結」欄位
             link_url = frontend_map.get(row_plate, "")
-            car["連結"] = link_url
-            car["官網連結"] = link_url
+            row_dict["連結"] = link_url
+            
+            final_cars_list.append(row_dict)
 
         client = get_gspread_client()
         doc = client.open_by_key(SHEET_ID)
@@ -892,7 +899,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 elif p_idx != -1 and len(r) > p_idx and str(r[p_idx]).strip(): k = str(r[p_idx]).strip()
                 if k: old_ids.add(str(k).replace('.0', '').strip())
 
-        df_crawled = pd.DataFrame(all_cars_dicts)
+        df_crawled = pd.DataFrame(final_cars_list)
         
         status_msg = ""
         if "狀態" in df_crawled.columns:

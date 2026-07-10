@@ -11,7 +11,7 @@ import concurrent.futures
 from datetime import timedelta, datetime
 import requests
 from bs4 import BeautifulSoup
-from urllib.parse import quote
+from urllib.parse import quote, urljoin
 
 # LINE Bot 官方套件
 from linebot import LineBotApi, WebhookHandler
@@ -705,7 +705,7 @@ def get_valid_credentials(force_u=None, force_p=None):
     return None, None
 
 # =========================================================================
-# 💡 終極核心同步引擎 (雙軌並行抓取，結合前台車牌探測 Spider)
+# 💡 終極核心同步引擎 (後台撈取 + 前台 POST 分頁無死角掃描)
 # =========================================================================
 def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     try:
@@ -815,7 +815,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             return {"status": "error", "message": f"🚨 數據異常熔斷！為保護原始資料庫已自動拒絕寫入。"}
 
         # ----------------------------------------------------
-        # 軌道 3：🚀 官網前台多執行緒掃描器 (自動找分頁 + 黃金線索)
+        # 軌道 3：🚀 官網前台多執行緒掃描器 (精準 POST 抓取 + 黃金線索)
         # ----------------------------------------------------
         frontend_map = {}
         known_plates = set(car["row_plate"] for car in all_cars_dicts if car["row_plate"])
@@ -825,50 +825,44 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             front_session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
             
             detail_links = set()
-            visited_list_pages = set()
-            pages_to_visit = [
-                "https://www.jwincar.com.tw/p1_buy.php",
-                "https://www.jwincar.com.tw/buy_car.php"
-            ]
             
-            # 第一階段：掃描 Sitemap (最快)
+            # 模仿官網真實的 POST 翻頁機制
+            post_url = "https://www.jwincar.com.tw/index.php"
+            post_data = {
+                'Page': '', 'PageA': '1', 'PageB': '1', 'Keyword': '', 'Keywords': '',
+                'Class1': '', 'Class2': '', 'Class4': '', 'Car_Type': '', 'strCountry': '',
+                'StartDate': '', 'EndDate': '', 'intYear': '', 'Price': '',
+                'PriceFlag': '', 'Milage_Check': '', 'CheckPaper': '', 'Record': '',
+                'CarNumber': '', 'Send': 'OK', 'area': ''
+            }
+            
             try:
-                sm_res = front_session.get("https://www.jwincar.com.tw/sitemap.xml", timeout=3)
-                links = re.findall(r'(p1_buy_detail\.php\?detail_PKey=\d+)', sm_res.text)
-                for link in links: detail_links.add("https://www.jwincar.com.tw/" + link)
-            except Exception: pass
-            
-            # 第二階段：蜘蛛爬蟲動態掃描所有分頁
-            while pages_to_visit and len(visited_list_pages) < 50:
-                current_url = pages_to_visit.pop(0)
-                if current_url in visited_list_pages: continue
-                visited_list_pages.add(current_url)
+                # 取得第一頁與總頁數
+                resp = front_session.post(post_url, data=post_data, timeout=10)
+                resp.encoding = 'utf-8'
+                soup = BeautifulSoup(resp.text, 'html.parser')
                 
-                try:
-                    f_res = front_session.get(current_url, timeout=5)
-                    text = f_res.text
+                total_pages = 1
+                span_tag = soup.find('span', string=re.compile(r'共\s*\d+\s*頁'))
+                if span_tag:
+                    match = re.search(r'(\d+)', span_tag.text)
+                    if match: total_pages = int(match.group(1))
                     
-                    # 抓取廣告連結
-                    links = re.findall(r'(p1_buy_detail\.php\?detail_PKey=\d+)', text)
-                    for link in links: detail_links.add("https://www.jwincar.com.tw/" + link)
+                # 收集第一頁的網址
+                for link in soup.find_all('a', href=re.compile(r'p1_buy_detail\.php\?detail_PKey=\d+')):
+                    detail_links.add(urljoin("https://www.jwincar.com.tw/", link.get('href')))
                     
-                    # 自動尋找「下一頁」之類的分頁按鈕
-                    page_links = re.findall(r'href=["\']([^"\']*?(?:page|p|nowPage)=\d+[^"\']*)["\']', text, re.IGNORECASE)
-                    for pl in page_links:
-                        pl_clean = pl.replace("&amp;", "&").lstrip('/')
-                        if not pl_clean.startswith('http'):
-                            if pl_clean.startswith('?'):
-                                full_pl = current_url.split('?')[0] + pl_clean
-                            else:
-                                full_pl = "https://www.jwincar.com.tw/" + pl_clean
-                        else:
-                            full_pl = pl_clean
-                            
-                        if full_pl not in visited_list_pages:
-                            pages_to_visit.append(full_pl)
-                except Exception: pass
-                    
-            # 第三階段：進入每台車廣告，執行「黃金線索」匹配
+                # 收集後續所有分頁的網址
+                for page in range(2, total_pages + 1):
+                    post_data['PageA'] = str(page)
+                    p_resp = front_session.post(post_url, data=post_data, timeout=10)
+                    p_resp.encoding = 'utf-8'
+                    p_soup = BeautifulSoup(p_resp.text, 'html.parser')
+                    for link in p_soup.find_all('a', href=re.compile(r'p1_buy_detail\.php\?detail_PKey=\d+')):
+                        detail_links.add(urljoin("https://www.jwincar.com.tw/", link.get('href')))
+            except Exception as e:
+                print(f"Pagination fetch error: {e}")
+                
             def fetch_detail(url):
                 try:
                     res = front_session.get(url, timeout=5)
@@ -895,6 +889,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 except Exception: pass
 
             if detail_links:
+                # 開20個工人去爬，幾百台車大約10~15秒完成
                 with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
                     executor.map(fetch_detail, list(detail_links))
                     

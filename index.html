@@ -171,7 +171,7 @@
 
                 <!-- 動態進度條容器 -->
                 <div id="progressContainer" class="w-full bg-gray-200 rounded-full h-4 mt-5 hidden overflow-hidden shadow-inner border border-gray-300">
-                    <div id="progressBar" class="bg-blue-500 h-4 rounded-full transition-all duration-500 relative progress-bar-stripes flex items-center justify-center text-[10px] text-white font-bold" style="width: 0%"></div>
+                    <div id="progressBar" class="bg-blue-500 h-4 rounded-full transition-all duration-300 relative flex items-center justify-center text-[10px] text-white font-bold" style="width: 0%"></div>
                 </div>
 
                 <!-- 動態進度文字說明 -->
@@ -185,7 +185,7 @@
         let loginModalResolve = null;
         let progressInterval = null; 
 
-        // 進度條控制
+        // 💡 進階版 startProgress：清除舊的間隔，準備接收真實進度
         function startProgress(isFake = true) {
             const pContainer = document.getElementById('progressContainer');
             const pBar = document.getElementById('progressBar');
@@ -193,12 +193,13 @@
             
             pBar.style.width = '0%';
             pBar.textContent = '0%';
-            pBar.className = "h-4 rounded-full transition-all duration-500 relative progress-bar-stripes bg-blue-500 flex items-center justify-center text-[10px] text-white font-bold";
+            pBar.className = "h-4 rounded-full transition-all duration-300 relative bg-blue-500 flex items-center justify-center text-[10px] text-white font-bold";
             
             if (progressInterval) clearInterval(progressInterval);
 
-            // 若為手動上傳檔案，仍使用虛擬進度條
+            // 若為上傳 Excel (沒有進度 API)，才使用虛擬亂數跑進度
             if (isFake) {
+                pBar.classList.add('progress-bar-stripes');
                 let width = 0;
                 progressInterval = setInterval(() => {
                     if (width >= 90) {
@@ -328,13 +329,13 @@
             window.location.reload();
         }
 
-        // 💡 串接後端即時 API 播報進度的爬蟲按鈕
+        // 💡 讀取後端進度的爬蟲按鈕 (isFake = false)
         async function syncBackend(retryUser = null, retryPwd = null) {
             const statusDiv = document.getElementById('uploadStatus');
             const syncBtn = document.getElementById('syncBtn');
             const pBar = document.getElementById('progressBar');
             
-            // isFake 設為 false，清空進度條，停止假亂數，完全吃後端的真實數據
+            // isFake 設為 false，清空進度條，停止假亂數，完全讀取後端的真實數據
             startProgress(false); 
             statusDiv.textContent = "⏳ 正在發送更新請求，準備啟動爬蟲...";
             statusDiv.style.display = "block";
@@ -378,7 +379,7 @@
                     finishProgress(true);
                     statusDiv.textContent = "✅ " + data.message;
                     statusDiv.className = "mt-3 text-left md:text-center font-bold text-sm bg-green-50 text-green-700 p-4 rounded-lg block whitespace-pre-wrap leading-relaxed";
-                    alert("更新完成！");
+                    alert("更新完成！可以點擊上方按鈕前往各系統。");
                 } else if (data.status === 'need_login') {
                     hideProgress();
                     statusDiv.style.display = "none";
@@ -420,7 +421,7 @@
             const formData = new FormData();
             formData.append("file", fileInput.files[0]);
             
-            // 檔案上傳沒有後端進度 API，因此啟用原本的 isFake = true 亂數進度條
+            // 檔案上傳沒有後端進度 API，因此啟用 isFake = true 虛擬亂數跑進度
             startProgress(true);
             statusDiv.textContent = "⏳ 資料上傳處理中...系統正在分析檔名與內容，請稍候...";
             statusDiv.style.display = "block";

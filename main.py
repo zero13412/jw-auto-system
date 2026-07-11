@@ -712,7 +712,7 @@ def get_valid_credentials(force_u=None, force_p=None):
     return None, None
 
 # =========================================================================
-# 💡 終極核心同步引擎 (雙軌並行抓取，支援收購金額)
+# 💡 終極核心同步引擎 (雙軌並行抓取，結合前台車牌探測 Spider)
 # =========================================================================
 def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     global global_sync_status
@@ -728,9 +728,9 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         session.post(login_url, data={"strID": login_user, "strPW": login_pwd, "Submit": "送出"})
         
         # ----------------------------------------------------
-        # 軌道 1：從「收購合約」抓取查定表的 PKey 與 收購金額
+        # 軌道 1：從「收購合約」抓取查定表的 PKey
         # ----------------------------------------------------
-        global_sync_status["message"] = "📝 正在掃描收購合約，解析查定代碼與收購金額..."
+        global_sync_status["message"] = "📝 正在掃描收購合約，解析查定表代碼..."
         global_sync_status["progress"] = 15
         pkey_map = {}
         try:
@@ -752,8 +752,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 c_headers = [th.text.strip() for th in c_rows[0].find_all(["th", "td"])]
                 p_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["車牌", "車號", "牌照"])), -1)
                 v_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["車身", "車架", "VIN"])), -1)
-                
-                # 💡 自動尋找「收購金額」相關欄位
                 price_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["收購", "金額", "車價", "總價"])), -1)
                 
                 for row in c_rows[1:]:
@@ -766,7 +764,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                             m = re.search(r'PKey=(\d+)', btn["onclick"])
                             if m: row_pkey = m.group(1); break
                             
-                    # 💡 提取並換算收購金額
                     pur_price = ""
                     if price_col != -1 and price_col < len(tds):
                         p_text = tds[price_col].text.strip()
@@ -775,7 +772,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                             num_str = m_price.group(0).replace(',', '')
                             if num_str.isdigit():
                                 if int(num_str) >= 10000:
-                                    # 如果金額大於等於一萬，換算成萬單位
                                     pur_price = str(round(int(num_str) / 10000, 1)).replace('.0', '')
                                 else:
                                     pur_price = num_str
@@ -940,12 +936,10 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             row_plate = car_wrapper["row_plate"]
             row_vin = car_wrapper["row_vin"]
             
-            # 💡 寫入查定表 PKey 與 收購金額
             contract_info = pkey_map.get(row_plate) or pkey_map.get(row_vin) or {}
             row_dict["查定表PKey"] = contract_info.get("pkey", "")
             row_dict["收購金額"] = contract_info.get("price", "")
             
-            # 寫入官網廣告網址 (統一只寫到「連結」欄位)
             link_url = frontend_map.get(row_plate, "")
             row_dict["連結"] = link_url
             

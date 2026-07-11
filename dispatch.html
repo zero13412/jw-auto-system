@@ -138,7 +138,7 @@
                         <div class="flex flex-col col-span-2"><label class="text-gray-500 mb-1">車型</label><input v-model="car.model" type="text" class="border p-1.5 rounded bg-gray-50 focus:outline-none"></div>
                         <div class="flex flex-col"><label class="text-gray-500 mb-1">里程(萬)</label><input v-model="car.mileage" type="text" class="border p-1.5 rounded bg-gray-50 focus:outline-none"></div>
                         
-                        <!-- 💡 新增：獨立顯眼的收購金額欄位 -->
+                        <!-- 💡 獨立顯眼的收購金額欄位 -->
                         <div class="flex flex-col">
                             <label class="text-rose-600 font-bold mb-1">💰 收購金額</label>
                             <input v-model="car.purchase_price" type="text" class="border border-rose-200 p-1.5 rounded bg-rose-50 text-rose-700 font-bold focus:outline-none" placeholder="無" readonly>
@@ -276,8 +276,13 @@
                             car.color = d['顏色'] || '';
                             car.mileage = d['里程'] || '';
                             
-                            // 💡 讀取並顯示收購金額
-                            car.purchase_price = (d['收購金額'] && String(d['收購金額']).trim() !== 'nan') ? d['收購金額'] + '萬' : '';
+                            // 💡 讀取收購金額 (將資料庫的「元」除以一萬顯示成「萬」)
+                            if (d['收購金額'] && String(d['收購金額']).trim() !== 'nan' && String(d['收購金額']).trim() !== '') {
+                                const num = Number(d['收購金額']);
+                                car.purchase_price = isNaN(num) ? d['收購金額'] : (num / 10000).toFixed(1).replace('.0', '') + '萬';
+                            } else {
+                                car.purchase_price = '';
+                            }
                             
                             car.company = (d['產權'] && d['產權'] !== 'nan') ? d['產權'] : ((d['公司'] && d['公司'] !== 'nan') ? d['公司'] : '');
                             

@@ -50,6 +50,13 @@ KNOWN_MAKES = [
     "MASERATI", "FERRARI", "LAMBORGHINI", "BENTLEY", "ROLLS-ROYCE"
 ]
 
+# 💡 新增：全域進度狀態追蹤器
+global_sync_status = {
+    "is_running": False,
+    "message": "系統準備就緒",
+    "progress": 0
+}
+
 # 💡 核心引擎：60秒極速快取
 class TTLCache:
     def __init__(self, ttl=60):
@@ -705,9 +712,14 @@ def get_valid_credentials(force_u=None, force_p=None):
     return None, None
 
 # =========================================================================
-# 💡 終極核心同步引擎 (後台撈取 + 前台 POST 分頁無死角掃描)
+# 💡 終極核心同步引擎 (雙軌並行抓取，結合前台車牌探測 Spider)
 # =========================================================================
 def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
+    global global_sync_status
+    global_sync_status["is_running"] = True
+    global_sync_status["message"] = "🚀 正在連線並登入後台系統..."
+    global_sync_status["progress"] = 5
+    
     try:
         session = requests.Session()
         session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
@@ -718,6 +730,8 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         # ----------------------------------------------------
         # 軌道 1：從「收購合約」抓取查定表的 PKey
         # ----------------------------------------------------
+        global_sync_status["message"] = "📝 正在掃描收購合約，解析查定表代碼..."
+        global_sync_status["progress"] = 15
         pkey_map = {}
         try:
             contract_url = "https://www.jwincar.com.tw/manage/Contract/p14_contract_purchase_list.php"
@@ -763,6 +777,8 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         # ----------------------------------------------------
         # 軌道 2：從「在庫車輛清單」抓取基本車輛資料
         # ----------------------------------------------------
+        global_sync_status["message"] = "🚗 正在清點在庫車輛基本資料..."
+        global_sync_status["progress"] = 30
         all_cars_dicts = []
         website_headers = []
         page_num, last_first_row = 1, ""
@@ -812,11 +828,14 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             page_num += 1
 
         if len(all_cars_dicts) < 100: 
+            global_sync_status["is_running"] = False
             return {"status": "error", "message": f"🚨 數據異常熔斷！為保護原始資料庫已自動拒絕寫入。"}
 
         # ----------------------------------------------------
-        # 軌道 3：🚀 官網前台多執行緒掃描器 (精準 POST 抓取 + 黃金線索)
+        # 軌道 3：🚀 官網前台多執行緒掃描器 (自動找分頁 + 黃金線索)
         # ----------------------------------------------------
+        global_sync_status["message"] = "🕸️ 正在抓取官網全站網址清單..."
+        global_sync_status["progress"] = 45
         frontend_map = {}
         known_plates = set(car["row_plate"] for car in all_cars_dicts if car["row_plate"])
         
@@ -837,7 +856,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             }
             
             try:
-                # 取得第一頁與總頁數
                 resp = front_session.post(post_url, data=post_data, timeout=10)
                 resp.encoding = 'utf-8'
                 soup = BeautifulSoup(resp.text, 'html.parser')
@@ -848,11 +866,9 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                     match = re.search(r'(\d+)', span_tag.text)
                     if match: total_pages = int(match.group(1))
                     
-                # 收集第一頁的網址
                 for link in soup.find_all('a', href=re.compile(r'p1_buy_detail\.php\?detail_PKey=\d+')):
                     detail_links.add(urljoin("https://www.jwincar.com.tw/", link.get('href')))
                     
-                # 收集後續所有分頁的網址
                 for page in range(2, total_pages + 1):
                     post_data['PageA'] = str(page)
                     p_resp = front_session.post(post_url, data=post_data, timeout=10)
@@ -877,7 +893,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                     if plate_found and plate_found in known_plates:
                         frontend_map[plate_found] = url
                     else:
-                        # 備用保險方案：用已經存在的車牌庫去暴力比對廣告內文
                         html_upper = html.upper()
                         for plate in known_plates:
                             if len(plate) >= 4:
@@ -889,7 +904,8 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 except Exception: pass
 
             if detail_links:
-                # 開20個工人去爬，幾百台車大約10~15秒完成
+                global_sync_status["message"] = f"🧠 啟動 20 核心引擎，執行車牌特徵比對... (共 {len(detail_links)} 筆)"
+                global_sync_status["progress"] = 65
                 with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
                     executor.map(fetch_detail, list(detail_links))
                     
@@ -899,6 +915,8 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         # ----------------------------------------------------
         # 軌道 4：將所有資料雙向合併並寫入 Google Sheets (只留「連結」欄位)
         # ----------------------------------------------------
+        global_sync_status["message"] = "✍️ 正在將最新資料統整並寫入 Google Sheets..."
+        global_sync_status["progress"] = 80
         final_cars_list = []
         for car_wrapper in all_cars_dicts:
             row_dict = car_wrapper["row_dict"]
@@ -961,7 +979,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             if col not in final_headers: final_headers.append(col)
         if not final_headers: final_headers = list(df_crawled.columns)
         
-        # 確保功能性欄位都有被建立
         if "查定表PKey" not in final_headers: final_headers.append("查定表PKey")
         if "連結" not in final_headers: final_headers.append("連結")
 
@@ -1002,14 +1019,23 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 sold_gsheet.clear()
                 sold_gsheet.update(values=final_sold_data, range_name='A1')
 
+        global_sync_status["message"] = "✨ 正在重新載入系統快取..."
+        global_sync_status["progress"] = 95
         load_and_clean_data()
+        
         msg = f"🤖 更新成功！共抓取 {len(all_cars_dicts)} 筆車源。{status_msg}"
         if new_count > 0:
             msg += f"\n✨ 自動發現 {new_count} 台新車：\n" + "\n".join(new_cars_list[:10])
             if new_count > 10: msg += f"\n...等共 {new_count} 台"
+            
+        global_sync_status["message"] = "✅ 更新完成！請點擊上方按鈕前往各系統"
+        global_sync_status["progress"] = 100
+        global_sync_status["is_running"] = False
         return {"status": "success", "message": msg}
 
     except Exception as e: 
+        global_sync_status["message"] = f"❌ 發生錯誤：{str(e)}"
+        global_sync_status["is_running"] = False
         return {"status": "error", "message": f"爬蟲發生錯誤：{str(e)}"}
     finally: 
         gc.collect()
@@ -1072,11 +1098,19 @@ def view_inspection(PKey: str = ""):
     except Exception as e:
         return f"<h1>❌ 抓取失敗：網路異常 ({str(e)})</h1>"
 
+# 💡 新增：進度條即時讀取 API，讓前端可以動態顯示「正在做什麼」
+@app.get("/api/sync_progress")
+def api_sync_progress():
+    return global_sync_status
+
 @app.get("/api/sync_car_source")
 def api_sync_car_source(user_id: str = "", u: str = "", p: str = ""):
     if not check_permission(user_id, "更新車源"): return {"status": "error", "message": "⛔ 權限不足！請聯繫管理員開通「更新車源」權限。"}
     valid_u, valid_p = get_valid_credentials(u, p)
     if not valid_u: return {"status": "need_login", "message": "⚠️ 系統自動嘗試備用密碼失敗，請手動輸入最新的帳號與密碼。"}
+    
+    # 這裡因為 FastAPI 預設處理可能是同步的，如果太久會讓請求掛起
+    # 但因為使用者是用 LINE 機器人背景觸發的，所以這個網址可以備用。
     return core_sync_car_source(user_id, valid_u, valid_p)
 
 @app.post("/api/parse_ad")
@@ -1492,7 +1526,7 @@ def handle_text_message(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="⛔ 抱歉，您沒有執行「更新車源」的權限。"))
             return
             
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🤖 身份確認！正在連線後台抓取車源..."))
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🤖 身份確認！正在連線後台抓取車源，請稍候（約需15~30秒）...\n您也可以至「系統首頁」查看即時進度！"))
         def run_task():
             try:
                 valid_u, valid_p = get_valid_credentials()

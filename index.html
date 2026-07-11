@@ -183,7 +183,8 @@
         let loginModalResolve = null;
         let progressInterval = null; 
 
-        function startProgress() {
+        // 💡 修改版的 startProgress：讓它支援「手動假進度」與「純粹重置進度條」
+        function startProgress(isFake = true) {
             const pContainer = document.getElementById('progressContainer');
             const pBar = document.getElementById('progressBar');
             pContainer.classList.remove('hidden');
@@ -191,16 +192,21 @@
             pBar.style.width = '0%';
             pBar.className = "h-3 rounded-full transition-all duration-300 relative progress-bar-stripes bg-blue-500";
             
-            let width = 0;
-            progressInterval = setInterval(() => {
-                if (width >= 90) {
-                    clearInterval(progressInterval);
-                } else {
-                    width += Math.random() * 4; 
-                    if (width > 90) width = 90;
-                    pBar.style.width = width + '%';
-                }
-            }, 800);
+            if (progressInterval) clearInterval(progressInterval);
+
+            // 若為手動上傳檔案 (isFake = true)，才使用虛擬進度條
+            if (isFake) {
+                let width = 0;
+                progressInterval = setInterval(() => {
+                    if (width >= 90) {
+                        clearInterval(progressInterval);
+                    } else {
+                        width += Math.random() * 4; 
+                        if (width > 90) width = 90;
+                        pBar.style.width = width + '%';
+                    }
+                }, 800);
+            }
         }
 
         function finishProgress(isSuccess) {
@@ -317,17 +323,33 @@
             window.location.reload();
         }
 
+        // 💡 更新版 syncBackend：讀取後端即時 API 回報
         async function syncBackend(retryUser = null, retryPwd = null) {
             const statusDiv = document.getElementById('uploadStatus');
             const syncBtn = document.getElementById('syncBtn');
             
-            startProgress();
+            // isFake 設為 false，清空進度條，停止假亂數
+            startProgress(false); 
             statusDiv.textContent = "⏳ 正在連線更新車源表，請稍候...";
             statusDiv.style.display = "block";
             statusDiv.className = "mt-3 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
             
             syncBtn.disabled = true;
             syncBtn.classList.add("opacity-50", "cursor-not-allowed");
+            
+            // 每秒去後端問進度
+            progressInterval = setInterval(async () => {
+                try {
+                    const res = await fetch('/api/sync_progress');
+                    const data = await res.json();
+                    if (data.is_running || data.progress > 0) {
+                        document.getElementById('progressBar').style.width = data.progress + '%';
+                        document.getElementById('uploadStatus').textContent = "⏳ " + data.message;
+                    }
+                } catch (e) {
+                    console.log("Progress fetch error", e);
+                }
+            }, 1000);
             
             try {
                 const curUserId = localStorage.getItem('jw_user_id') || "";
@@ -337,8 +359,12 @@
                     url += `&u=${encodeURIComponent(retryUser)}&p=${encodeURIComponent(retryPwd)}`;
                 }
                 
+                // 發送長時間請求 (15~30秒)
                 const res = await fetch(url);
                 const data = await res.json();
+                
+                // 停止進度詢問
+                clearInterval(progressInterval);
                 
                 if (data.status === 'success') {
                     finishProgress(true);
@@ -363,8 +389,9 @@
                     alert(data.message);
                 }
             } catch (e) { 
+                clearInterval(progressInterval);
                 finishProgress(false);
-                statusDiv.textContent = "❌ 更新連線失敗，請檢查網路狀態";
+                statusDiv.textContent = "❌ 更新連線失敗，請檢查網路狀態或等待伺服器回應。";
                 statusDiv.className = "mt-3 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
             } finally { 
                 syncBtn.disabled = false;
@@ -385,7 +412,8 @@
             const formData = new FormData();
             formData.append("file", fileInput.files[0]);
             
-            startProgress();
+            // 檔案上傳沒有後端進度 API，因此啟用原本的 isFake = true 亂數進度條
+            startProgress(true);
             statusDiv.textContent = "⏳ 資料上傳處理中...系統正在分析檔名與內容，請稍候...";
             statusDiv.style.display = "block";
             statusDiv.className = "mt-3 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";

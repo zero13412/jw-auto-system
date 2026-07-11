@@ -138,7 +138,13 @@
                         <div class="flex flex-col col-span-2"><label class="text-gray-500 mb-1">車型</label><input v-model="car.model" type="text" class="border p-1.5 rounded bg-gray-50 focus:outline-none"></div>
                         <div class="flex flex-col"><label class="text-gray-500 mb-1">里程(萬)</label><input v-model="car.mileage" type="text" class="border p-1.5 rounded bg-gray-50 focus:outline-none"></div>
                         
-                        <div class="flex flex-col"><label class="text-red-600 font-bold mb-1">產權公司</label><input v-model="car.company" type="text" class="border border-red-200 p-1.5 rounded bg-yellow-50 text-red-700 font-bold focus:outline-none" placeholder="系統自動判斷"></div>
+                        <!-- 💡 新增：獨立顯眼的收購金額欄位 -->
+                        <div class="flex flex-col">
+                            <label class="text-rose-600 font-bold mb-1">💰 收購金額</label>
+                            <input v-model="car.purchase_price" type="text" class="border border-rose-200 p-1.5 rounded bg-rose-50 text-rose-700 font-bold focus:outline-none" placeholder="無" readonly>
+                        </div>
+                        
+                        <div class="flex flex-col col-span-2"><label class="text-red-600 font-bold mb-1">產權公司</label><input v-model="car.company" type="text" class="border border-red-200 p-1.5 rounded bg-yellow-50 text-red-700 font-bold focus:outline-none" placeholder="系統自動判斷"></div>
                     </div>
                 </div>
 
@@ -213,7 +219,7 @@
                 });
 
                 const car = reactive({
-                    plate: '', brand: '', model: '', year: '', color: '', mileage: '', company: ''
+                    plate: '', brand: '', model: '', year: '', color: '', mileage: '', company: '', purchase_price: ''
                 });
 
                 const output = reactive({ report: "", pitches: [] });
@@ -270,6 +276,9 @@
                             car.color = d['顏色'] || '';
                             car.mileage = d['里程'] || '';
                             
+                            // 💡 讀取並顯示收購金額
+                            car.purchase_price = (d['收購金額'] && String(d['收購金額']).trim() !== 'nan') ? d['收購金額'] + '萬' : '';
+                            
                             car.company = (d['產權'] && d['產權'] !== 'nan') ? d['產權'] : ((d['公司'] && d['公司'] !== 'nan') ? d['公司'] : '');
                             
                             let dbLoc = String(d['車輛位置'] || '');
@@ -290,6 +299,7 @@
                             updateStatus(`✅ 找到車輛：${car.model} (產權: ${car.company || '無'})`, "text-green-300 font-bold");
                         } else {
                             car.plate = searchQuery.value.toUpperCase();
+                            car.purchase_price = '';
                             updateStatus("❌ 查無此車，請手動輸入明細", "text-red-300 font-bold");
                         }
                     } catch (e) {
@@ -393,7 +403,6 @@
                         
                         const p2 = `另一種方式是 您可線上預付賞車金 \n我們可幫您把車調度到您覺得賞車最方便的店\n($1000-$2500 依照距離收費 刷卡或匯款都可)\n(請至我們官網，每輛車的頁面裡會有線上付費的連結)\n\n如果車調度到了 您看完車覺得OK 簽約\n賞車金可折抵車價 不用額外付調度費\n也可在XX店交車\n\n那如果車調度到之後 您看過車不想買 也沒有其他考慮的車款\n賞車金就沒有退 當作您部分負擔調度費\n(提醒您：超過24小時不退款)`;
                         
-                        // 💡 訂金修改：移除扣款邏輯，固定為 20000 
                         const p3 = `再跟您詳細說明\n賞車金 不是訂金 \n您預付賞車金後 是第一順位\n\n因為我們車跑的速度蠻快\n車子調度需要排隊\n車輛到店後，有三天的優先購買權。\n\n假設\n1. 車子還沒調度 \n2. 調度到了 您來看車之前\n有第二順位出現 想直接付訂金\n(我們訂金固定是收 20,000 元)\n會馬上告知您 您有3小時考慮時間\n\n如您有意願購買 就必須3小時內 付 20,000 元訂金`;
                         
                         const p4 = `但如果 您決定要直接到 車輛所在店賞車 還是建議您 先預付賞車金\n\n直接過去 就沒有拖車 不買需部分負擔調度費的問題\n不滿意 也不考慮其他車款  賞車金可全退\n而且您就是第一順位 如有其他人想買 您可考慮3小時\n\n因為我們常常發生 客人在路上 結果車被現場客人買走`;
@@ -403,7 +412,6 @@
                     }
 
                     if (settings.mode === 'reserve') {
-                        // 💡 訂金修改：移除扣款邏輯，固定為 20000 
                         const p1 = `您要直接到「${settings.locFrom}」店賞車的話 看您有沒有意願線上預付賞車金${fee}元\n${fee} 元是賞車金 不是訂金\n(刷卡或匯款都可)\n(請至我們官網，每輛車的頁面裡會有線上付費的連結)\n\n因為我們車跑的速度蠻快\n您付賞車金之後 預約後有四天的優先購買權 並且是購車的第一順位\n\n假設 您來看車之前\n有第二順位出現 他想直接付訂金\n(我們訂金固定是收 20,000 元)\n會馬上告知您 您有3小時考慮時間 可馬上來看車\n如您有意願購買 就必須3小時內 付 20,000 元訂金\n那如果看完車不滿意 現場也沒有其他考慮的車款\n${fee}元可全退`;
                         output.pitches = [p1];
                         return;
@@ -425,7 +433,6 @@
                     
                     const p2 = `另一種方式是 您可線上預付 ${fee} 元賞車金 (刷卡或匯款都可)\n(請至我們官網，每輛車的頁面裡會有線上付費的連結)\n\n我們可幫您把車調度到「${settings.locTo}」店\n如果車到「${settings.locTo}」 您覺得OK 簽約\n${fee} 元可折抵車價 不用額外付調度費\n也可在「${settings.locTo}」店交車\n\n那如果車調度到「${settings.locTo}」後 您看過車不想買 也沒有其他考慮的車款\n${fee} 元就沒有退 當作您部分負擔調度費\n(提醒您：超過24小時不退款)`;
                     
-                    // 💡 訂金修改：移除扣款邏輯，固定為 20000 
                     const p3 = `再跟您詳細說明\n${fee} 是賞車金 不是訂金 \n您預付 ${fee} 後 是第一順位\n\n因為我們車跑的速度蠻快\n車子調度需要排隊\n車輛到店後，有三天的優先購買權。\n\n假設\n1. 車子還沒調度 \n2. 調度到了 您來看車之前\n有第二順位出現 想直接付訂金\n(我們訂金固定是收 20,000 元)\n會馬上告知您 您有3小時考慮時間\n\n如您有意願購買 就必須3小時內 付 20,000 元訂金`;
                     
                     const p4 = `但如果 您決定要直接到 「${settings.locFrom}」店賞車 還是建議您 先預付 ${fee} 元賞車金 (刷卡匯款都可)\n\n直接過去 就沒有拖車 不買需付 ${fee} 元的問題\n不滿意 也不考慮其他車款 ${fee} 元可全退\n而且您就是第一順位 如有其他人想買 您可考慮3小時\n\n因為我們常常發生 客人在路上 結果車被現場客人買走`;

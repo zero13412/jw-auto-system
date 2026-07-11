@@ -50,7 +50,7 @@ KNOWN_MAKES = [
     "MASERATI", "FERRARI", "LAMBORGHINI", "BENTLEY", "ROLLS-ROYCE"
 ]
 
-# 💡 新增：全域進度狀態追蹤器
+# 💡 全域進度狀態追蹤器
 global_sync_status = {
     "is_running": False,
     "message": "系統準備就緒",
@@ -712,7 +712,7 @@ def get_valid_credentials(force_u=None, force_p=None):
     return None, None
 
 # =========================================================================
-# 💡 終極核心同步引擎 (雙軌並行抓取，結合前台車牌探測 Spider)
+# 💡 終極核心同步引擎 (雙軌並行抓取，支援收購金額)
 # =========================================================================
 def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     global global_sync_status
@@ -728,9 +728,9 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         session.post(login_url, data={"strID": login_user, "strPW": login_pwd, "Submit": "送出"})
         
         # ----------------------------------------------------
-        # 軌道 1：從「收購合約」抓取查定表的 PKey
+        # 軌道 1：從「收購合約」抓取查定表的 PKey 與 收購金額
         # ----------------------------------------------------
-        global_sync_status["message"] = "📝 正在掃描收購合約，解析查定表代碼..."
+        global_sync_status["message"] = "📝 正在掃描收購合約，解析查定代碼與收購金額..."
         global_sync_status["progress"] = 15
         pkey_map = {}
         try:
@@ -753,6 +753,9 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 p_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["車牌", "車號", "牌照"])), -1)
                 v_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["車身", "車架", "VIN"])), -1)
                 
+                # 💡 自動尋找「收購金額」相關欄位
+                price_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["收購", "金額", "車價", "總價"])), -1)
+                
                 for row in c_rows[1:]:
                     tds = row.find_all("td")
                     if not tds: continue
@@ -763,13 +766,29 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                             m = re.search(r'PKey=(\d+)', btn["onclick"])
                             if m: row_pkey = m.group(1); break
                             
-                    if row_pkey:
+                    # 💡 提取並換算收購金額
+                    pur_price = ""
+                    if price_col != -1 and price_col < len(tds):
+                        p_text = tds[price_col].text.strip()
+                        m_price = re.search(r'[\d,]+', p_text)
+                        if m_price:
+                            num_str = m_price.group(0).replace(',', '')
+                            if num_str.isdigit():
+                                if int(num_str) >= 10000:
+                                    # 如果金額大於等於一萬，換算成萬單位
+                                    pur_price = str(round(int(num_str) / 10000, 1)).replace('.0', '')
+                                else:
+                                    pur_price = num_str
+
+                    info = {"pkey": row_pkey, "price": pur_price}
+                    
+                    if row_pkey or pur_price:
                         if p_col != -1 and p_col < len(tds):
                             txt = tds[p_col].text.strip().upper().replace("-", "")
-                            if txt and txt not in ["—", "-", "NAN"]: pkey_map[txt] = row_pkey
+                            if txt and txt not in ["—", "-", "NAN"]: pkey_map[txt] = info
                         if v_col != -1 and v_col < len(tds):
                             txt = tds[v_col].text.strip().upper()
-                            if txt and txt not in ["—", "-", "NAN"]: pkey_map[txt] = row_pkey
+                            if txt and txt not in ["—", "-", "NAN"]: pkey_map[txt] = info
                 cp += 1
         except Exception as e: 
             print(f"Contract PKey fetch error: {e}")
@@ -845,7 +864,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             
             detail_links = set()
             
-            # 模仿官網真實的 POST 翻頁機制
             post_url = "https://www.jwincar.com.tw/index.php"
             post_data = {
                 'Page': '', 'PageA': '1', 'PageB': '1', 'Keyword': '', 'Keywords': '',
@@ -885,7 +903,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                     html = res.text
                     plate_found = ""
                     
-                    # 💡 黃金線索：前台網頁寫「提供車身號碼驗證：」，但其實後面接的是「車牌」！
                     m = re.search(r'提供車身號碼驗證[：:]?\s*([A-Za-z0-9]{2,4}[-\s]*[A-Za-z0-9]{2,4})', html)
                     if m:
                         plate_found = m.group(1).replace('-', '').replace(' ', '').strip().upper()
@@ -913,7 +930,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             print(f"Frontend scraping error: {e}")
 
         # ----------------------------------------------------
-        # 軌道 4：將所有資料雙向合併並寫入 Google Sheets (只留「連結」欄位)
+        # 軌道 4：將所有資料雙向合併並寫入 Google Sheets
         # ----------------------------------------------------
         global_sync_status["message"] = "✍️ 正在將最新資料統整並寫入 Google Sheets..."
         global_sync_status["progress"] = 80
@@ -923,11 +940,12 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             row_plate = car_wrapper["row_plate"]
             row_vin = car_wrapper["row_vin"]
             
-            # 寫入查定表 PKey
-            pkey_val = pkey_map.get(row_plate) or pkey_map.get(row_vin) or ""
-            row_dict["查定表PKey"] = pkey_val
+            # 💡 寫入查定表 PKey 與 收購金額
+            contract_info = pkey_map.get(row_plate) or pkey_map.get(row_vin) or {}
+            row_dict["查定表PKey"] = contract_info.get("pkey", "")
+            row_dict["收購金額"] = contract_info.get("price", "")
             
-            # 寫入官網廣告網址 (統一只寫到「連結」欄位，保持資料庫乾淨)
+            # 寫入官網廣告網址 (統一只寫到「連結」欄位)
             link_url = frontend_map.get(row_plate, "")
             row_dict["連結"] = link_url
             
@@ -981,6 +999,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         
         if "查定表PKey" not in final_headers: final_headers.append("查定表PKey")
         if "連結" not in final_headers: final_headers.append("連結")
+        if "收購金額" not in final_headers: final_headers.append("收購金額")
 
         df_aligned = df_crawled.reindex(columns=final_headers).fillna("")
         data_to_upload = [final_headers] + df_aligned.values.tolist()
@@ -1098,7 +1117,7 @@ def view_inspection(PKey: str = ""):
     except Exception as e:
         return f"<h1>❌ 抓取失敗：網路異常 ({str(e)})</h1>"
 
-# 💡 新增：進度條即時讀取 API，讓前端可以動態顯示「正在做什麼」
+# 💡 呼叫進度追蹤 API
 @app.get("/api/sync_progress")
 def api_sync_progress():
     return global_sync_status
@@ -1108,9 +1127,6 @@ def api_sync_car_source(user_id: str = "", u: str = "", p: str = ""):
     if not check_permission(user_id, "更新車源"): return {"status": "error", "message": "⛔ 權限不足！請聯繫管理員開通「更新車源」權限。"}
     valid_u, valid_p = get_valid_credentials(u, p)
     if not valid_u: return {"status": "need_login", "message": "⚠️ 系統自動嘗試備用密碼失敗，請手動輸入最新的帳號與密碼。"}
-    
-    # 這裡因為 FastAPI 預設處理可能是同步的，如果太久會讓請求掛起
-    # 但因為使用者是用 LINE 機器人背景觸發的，所以這個網址可以備用。
     return core_sync_car_source(user_id, valid_u, valid_p)
 
 @app.post("/api/parse_ad")

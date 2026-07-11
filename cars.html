@@ -213,6 +213,10 @@
                                 </div>
                                 <div class="text-xs text-gray-500">
                                     里程: {{ car.里程 }} &nbsp;|&nbsp; 顏色: {{ car.顏色 }} &nbsp;|&nbsp; 車身: {{ car.車身 }} &nbsp;|&nbsp; 過戶時間: {{ (!car.過戶時間 || String(car.過戶時間).trim() === 'nan') ? '無' : car.過戶時間 }}
+                                    <!-- 💡 顯示收購金額 -->
+                                    <span v-if="car.收購金額 && String(car.收購金額).trim() !== 'nan' && String(car.收購金額).trim() !== ''">
+                                        &nbsp;|&nbsp; <span class="font-bold text-rose-600">💰收購: {{ car.收購金額 }}萬</span>
+                                    </span>
                                 </div>
                                 
                                 <div v-if="car.車況 && car.車況 !== 'nan'" class="text-xs sm:text-sm mt-1 font-bold" 

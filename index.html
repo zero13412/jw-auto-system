@@ -169,10 +169,12 @@
                     </div>
                 </div>
 
-                <div id="progressContainer" class="w-full bg-gray-200 rounded-full h-3 mt-5 hidden overflow-hidden shadow-inner border border-gray-300">
-                    <div id="progressBar" class="bg-blue-500 h-3 rounded-full transition-all duration-300 relative progress-bar-stripes" style="width: 0%"></div>
+                <!-- 動態進度條容器 -->
+                <div id="progressContainer" class="w-full bg-gray-200 rounded-full h-4 mt-5 hidden overflow-hidden shadow-inner border border-gray-300">
+                    <div id="progressBar" class="bg-blue-500 h-4 rounded-full transition-all duration-500 relative progress-bar-stripes flex items-center justify-center text-[10px] text-white font-bold" style="width: 0%"></div>
                 </div>
 
+                <!-- 動態進度文字說明 -->
                 <div id="uploadStatus" class="mt-3 text-center font-bold text-sm hidden p-3 rounded-lg whitespace-pre-wrap leading-relaxed"></div>
             </div>
         </div>
@@ -183,18 +185,19 @@
         let loginModalResolve = null;
         let progressInterval = null; 
 
-        // 💡 修改版的 startProgress：讓它支援「手動假進度」與「純粹重置進度條」
+        // 進度條控制
         function startProgress(isFake = true) {
             const pContainer = document.getElementById('progressContainer');
             const pBar = document.getElementById('progressBar');
             pContainer.classList.remove('hidden');
             
             pBar.style.width = '0%';
-            pBar.className = "h-3 rounded-full transition-all duration-300 relative progress-bar-stripes bg-blue-500";
+            pBar.textContent = '0%';
+            pBar.className = "h-4 rounded-full transition-all duration-500 relative progress-bar-stripes bg-blue-500 flex items-center justify-center text-[10px] text-white font-bold";
             
             if (progressInterval) clearInterval(progressInterval);
 
-            // 若為手動上傳檔案 (isFake = true)，才使用虛擬進度條
+            // 若為手動上傳檔案，仍使用虛擬進度條
             if (isFake) {
                 let width = 0;
                 progressInterval = setInterval(() => {
@@ -204,6 +207,7 @@
                         width += Math.random() * 4; 
                         if (width > 90) width = 90;
                         pBar.style.width = width + '%';
+                        pBar.textContent = Math.floor(width) + '%';
                     }
                 }, 800);
             }
@@ -214,6 +218,7 @@
             const pBar = document.getElementById('progressBar');
             
             pBar.style.width = '100%';
+            pBar.textContent = '100%';
             pBar.classList.remove('progress-bar-stripes', 'bg-blue-500');
             
             if (isSuccess) {
@@ -323,14 +328,15 @@
             window.location.reload();
         }
 
-        // 💡 更新版 syncBackend：讀取後端即時 API 回報
+        // 💡 串接後端即時 API 播報進度的爬蟲按鈕
         async function syncBackend(retryUser = null, retryPwd = null) {
             const statusDiv = document.getElementById('uploadStatus');
             const syncBtn = document.getElementById('syncBtn');
+            const pBar = document.getElementById('progressBar');
             
-            // isFake 設為 false，清空進度條，停止假亂數
+            // isFake 設為 false，清空進度條，停止假亂數，完全吃後端的真實數據
             startProgress(false); 
-            statusDiv.textContent = "⏳ 正在連線更新車源表，請稍候...";
+            statusDiv.textContent = "⏳ 正在發送更新請求，準備啟動爬蟲...";
             statusDiv.style.display = "block";
             statusDiv.className = "mt-3 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
             
@@ -342,12 +348,14 @@
                 try {
                     const res = await fetch('/api/sync_progress');
                     const data = await res.json();
+                    
                     if (data.is_running || data.progress > 0) {
-                        document.getElementById('progressBar').style.width = data.progress + '%';
-                        document.getElementById('uploadStatus').textContent = "⏳ " + data.message;
+                        pBar.style.width = data.progress + '%';
+                        pBar.textContent = data.progress + '%';
+                        statusDiv.textContent = "⏳ " + data.message;
                     }
                 } catch (e) {
-                    console.log("Progress fetch error", e);
+                    console.log("無法取得進度資訊", e);
                 }
             }, 1000);
             
@@ -359,7 +367,7 @@
                     url += `&u=${encodeURIComponent(retryUser)}&p=${encodeURIComponent(retryPwd)}`;
                 }
                 
-                // 發送長時間請求 (15~30秒)
+                // 發送長時間請求 (等待大腦完成爬蟲，約需 15~30 秒)
                 const res = await fetch(url);
                 const data = await res.json();
                 
@@ -370,7 +378,7 @@
                     finishProgress(true);
                     statusDiv.textContent = "✅ " + data.message;
                     statusDiv.className = "mt-3 text-left md:text-center font-bold text-sm bg-green-50 text-green-700 p-4 rounded-lg block whitespace-pre-wrap leading-relaxed";
-                    alert(data.message);
+                    alert("更新完成！");
                 } else if (data.status === 'need_login') {
                     hideProgress();
                     statusDiv.style.display = "none";

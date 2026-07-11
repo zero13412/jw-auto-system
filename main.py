@@ -771,7 +771,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                             m = re.search(r'PKey=(\d+)', btn["onclick"])
                             if m: row_pkey = m.group(1); break
                             
-                    # 💡 提取並精準換算收購金額
+                    # 💡 提取收購金額 (統一儲存為「元」單位，存進 Google Sheet)
                     pur_price = ""
                     if price_col != -1 and price_col < len(tds):
                         p_text = tds[price_col].text.strip()
@@ -781,16 +781,17 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                             if inp and inp.has_attr("value"):
                                 p_text = str(inp["value"]).strip()
                                 
-                        # 處理含有小數點的金額 (如 53.5萬)
+                        # 處理金額字串
                         m_price = re.search(r'[\d,\.]+', p_text)
                         if m_price:
                             num_str = m_price.group(0).replace(',', '')
                             try:
                                 val = float(num_str)
-                                if val >= 10000:
-                                    pur_price = str(round(val / 10000, 1)).replace('.0', '')
-                                elif val > 0:
-                                    pur_price = str(round(val, 1)).replace('.0', '')
+                                if val > 0:
+                                    # 防呆：如果後台直接打 53.5 (萬)，把它轉回 535000 (元) 存入 Google Sheet
+                                    if val < 10000: 
+                                        val = val * 10000
+                                    pur_price = str(int(val))
                             except ValueError:
                                 pass
 

@@ -169,12 +169,10 @@
                     </div>
                 </div>
 
-                <!-- 動態進度條容器 -->
-                <div id="progressContainer" class="w-full bg-gray-200 rounded-full h-4 mt-5 hidden overflow-hidden shadow-inner border border-gray-300">
-                    <div id="progressBar" class="bg-blue-500 h-4 rounded-full transition-all duration-300 relative flex items-center justify-center text-[10px] text-white font-bold" style="width: 0%"></div>
+                <div id="progressContainer" class="w-full bg-gray-200 rounded-full h-3 mt-5 hidden overflow-hidden shadow-inner border border-gray-300">
+                    <div id="progressBar" class="bg-blue-500 h-3 rounded-full transition-all duration-300 relative progress-bar-stripes" style="width: 0%"></div>
                 </div>
 
-                <!-- 動態進度文字說明 -->
                 <div id="uploadStatus" class="mt-3 text-center font-bold text-sm hidden p-3 rounded-lg whitespace-pre-wrap leading-relaxed"></div>
             </div>
         </div>
@@ -185,21 +183,19 @@
         let loginModalResolve = null;
         let progressInterval = null; 
 
-        // 💡 進階版 startProgress：清除舊的間隔，準備接收真實進度
+        // 💡 確保假進度和真進度都能正確運作
         function startProgress(isFake = true) {
             const pContainer = document.getElementById('progressContainer');
             const pBar = document.getElementById('progressBar');
             pContainer.classList.remove('hidden');
             
             pBar.style.width = '0%';
-            pBar.textContent = '0%';
-            pBar.className = "h-4 rounded-full transition-all duration-300 relative bg-blue-500 flex items-center justify-center text-[10px] text-white font-bold";
+            pBar.className = "h-3 rounded-full transition-all duration-300 relative progress-bar-stripes bg-blue-500";
             
             if (progressInterval) clearInterval(progressInterval);
 
-            // 若為上傳 Excel (沒有進度 API)，才使用虛擬亂數跑進度
+            // 若為手動上傳檔案 (isFake = true)，才使用虛擬進度條
             if (isFake) {
-                pBar.classList.add('progress-bar-stripes');
                 let width = 0;
                 progressInterval = setInterval(() => {
                     if (width >= 90) {
@@ -208,7 +204,6 @@
                         width += Math.random() * 4; 
                         if (width > 90) width = 90;
                         pBar.style.width = width + '%';
-                        pBar.textContent = Math.floor(width) + '%';
                     }
                 }, 800);
             }
@@ -219,7 +214,6 @@
             const pBar = document.getElementById('progressBar');
             
             pBar.style.width = '100%';
-            pBar.textContent = '100%';
             pBar.classList.remove('progress-bar-stripes', 'bg-blue-500');
             
             if (isSuccess) {
@@ -329,15 +323,14 @@
             window.location.reload();
         }
 
-        // 💡 讀取後端進度的爬蟲按鈕 (isFake = false)
+        // 💡 讀取後端即時 API 回報
         async function syncBackend(retryUser = null, retryPwd = null) {
             const statusDiv = document.getElementById('uploadStatus');
             const syncBtn = document.getElementById('syncBtn');
             const pBar = document.getElementById('progressBar');
             
-            // isFake 設為 false，清空進度條，停止假亂數，完全讀取後端的真實數據
             startProgress(false); 
-            statusDiv.textContent = "⏳ 正在發送更新請求，準備啟動爬蟲...";
+            statusDiv.textContent = "⏳ 正在連線更新車源表，請稍候...";
             statusDiv.style.display = "block";
             statusDiv.className = "mt-3 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
             
@@ -349,14 +342,12 @@
                 try {
                     const res = await fetch('/api/sync_progress');
                     const data = await res.json();
-                    
                     if (data.is_running || data.progress > 0) {
                         pBar.style.width = data.progress + '%';
-                        pBar.textContent = data.progress + '%';
                         statusDiv.textContent = "⏳ " + data.message;
                     }
                 } catch (e) {
-                    console.log("無法取得進度資訊", e);
+                    console.log("Progress fetch error", e);
                 }
             }, 1000);
             
@@ -368,18 +359,16 @@
                     url += `&u=${encodeURIComponent(retryUser)}&p=${encodeURIComponent(retryPwd)}`;
                 }
                 
-                // 發送長時間請求 (等待大腦完成爬蟲，約需 15~30 秒)
                 const res = await fetch(url);
                 const data = await res.json();
                 
-                // 停止進度詢問
                 clearInterval(progressInterval);
                 
                 if (data.status === 'success') {
                     finishProgress(true);
                     statusDiv.textContent = "✅ " + data.message;
                     statusDiv.className = "mt-3 text-left md:text-center font-bold text-sm bg-green-50 text-green-700 p-4 rounded-lg block whitespace-pre-wrap leading-relaxed";
-                    alert("更新完成！可以點擊上方按鈕前往各系統。");
+                    alert(data.message);
                 } else if (data.status === 'need_login') {
                     hideProgress();
                     statusDiv.style.display = "none";
@@ -400,7 +389,7 @@
             } catch (e) { 
                 clearInterval(progressInterval);
                 finishProgress(false);
-                statusDiv.textContent = "❌ 更新連線失敗，請檢查網路狀態或等待伺服器回應。";
+                statusDiv.textContent = "❌ 更新連線失敗，請檢查網路狀態";
                 statusDiv.className = "mt-3 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
             } finally { 
                 syncBtn.disabled = false;
@@ -421,7 +410,6 @@
             const formData = new FormData();
             formData.append("file", fileInput.files[0]);
             
-            // 檔案上傳沒有後端進度 API，因此啟用 isFake = true 虛擬亂數跑進度
             startProgress(true);
             statusDiv.textContent = "⏳ 資料上傳處理中...系統正在分析檔名與內容，請稍候...";
             statusDiv.style.display = "block";

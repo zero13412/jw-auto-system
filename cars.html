@@ -213,7 +213,7 @@
                                 </div>
                                 <div class="text-xs text-gray-500">
                                     里程: {{ car.里程 }} &nbsp;|&nbsp; 顏色: {{ car.顏色 }} &nbsp;|&nbsp; 車身: {{ car.車身 }} &nbsp;|&nbsp; 過戶時間: {{ (!car.過戶時間 || String(car.過戶時間).trim() === 'nan') ? '無' : car.過戶時間 }}
-                                    <!-- 💡 顯示收購金額 -->
+                                    <!-- 💡 新增：顯示收購金額 -->
                                     <span v-if="car.收購金額 && String(car.收購金額).trim() !== 'nan' && String(car.收購金額).trim() !== ''">
                                         &nbsp;|&nbsp; <span class="font-bold text-rose-600">💰收購: {{ car.收購金額 }}萬</span>
                                     </span>
@@ -236,7 +236,7 @@
                                         📝 查看查定表
                                     </button>
 
-                                    <!-- 💡 官網廣告按鈕 (讀取「連結」欄位) -->
+                                    <!-- 💡 官網廣告按鈕 -->
                                     <button v-if="car.連結 && String(car.連結).trim() !== '' && String(car.連結).trim() !== 'nan'" @click="openLink(car.連結)" class="w-full sm:w-auto text-xs sm:text-sm bg-indigo-50 hover:bg-indigo-100 border border-indigo-300 px-3 py-1.5 sm:px-3 sm:py-1 rounded shadow-sm text-indigo-700 transition font-bold text-center">
                                         🌐 官網廣告
                                     </button>
@@ -356,7 +356,6 @@
                     }
                 };
 
-                // 💡 讀取「連結」欄位並開啟官網
                 const openLink = (url) => {
                     if (url && String(url).trim() !== '' && String(url).trim() !== 'nan') {
                         window.open(url, '_blank');

@@ -712,7 +712,7 @@ def get_valid_credentials(force_u=None, force_p=None):
     return None, None
 
 # =========================================================================
-# 💡 終極核心同步引擎 (雙軌並行抓取，支援收購金額與前台車牌探測)
+# 💡 終極核心同步引擎 (雙軌並行抓取，支援收購金額)
 # =========================================================================
 def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     global global_sync_status
@@ -753,8 +753,13 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 p_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["車牌", "車號", "牌照"])), -1)
                 v_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["車身", "車架", "VIN"])), -1)
                 
-                # 💡 自動尋找「收購金額」相關欄位
-                price_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["收購", "金額", "車價", "總價"])), -1)
+                # 💡 自動尋找「收購金額」相關欄位 (擴大關鍵字，按照精準度排序)
+                price_col = -1
+                for kw in ["收購", "買價", "成本", "成交", "金額", "車價", "總價"]:
+                    idx = next((i for i, h in enumerate(c_headers) if kw in h), -1)
+                    if idx != -1:
+                        price_col = idx
+                        break
                 
                 for row in c_rows[1:]:
                     tds = row.find_all("td")
@@ -766,19 +771,28 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                             m = re.search(r'PKey=(\d+)', btn["onclick"])
                             if m: row_pkey = m.group(1); break
                             
-                    # 💡 提取並換算收購金額
+                    # 💡 提取並精準換算收購金額
                     pur_price = ""
                     if price_col != -1 and price_col < len(tds):
                         p_text = tds[price_col].text.strip()
-                        m_price = re.search(r'[\d,]+', p_text)
+                        # 若欄位內是 input 標籤，把 value 拿出來
+                        if not p_text:
+                            inp = tds[price_col].find("input")
+                            if inp and inp.has_attr("value"):
+                                p_text = str(inp["value"]).strip()
+                                
+                        # 處理含有小數點的金額 (如 53.5萬)
+                        m_price = re.search(r'[\d,\.]+', p_text)
                         if m_price:
                             num_str = m_price.group(0).replace(',', '')
-                            if num_str.isdigit():
-                                if int(num_str) >= 10000:
-                                    # 如果金額大於等於一萬，換算成萬單位
-                                    pur_price = str(round(int(num_str) / 10000, 1)).replace('.0', '')
-                                else:
-                                    pur_price = num_str
+                            try:
+                                val = float(num_str)
+                                if val >= 10000:
+                                    pur_price = str(round(val / 10000, 1)).replace('.0', '')
+                                elif val > 0:
+                                    pur_price = str(round(val, 1)).replace('.0', '')
+                            except ValueError:
+                                pass
 
                     info = {"pkey": row_pkey, "price": pur_price}
                     
@@ -942,8 +956,8 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             
             # 💡 寫入查定表 PKey 與 收購金額
             contract_info = pkey_map.get(row_plate) or pkey_map.get(row_vin) or {}
-            row_dict["查定表PKey"] = contract_info.get("pkey", "") if isinstance(contract_info, dict) else contract_info
-            row_dict["收購金額"] = contract_info.get("price", "") if isinstance(contract_info, dict) else ""
+            row_dict["查定表PKey"] = contract_info.get("pkey", "")
+            row_dict["收購金額"] = contract_info.get("price", "")
             
             # 寫入官網廣告網址 (統一只寫到「連結」欄位)
             link_url = frontend_map.get(row_plate, "")
@@ -1117,7 +1131,7 @@ def view_inspection(PKey: str = ""):
     except Exception as e:
         return f"<h1>❌ 抓取失敗：網路異常 ({str(e)})</h1>"
 
-# 💡 確保改用 async def，讓它不被執行緒池卡住，隨時回應進度！
+# 💡 呼叫進度追蹤 API (已轉換為 async def 非同步，保證不再塞車！)
 @app.get("/api/sync_progress")
 async def api_sync_progress():
     return global_sync_status

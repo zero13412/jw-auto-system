@@ -183,7 +183,7 @@
         let loginModalResolve = null;
         let progressInterval = null; 
 
-        // 💡 確保假進度和真進度都能正確運作
+        // 💡 支援「手動假進度」與「即時真進度」
         function startProgress(isFake = true) {
             const pContainer = document.getElementById('progressContainer');
             const pBar = document.getElementById('progressBar');
@@ -323,12 +323,12 @@
             window.location.reload();
         }
 
-        // 💡 讀取後端即時 API 回報
+        // 💡 更新版 syncBackend：讀取後端即時 API 回報
         async function syncBackend(retryUser = null, retryPwd = null) {
             const statusDiv = document.getElementById('uploadStatus');
             const syncBtn = document.getElementById('syncBtn');
-            const pBar = document.getElementById('progressBar');
             
+            // isFake 設為 false，清空進度條，停止假亂數
             startProgress(false); 
             statusDiv.textContent = "⏳ 正在連線更新車源表，請稍候...";
             statusDiv.style.display = "block";
@@ -343,8 +343,8 @@
                     const res = await fetch('/api/sync_progress');
                     const data = await res.json();
                     if (data.is_running || data.progress > 0) {
-                        pBar.style.width = data.progress + '%';
-                        statusDiv.textContent = "⏳ " + data.message;
+                        document.getElementById('progressBar').style.width = data.progress + '%';
+                        document.getElementById('uploadStatus').textContent = "⏳ " + data.message;
                     }
                 } catch (e) {
                     console.log("Progress fetch error", e);
@@ -359,9 +359,11 @@
                     url += `&u=${encodeURIComponent(retryUser)}&p=${encodeURIComponent(retryPwd)}`;
                 }
                 
+                // 發送長時間請求
                 const res = await fetch(url);
                 const data = await res.json();
                 
+                // 停止進度詢問
                 clearInterval(progressInterval);
                 
                 if (data.status === 'success') {
@@ -389,7 +391,7 @@
             } catch (e) { 
                 clearInterval(progressInterval);
                 finishProgress(false);
-                statusDiv.textContent = "❌ 更新連線失敗，請檢查網路狀態";
+                statusDiv.textContent = "❌ 更新連線失敗，請檢查網路狀態或等待伺服器回應。";
                 statusDiv.className = "mt-3 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
             } finally { 
                 syncBtn.disabled = false;
@@ -410,6 +412,7 @@
             const formData = new FormData();
             formData.append("file", fileInput.files[0]);
             
+            // 檔案上傳沒有後端進度 API，因此啟用原本的 isFake = true 亂數進度條
             startProgress(true);
             statusDiv.textContent = "⏳ 資料上傳處理中...系統正在分析檔名與內容，請稍候...";
             statusDiv.style.display = "block";

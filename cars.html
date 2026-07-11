@@ -60,7 +60,7 @@
         </div>
 
         <div class="flex flex-col md:flex-row flex-1 overflow-hidden relative">
-            <aside :class="{'hidden md:flex': !showMobileFilters, 'flex': showMobileFilters}" class="w-full md:w-72 bg-white border-b md:border-r md:border-b-0 p-5 flex-col overflow-y-auto shadow-sm z-10 absolute md:relative w-full h-full md:h-auto max-h-[60vh] md:max-h-full transition-all">
+            <aside :class="{'hidden md:flex': !showMobileFilters, 'flex': showMobileFilters}" class="w-full md:w-72 bg-white border-b md:border-r md:border-b-0 p-5 flex-col overflow-y-auto shadow-sm z-10 absolute md:relative h-full md:h-auto max-h-[60vh] md:max-h-full transition-all">
                 <h2 class="font-bold text-lg mb-4 text-gray-700 border-b pb-2 hidden md:block">🔍 條件篩選</h2>
                 
                 <div class="space-y-4 text-sm flex-1">
@@ -213,7 +213,8 @@
                                 </div>
                                 <div class="text-xs text-gray-500">
                                     里程: {{ car.里程 }} &nbsp;|&nbsp; 顏色: {{ car.顏色 }} &nbsp;|&nbsp; 車身: {{ car.車身 }} &nbsp;|&nbsp; 過戶時間: {{ (!car.過戶時間 || String(car.過戶時間).trim() === 'nan') ? '無' : car.過戶時間 }}
-                                    <!-- 💡 新增：顯示收購金額 -->
+                                    
+                                    <!-- 💡 顯示收購金額 -->
                                     <span v-if="car.收購金額 && String(car.收購金額).trim() !== 'nan' && String(car.收購金額).trim() !== ''">
                                         &nbsp;|&nbsp; <span class="font-bold text-rose-600">💰收購: {{ car.收購金額 }}萬</span>
                                     </span>
@@ -231,12 +232,12 @@
                                 </div>
                                 <div class="flex flex-col items-end gap-2 sm:gap-1 w-auto shrink-0">
                                     
-                                    <!-- 💡 查定表按鈕 -->
+                                    <!-- 查定表按鈕 -->
                                     <button v-if="car.查定表PKey && car.查定表PKey !== 'nan'" @click="openInspection(car.查定表PKey)" class="w-full sm:w-auto text-xs sm:text-sm bg-teal-50 hover:bg-teal-100 border border-teal-300 px-3 py-1.5 sm:px-3 sm:py-1 rounded shadow-sm text-teal-700 transition font-bold text-center">
                                         📝 查看查定表
                                     </button>
 
-                                    <!-- 💡 官網廣告按鈕 -->
+                                    <!-- 官網廣告按鈕 -->
                                     <button v-if="car.連結 && String(car.連結).trim() !== '' && String(car.連結).trim() !== 'nan'" @click="openLink(car.連結)" class="w-full sm:w-auto text-xs sm:text-sm bg-indigo-50 hover:bg-indigo-100 border border-indigo-300 px-3 py-1.5 sm:px-3 sm:py-1 rounded shadow-sm text-indigo-700 transition font-bold text-center">
                                         🌐 官網廣告
                                     </button>
@@ -356,6 +357,7 @@
                     }
                 };
 
+                // 💡 讀取「連結」欄位並開啟官網
                 const openLink = (url) => {
                     if (url && String(url).trim() !== '' && String(url).trim() !== 'nan') {
                         window.open(url, '_blank');

@@ -166,29 +166,37 @@
                          :class="{
                              'border-gray-400 bg-gray-200 opacity-70': car.is_sold || car.is_cert,
                              'border-red-300 bg-red-50': car.is_reserved && !car.is_sold && !car.is_cert,
-                             'border-indigo-300 bg-indigo-50': (car.銷售合約 && String(car.銷售合約).trim() === 'V') && !car.is_reserved && !car.is_sold && !car.is_cert,
-                             'border-gray-200 hover:shadow-md': !(car.銷售合約 && String(car.銷售合約).trim() === 'V') && !car.is_sold && !car.is_cert && !car.is_reserved
+                             'border-indigo-300 bg-indigo-50': hasSalesContract(car) && !car.is_reserved && !car.is_sold && !car.is_cert,
+                             'border-gray-200 hover:shadow-md': !hasSalesContract(car) && !car.is_sold && !car.is_cert && !car.is_reserved
                          }">
                          
                         <div class="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-0">
                             
                             <div class="space-y-2 w-full sm:w-auto">
                                 <div class="flex flex-wrap gap-2 mb-1">
-                                    <!-- 狀態標籤 (已售 / 取證 / 收訂 互相排斥) -->
-                                    <div v-if="car.is_sold" class="bg-gray-800 text-white font-bold px-2 py-1 rounded shadow-sm inline-block text-xs sm:text-sm border border-gray-900">
-                                        ⛔ 此車已售出
-                                    </div>
-                                    <div v-else-if="car.is_cert" class="bg-gray-800 text-white font-bold px-2 py-1 rounded shadow-sm inline-block text-xs sm:text-sm border border-gray-900">
-                                        📜 注意：此車取證中
-                                    </div>
-                                    <div v-else-if="car.is_reserved" class="bg-yellow-200 text-red-700 font-bold px-2 py-1 rounded shadow-sm inline-block text-xs sm:text-sm border border-red-300">
-                                        ⛔ 注意：此車已收訂
-                                    </div>
+                                    <!-- 狀態標籤 (使用 template 隔離，避免被互吃) -->
+                                    <template v-if="car.is_sold">
+                                        <div class="bg-gray-800 text-white font-bold px-2 py-1 rounded shadow-sm inline-block text-xs sm:text-sm border border-gray-900">
+                                            ⛔ 此車已售出
+                                        </div>
+                                    </template>
+                                    <template v-else-if="car.is_cert">
+                                        <div class="bg-gray-800 text-white font-bold px-2 py-1 rounded shadow-sm inline-block text-xs sm:text-sm border border-gray-900">
+                                            📜 注意：此車取證中
+                                        </div>
+                                    </template>
+                                    <template v-else-if="car.is_reserved">
+                                        <div class="bg-yellow-200 text-red-700 font-bold px-2 py-1 rounded shadow-sm inline-block text-xs sm:text-sm border border-red-300">
+                                            ⛔ 注意：此車可能已收訂
+                                        </div>
+                                    </template>
 
-                                    <!-- 💡 獨立的銷售合約標籤，不和收訂/售出衝突，可以並存顯示 -->
-                                    <div v-if="car.銷售合約 && String(car.銷售合約).trim() === 'V'" class="bg-indigo-600 text-white font-bold px-2 py-1 rounded shadow-sm inline-block text-xs sm:text-sm border border-indigo-700">
-                                        📝 此車已建立銷售合約
-                                    </div>
+                                    <!-- 💡 獨立的銷售合約標籤，用自動模糊判定法確保抓得到 -->
+                                    <template v-if="hasSalesContract(car)">
+                                        <div class="bg-indigo-600 text-white font-bold px-2 py-1 rounded shadow-sm inline-block text-xs sm:text-sm border border-indigo-700">
+                                            📝 此車已建立銷售合約
+                                        </div>
+                                    </template>
                                 </div>
 
                                 <h3 class="text-lg sm:text-xl font-bold text-slate-800 leading-tight">
@@ -222,8 +230,8 @@
                                     里程: {{ car.里程 }} &nbsp;|&nbsp; 顏色: {{ car.顏色 }} &nbsp;|&nbsp; 車身: {{ car.車身 }} &nbsp;|&nbsp; 過戶時間: {{ (!car.過戶時間 || String(car.過戶時間).trim() === 'nan') ? '無' : car.過戶時間 }}
                                     
                                     <!-- 💡 顯示收購金額 (將資料庫存的「元」轉換為「萬」來顯示) -->
-                                    <span v-if="car.收購金額 && String(car.收購金額).trim() !== 'nan' && String(car.收購金額).trim() !== ''">
-                                        &nbsp;|&nbsp; <span class="font-bold text-rose-600">💰收購: {{ isNaN(Number(car.收購金額)) ? car.收購金額 : (Number(car.收購金額) / 10000).toFixed(1).replace('.0', '') }} 萬</span>
+                                    <span v-if="car['收購金額'] && String(car['收購金額']).trim() !== 'nan' && String(car['收購金額']).trim() !== ''">
+                                        &nbsp;|&nbsp; <span class="font-bold text-rose-600">💰收購: {{ isNaN(Number(car['收購金額'])) ? car['收購金額'] : (Number(car['收購金額']) / 10000).toFixed(1).replace('.0', '') }} 萬</span>
                                     </span>
                                 </div>
                                 
@@ -239,12 +247,10 @@
                                 </div>
                                 <div class="flex flex-col items-end gap-2 sm:gap-1 w-auto shrink-0">
                                     
-                                    <!-- 💡 查定表按鈕 -->
                                     <button v-if="car.查定表PKey && car.查定表PKey !== 'nan'" @click="openInspection(car.查定表PKey)" class="w-full sm:w-auto text-xs sm:text-sm bg-teal-50 hover:bg-teal-100 border border-teal-300 px-3 py-1.5 sm:px-3 sm:py-1 rounded shadow-sm text-teal-700 transition font-bold text-center">
                                         📝 查看查定表
                                     </button>
 
-                                    <!-- 💡 官網廣告按鈕 -->
                                     <button v-if="car.連結 && String(car.連結).trim() !== '' && String(car.連結).trim() !== 'nan'" @click="openLink(car.連結)" class="w-full sm:w-auto text-xs sm:text-sm bg-indigo-50 hover:bg-indigo-100 border border-indigo-300 px-3 py-1.5 sm:px-3 sm:py-1 rounded shadow-sm text-indigo-700 transition font-bold text-center">
                                         🌐 官網廣告
                                     </button>
@@ -287,6 +293,20 @@
                     model: "", plate: "", person: "", min_price: "", max_price: "",
                     sort_by: "最新入庫", hide_no_price: false, hide_sold: true, hide_cert: true, hide_reserved: false
                 });
+
+                // 💡 強大的防呆檢查：不管您 Google Sheet 欄位命名成什麼，有「合約」而且填 V 就抓得到！
+                const hasSalesContract = (car) => {
+                    if (!car) return false;
+                    // 先做精準名稱比對
+                    if (car['銷售合約'] && String(car['銷售合約']).trim().toUpperCase() === 'V') return true;
+                    // 萬一 Google Sheet 欄位名稱多了空白，啟動模糊掃描
+                    for (let key in car) {
+                        if (key.includes('合約')) {
+                            if (String(car[key]).trim().toUpperCase() === 'V') return true;
+                        }
+                    }
+                    return false;
+                };
 
                 const fetchOptions = async () => {
                     try {
@@ -387,7 +407,7 @@
                 return { 
                     cars, options, filters, loading, loadingText, statusMessage, showMobileFilters,
                     searchCars, searchCarsMobile, resetFilters, refreshData, copyPlate, copyId, 
-                    openInspection, openLink, formatCondition, isWarning
+                    openInspection, openLink, formatCondition, isWarning, hasSalesContract
                 };
             }
         }).mount('#app');

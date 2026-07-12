@@ -1086,7 +1086,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             msg += f"\n✨ 自動發現 {new_count} 台新車：\n" + "\n".join(new_cars_list[:10])
             if new_count > 10: msg += f"\n...等共 {new_count} 台"
             
-        global_sync_status["message"] = "✅ 更新完成！請點擊上方按鈕前往各系統"
+        global_sync_status["message"] = msg
         global_sync_status["progress"] = 100
         global_sync_status["is_running"] = False
         return {"status": "success", "message": msg}

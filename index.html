@@ -236,6 +236,9 @@
                         uploadBtn.disabled = false;
                         uploadBtn.classList.remove("opacity-50", "cursor-not-allowed");
                     }
+                    
+                    // 💡 背景任務完成時，彈出含有新車資訊的結算跳窗
+                    alert(data.message);
                 }
             } catch (e) {
                 // 網路中斷不報錯，繼續默默輪詢
@@ -435,7 +438,6 @@
                     // data.status === 'started' 或 'running'
                     // 手動強制呼叫一次雷達掃描，讓畫面立刻接管進度條
                     pollSystemSync();
-                    alert(data.message);
                 }
             } catch (e) { 
                 statusDiv.textContent = "❌ 請求發送失敗，請檢查網路狀態。";

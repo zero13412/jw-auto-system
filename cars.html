@@ -166,7 +166,8 @@
                          :class="{
                              'border-gray-400 bg-gray-200 opacity-70': car.is_sold || car.is_cert,
                              'border-red-300 bg-red-50': car.is_reserved && !car.is_sold && !car.is_cert,
-                             'border-gray-200 hover:shadow-md': !car.is_sold && !car.is_cert && !car.is_reserved
+                             'border-indigo-300 bg-indigo-50': (car.銷售合約 && String(car.銷售合約).trim() === 'V') && !car.is_reserved && !car.is_sold && !car.is_cert,
+                             'border-gray-200 hover:shadow-md': !(car.銷售合約 && String(car.銷售合約).trim() === 'V') && !car.is_sold && !car.is_cert && !car.is_reserved
                          }">
                          
                         <div class="flex flex-col sm:flex-row justify-between items-start gap-3 sm:gap-0">
@@ -181,7 +182,7 @@
                                         📜 注意：此車取證中
                                     </div>
                                     <div v-else-if="car.is_reserved" class="bg-yellow-200 text-red-700 font-bold px-2 py-1 rounded shadow-sm inline-block text-xs sm:text-sm border border-red-300">
-                                        ⛔ 注意：此車可能已收訂
+                                        ⛔ 注意：此車已收訂
                                     </div>
 
                                     <!-- 💡 獨立的銷售合約標籤，不和收訂/售出衝突，可以並存顯示 -->

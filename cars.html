@@ -173,6 +173,7 @@
                             
                             <div class="space-y-2 w-full sm:w-auto">
                                 <div class="flex flex-wrap gap-2 mb-1">
+                                    <!-- 狀態標籤 (已售 / 取證 / 收訂 互相排斥) -->
                                     <div v-if="car.is_sold" class="bg-gray-800 text-white font-bold px-2 py-1 rounded shadow-sm inline-block text-xs sm:text-sm border border-gray-900">
                                         ⛔ 此車已售出
                                     </div>
@@ -181,6 +182,11 @@
                                     </div>
                                     <div v-else-if="car.is_reserved" class="bg-yellow-200 text-red-700 font-bold px-2 py-1 rounded shadow-sm inline-block text-xs sm:text-sm border border-red-300">
                                         ⛔ 注意：此車可能已收訂
+                                    </div>
+
+                                    <!-- 💡 獨立的銷售合約標籤，不和收訂/售出衝突，可以並存顯示 -->
+                                    <div v-if="car.銷售合約 && String(car.銷售合約).trim() === 'V'" class="bg-indigo-600 text-white font-bold px-2 py-1 rounded shadow-sm inline-block text-xs sm:text-sm border border-indigo-700">
+                                        📝 此車已建立銷售合約
                                     </div>
                                 </div>
 
@@ -214,7 +220,7 @@
                                 <div class="text-xs text-gray-500">
                                     里程: {{ car.里程 }} &nbsp;|&nbsp; 顏色: {{ car.顏色 }} &nbsp;|&nbsp; 車身: {{ car.車身 }} &nbsp;|&nbsp; 過戶時間: {{ (!car.過戶時間 || String(car.過戶時間).trim() === 'nan') ? '無' : car.過戶時間 }}
                                     
-                                    <!-- 💡 顯示收購金額 (將後端寫入的「元」除以一萬顯示成「萬」) -->
+                                    <!-- 💡 顯示收購金額 (將資料庫存的「元」轉換為「萬」來顯示) -->
                                     <span v-if="car.收購金額 && String(car.收購金額).trim() !== 'nan' && String(car.收購金額).trim() !== ''">
                                         &nbsp;|&nbsp; <span class="font-bold text-rose-600">💰收購: {{ isNaN(Number(car.收購金額)) ? car.收購金額 : (Number(car.收購金額) / 10000).toFixed(1).replace('.0', '') }} 萬</span>
                                     </span>
@@ -232,11 +238,12 @@
                                 </div>
                                 <div class="flex flex-col items-end gap-2 sm:gap-1 w-auto shrink-0">
                                     
+                                    <!-- 💡 查定表按鈕 -->
                                     <button v-if="car.查定表PKey && car.查定表PKey !== 'nan'" @click="openInspection(car.查定表PKey)" class="w-full sm:w-auto text-xs sm:text-sm bg-teal-50 hover:bg-teal-100 border border-teal-300 px-3 py-1.5 sm:px-3 sm:py-1 rounded shadow-sm text-teal-700 transition font-bold text-center">
                                         📝 查看查定表
                                     </button>
 
-                                    <!-- 💡 官網廣告按鈕 (讀取「連結」欄位) -->
+                                    <!-- 💡 官網廣告按鈕 -->
                                     <button v-if="car.連結 && String(car.連結).trim() !== '' && String(car.連結).trim() !== 'nan'" @click="openLink(car.連結)" class="w-full sm:w-auto text-xs sm:text-sm bg-indigo-50 hover:bg-indigo-100 border border-indigo-300 px-3 py-1.5 sm:px-3 sm:py-1 rounded shadow-sm text-indigo-700 transition font-bold text-center">
                                         🌐 官網廣告
                                     </button>

@@ -809,6 +809,45 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             print(f"Contract PKey fetch error: {e}")
 
         # ----------------------------------------------------
+        # 軌道 1.5：從「銷售合約」抓取已簽約車牌
+        # ----------------------------------------------------
+        global_sync_status["message"] = "📝 正在掃描銷售合約，建立防呆比對清單..."
+        global_sync_status["progress"] = 20
+        sales_contract_plates = set()
+        try:
+            sale_url = "https://www.jwincar.com.tw/manage/Contract/p15_contract_sale_list.php"
+            sp, last_s_row = 1, ""
+            while sp <= 3000:
+                s_res = session.get(f"{sale_url}?page={sp}", timeout=10)
+                s_res.encoding = 'utf-8'
+                s_soup = BeautifulSoup(s_res.text, "html.parser")
+                s_table = s_soup.find("table")
+                if not s_table: break
+                
+                s_rows = s_table.find_all("tr")
+                if len(s_rows) <= 1: break
+                curr_s_row = s_rows[1].text.strip()
+                if curr_s_row == last_s_row: break
+                last_s_row = curr_s_row
+                
+                s_headers = [th.text.strip() for th in s_rows[0].find_all(["th", "td"])]
+                p_col = next((i for i, h in enumerate(s_headers) if any(kw in h for kw in ["車牌", "車號", "牌照"])), -1)
+                v_col = next((i for i, h in enumerate(s_headers) if any(kw in h for kw in ["車身", "車架", "VIN"])), -1)
+                
+                for row in s_rows[1:]:
+                    tds = row.find_all("td")
+                    if not tds: continue
+                    if p_col != -1 and p_col < len(tds):
+                        txt = tds[p_col].text.strip().upper().replace("-", "")
+                        if txt and txt not in ["—", "-", "NAN"]: sales_contract_plates.add(txt)
+                    if v_col != -1 and v_col < len(tds):
+                        txt = tds[v_col].text.strip().upper()
+                        if txt and txt not in ["—", "-", "NAN"]: sales_contract_plates.add(txt)
+                sp += 1
+        except Exception as e: 
+            print(f"Sales Contract fetch error: {e}")
+
+        # ----------------------------------------------------
         # 軌道 2：從「在庫車輛清單」抓取基本車輛資料
         # ----------------------------------------------------
         global_sync_status["message"] = "🚗 正在清點在庫車輛基本資料..."
@@ -964,6 +1003,10 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             link_url = frontend_map.get(row_plate, "")
             row_dict["連結"] = link_url
             
+            # 💡 標記銷售合約
+            has_sale = "V" if (row_plate in sales_contract_plates or row_vin in sales_contract_plates) else ""
+            row_dict["銷售合約"] = has_sale
+            
             final_cars_list.append(row_dict)
 
         client = get_gspread_client()
@@ -1015,6 +1058,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         if "查定表PKey" not in final_headers: final_headers.append("查定表PKey")
         if "連結" not in final_headers: final_headers.append("連結")
         if "收購金額" not in final_headers: final_headers.append("收購金額")
+        if "銷售合約" not in final_headers: final_headers.append("銷售合約")
 
         df_aligned = df_crawled.reindex(columns=final_headers).fillna("")
         data_to_upload = [final_headers] + df_aligned.values.tolist()

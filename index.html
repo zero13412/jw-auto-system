@@ -182,8 +182,69 @@
         let myPermissions = {};
         let loginModalResolve = null;
         let progressInterval = null; 
+        
+        let isSystemSyncing = false;
+        let autoPollTimer = null;
 
-        // 💡 支援「手動假進度」與「即時真進度」
+        // 💡 全新的獨立背景雷達掃描器 (每1.5秒檢查一次背景任務狀態)
+        async function pollSystemSync() {
+            try {
+                const res = await fetch('/api/sync_progress');
+                const data = await res.json();
+                
+                const statusDiv = document.getElementById('uploadStatus');
+                const syncBtn = document.getElementById('syncBtn');
+                const pContainer = document.getElementById('progressContainer');
+                const pBar = document.getElementById('progressBar');
+                const uploadBtn = document.getElementById('uploadBtn');
+
+                if (data.is_running) {
+                    isSystemSyncing = true;
+                    pContainer.classList.remove('hidden');
+                    pBar.style.width = data.progress + '%';
+                    pBar.className = "h-3 rounded-full transition-all duration-300 relative progress-bar-stripes bg-blue-500";
+                    
+                    statusDiv.style.display = "block";
+                    statusDiv.className = "mt-3 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
+                    statusDiv.textContent = "⏳ " + data.message;
+                    
+                    if(syncBtn) {
+                        syncBtn.disabled = true;
+                        syncBtn.classList.add("opacity-50", "cursor-not-allowed");
+                        syncBtn.innerHTML = "⏳ 系統背景更新中...";
+                    }
+                    if(uploadBtn) {
+                        uploadBtn.disabled = true;
+                        uploadBtn.classList.add("opacity-50", "cursor-not-allowed");
+                    }
+                } else if (isSystemSyncing) {
+                    // 從「執行中」瞬間變成「停止」的捕捉
+                    isSystemSyncing = false;
+                    pBar.style.width = '100%';
+                    pBar.classList.remove('progress-bar-stripes', 'bg-blue-500');
+                    pBar.classList.add('bg-green-500');
+                    
+                    statusDiv.className = "mt-3 text-left md:text-center font-bold text-sm bg-green-50 text-green-700 p-4 rounded-lg block whitespace-pre-wrap leading-relaxed";
+                    statusDiv.textContent = "✅ " + data.message;
+                    
+                    if(syncBtn) {
+                        syncBtn.disabled = false;
+                        syncBtn.classList.remove("opacity-50", "cursor-not-allowed");
+                        syncBtn.innerHTML = "🌐 自動更新車源表";
+                    }
+                    if(uploadBtn) {
+                        uploadBtn.disabled = false;
+                        uploadBtn.classList.remove("opacity-50", "cursor-not-allowed");
+                    }
+                }
+            } catch (e) {
+                // 網路中斷不報錯，繼續默默輪詢
+            }
+        }
+        
+        // 啟動背景自動輪詢雷達
+        autoPollTimer = setInterval(pollSystemSync, 1500);
+
         function startProgress(isFake = true) {
             const pContainer = document.getElementById('progressContainer');
             const pBar = document.getElementById('progressBar');
@@ -194,7 +255,6 @@
             
             if (progressInterval) clearInterval(progressInterval);
 
-            // 若為手動上傳檔案 (isFake = true)，才使用虛擬進度條
             if (isFake) {
                 let width = 0;
                 progressInterval = setInterval(() => {
@@ -299,6 +359,9 @@
                 document.getElementById('mainContent').style.display = 'block';
                 updateUserBadge(myPermissions, userName);
                 
+                // 💡 登入成功後立刻觸發一次雷達，看有沒有人在更新
+                pollSystemSync();
+                
             } catch (err) { 
                 console.error(err);
                 document.getElementById('loadingOverlay').innerHTML = "❌ 系統連線異常，請重新整理";
@@ -323,33 +386,18 @@
             window.location.reload();
         }
 
-        // 💡 更新版 syncBackend：讀取後端即時 API 回報
+        // 💡 升級版背景觸發器 (一按就丟給背景跑，網頁立刻釋放)
         async function syncBackend(retryUser = null, retryPwd = null) {
             const statusDiv = document.getElementById('uploadStatus');
             const syncBtn = document.getElementById('syncBtn');
             
-            // isFake 設為 false，清空進度條，停止假亂數
-            startProgress(false); 
-            statusDiv.textContent = "⏳ 正在連線更新車源表，請稍候...";
+            // 先在畫面做樂觀顯示，讓使用者知道有點到按鈕
+            statusDiv.textContent = "🚀 正在發送更新請求至背景...";
             statusDiv.style.display = "block";
             statusDiv.className = "mt-3 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
             
             syncBtn.disabled = true;
             syncBtn.classList.add("opacity-50", "cursor-not-allowed");
-            
-            // 每秒去後端問進度
-            progressInterval = setInterval(async () => {
-                try {
-                    const res = await fetch('/api/sync_progress');
-                    const data = await res.json();
-                    if (data.is_running || data.progress > 0) {
-                        document.getElementById('progressBar').style.width = data.progress + '%';
-                        document.getElementById('uploadStatus').textContent = "⏳ " + data.message;
-                    }
-                } catch (e) {
-                    console.log("Progress fetch error", e);
-                }
-            }, 1000);
             
             try {
                 const curUserId = localStorage.getItem('jw_user_id') || "";
@@ -359,41 +407,40 @@
                     url += `&u=${encodeURIComponent(retryUser)}&p=${encodeURIComponent(retryPwd)}`;
                 }
                 
-                // 發送長時間請求
+                // 🚀 發送請求，後端會在 0.1 秒內回答 "任務已啟動"
                 const res = await fetch(url);
                 const data = await res.json();
                 
-                // 停止進度詢問
-                clearInterval(progressInterval);
-                
-                if (data.status === 'success') {
-                    finishProgress(true);
-                    statusDiv.textContent = "✅ " + data.message;
-                    statusDiv.className = "mt-3 text-left md:text-center font-bold text-sm bg-green-50 text-green-700 p-4 rounded-lg block whitespace-pre-wrap leading-relaxed";
-                    alert(data.message);
-                } else if (data.status === 'need_login') {
-                    hideProgress();
+                if (data.status === 'need_login') {
                     statusDiv.style.display = "none";
                     const creds = await openLoginModal(data.message);
                     if (!creds) {
                         statusDiv.textContent = "⚠️ 更新已取消";
                         statusDiv.className = "mt-3 text-center font-bold text-sm bg-gray-100 text-gray-500 p-3 rounded-lg block";
                         statusDiv.style.display = "block";
+                        
+                        syncBtn.disabled = false;
+                        syncBtn.classList.remove("opacity-50", "cursor-not-allowed");
                         return;
                     }
                     await syncBackend(creds.u, creds.p);
-                } else {
-                    finishProgress(false);
+                } else if (data.status === 'error') {
                     statusDiv.textContent = "❌ " + data.message;
                     statusDiv.className = "mt-3 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
+                    
+                    syncBtn.disabled = false;
+                    syncBtn.classList.remove("opacity-50", "cursor-not-allowed");
+                    alert(data.message);
+                } else {
+                    // data.status === 'started' 或 'running'
+                    // 手動強制呼叫一次雷達掃描，讓畫面立刻接管進度條
+                    pollSystemSync();
                     alert(data.message);
                 }
             } catch (e) { 
-                clearInterval(progressInterval);
-                finishProgress(false);
-                statusDiv.textContent = "❌ 更新連線失敗，請檢查網路狀態或等待伺服器回應。";
+                statusDiv.textContent = "❌ 請求發送失敗，請檢查網路狀態。";
                 statusDiv.className = "mt-3 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
-            } finally { 
+                
                 syncBtn.disabled = false;
                 syncBtn.classList.remove("opacity-50", "cursor-not-allowed");
             }
@@ -412,7 +459,6 @@
             const formData = new FormData();
             formData.append("file", fileInput.files[0]);
             
-            // 檔案上傳沒有後端進度 API，因此啟用原本的 isFake = true 亂數進度條
             startProgress(true);
             statusDiv.textContent = "⏳ 資料上傳處理中...系統正在分析檔名與內容，請稍候...";
             statusDiv.style.display = "block";

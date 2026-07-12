@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, UploadFile, File, Request, HTTPException
+from fastapi import FastAPI, Query, UploadFile, File, Request, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
@@ -50,12 +50,13 @@ KNOWN_MAKES = [
     "MASERATI", "FERRARI", "LAMBORGHINI", "BENTLEY", "ROLLS-ROYCE"
 ]
 
-# 💡 全域進度狀態追蹤器
+# 💡 全域進度狀態追蹤器與「大門防護鎖」
 global_sync_status = {
     "is_running": False,
     "message": "系統準備就緒",
     "progress": 0
 }
+sync_lock = threading.Lock()
 
 # 💡 核心引擎：60秒極速快取
 class TTLCache:
@@ -716,9 +717,6 @@ def get_valid_credentials(force_u=None, force_p=None):
 # =========================================================================
 def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     global global_sync_status
-    global_sync_status["is_running"] = True
-    global_sync_status["message"] = "🚀 正在連線並登入後台系統..."
-    global_sync_status["progress"] = 5
     
     try:
         session = requests.Session()
@@ -731,7 +729,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         # 軌道 1：從「收購合約」抓取查定表的 PKey 與 收購金額
         # ----------------------------------------------------
         global_sync_status["message"] = "📝 正在掃描收購合約，解析查定代碼與收購金額..."
-        global_sync_status["progress"] = 15
+        global_sync_status["progress"] = 10
         pkey_map = {}
         try:
             contract_url = "https://www.jwincar.com.tw/manage/Contract/p14_contract_purchase_list.php"
@@ -753,7 +751,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 p_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["車牌", "車號", "牌照"])), -1)
                 v_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["車身", "車架", "VIN"])), -1)
                 
-                # 💡 自動尋找「收購金額」相關欄位 (擴大關鍵字，按照精準度排序)
                 price_col = -1
                 for kw in ["收購", "買價", "成本", "成交", "金額", "車價", "總價"]:
                     idx = next((i for i, h in enumerate(c_headers) if kw in h), -1)
@@ -771,26 +768,21 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                             m = re.search(r'PKey=(\d+)', btn["onclick"])
                             if m: row_pkey = m.group(1); break
                             
-                    # 💡 提取收購金額 (統一儲存為「元」單位，存進 Google Sheet)
                     pur_price = ""
                     if price_col != -1 and price_col < len(tds):
                         p_text = tds[price_col].text.strip()
-                        # 若欄位內是 input 標籤，把 value 拿出來
                         if not p_text:
                             inp = tds[price_col].find("input")
                             if inp and inp.has_attr("value"):
                                 p_text = str(inp["value"]).strip()
                                 
-                        # 處理金額字串
                         m_price = re.search(r'[\d,\.]+', p_text)
                         if m_price:
                             num_str = m_price.group(0).replace(',', '')
                             try:
                                 val = float(num_str)
                                 if val > 0:
-                                    # 防呆：如果後台直接打 53.5 (萬)，把它轉回 535000 (元) 存入 Google Sheet
-                                    if val < 10000: 
-                                        val = val * 10000
+                                    if val < 10000: val = val * 10000
                                     pur_price = str(int(val))
                             except ValueError:
                                 pass
@@ -809,9 +801,9 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             print(f"Contract PKey fetch error: {e}")
 
         # ----------------------------------------------------
-        # 軌道 1.5：從「銷售合約」抓取已簽約車牌
+        # 軌道 1.5：從「銷售合約」抓取已建立合約的車輛
         # ----------------------------------------------------
-        global_sync_status["message"] = "📝 正在掃描銷售合約，建立防呆比對清單..."
+        global_sync_status["message"] = "📝 正在掃描銷售合約清單..."
         global_sync_status["progress"] = 20
         sales_contract_plates = set()
         try:
@@ -831,20 +823,17 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 last_s_row = curr_s_row
                 
                 s_headers = [th.text.strip() for th in s_rows[0].find_all(["th", "td"])]
-                p_col = next((i for i, h in enumerate(s_headers) if any(kw in h for kw in ["車牌", "車號", "牌照"])), -1)
-                v_col = next((i for i, h in enumerate(s_headers) if any(kw in h for kw in ["車身", "車架", "VIN"])), -1)
+                s_col = next((i for i, h in enumerate(s_headers) if any(kw in h for kw in ["車牌", "車號", "牌照"])), -1)
                 
-                for row in s_rows[1:]:
-                    tds = row.find_all("td")
-                    if not tds: continue
-                    if p_col != -1 and p_col < len(tds):
-                        txt = tds[p_col].text.strip().upper().replace("-", "")
-                        if txt and txt not in ["—", "-", "NAN"]: sales_contract_plates.add(txt)
-                    if v_col != -1 and v_col < len(tds):
-                        txt = tds[v_col].text.strip().upper()
-                        if txt and txt not in ["—", "-", "NAN"]: sales_contract_plates.add(txt)
+                if s_col != -1:
+                    for row in s_rows[1:]:
+                        tds = row.find_all("td")
+                        if len(tds) > s_col:
+                            txt = tds[s_col].text.strip().upper().replace("-", "")
+                            if txt and txt not in ["—", "-", "NAN"]:
+                                sales_contract_plates.add(txt)
                 sp += 1
-        except Exception as e: 
+        except Exception as e:
             print(f"Sales Contract fetch error: {e}")
 
         # ----------------------------------------------------
@@ -905,7 +894,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             return {"status": "error", "message": f"🚨 數據異常熔斷！為保護原始資料庫已自動拒絕寫入。"}
 
         # ----------------------------------------------------
-        # 軌道 3：🚀 官網前台多執行緒掃描器 (自動找分頁 + 黃金線索)
+        # 軌道 3：🚀 官網前台多執行緒掃描器
         # ----------------------------------------------------
         global_sync_status["message"] = "🕸️ 正在抓取官網全站網址清單..."
         global_sync_status["progress"] = 45
@@ -915,9 +904,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         try:
             front_session = requests.Session()
             front_session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-            
             detail_links = set()
-            
             post_url = "https://www.jwincar.com.tw/index.php"
             post_data = {
                 'Page': '', 'PageA': '1', 'PageB': '1', 'Keyword': '', 'Keywords': '',
@@ -931,7 +918,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 resp = front_session.post(post_url, data=post_data, timeout=10)
                 resp.encoding = 'utf-8'
                 soup = BeautifulSoup(resp.text, 'html.parser')
-                
                 total_pages = 1
                 span_tag = soup.find('span', string=re.compile(r'共\s*\d+\s*頁'))
                 if span_tag:
@@ -949,14 +935,13 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                     for link in p_soup.find_all('a', href=re.compile(r'p1_buy_detail\.php\?detail_PKey=\d+')):
                         detail_links.add(urljoin("https://www.jwincar.com.tw/", link.get('href')))
             except Exception as e:
-                print(f"Pagination fetch error: {e}")
+                pass
                 
             def fetch_detail(url):
                 try:
                     res = front_session.get(url, timeout=5)
                     html = res.text
                     plate_found = ""
-                    
                     m = re.search(r'提供車身號碼驗證[：:]?\s*([A-Za-z0-9]{2,4}[-\s]*[A-Za-z0-9]{2,4})', html)
                     if m:
                         plate_found = m.group(1).replace('-', '').replace(' ', '').strip().upper()
@@ -981,7 +966,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                     executor.map(fetch_detail, list(detail_links))
                     
         except Exception as e:
-            print(f"Frontend scraping error: {e}")
+            pass
 
         # ----------------------------------------------------
         # 軌道 4：將所有資料雙向合併並寫入 Google Sheets
@@ -994,18 +979,13 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             row_plate = car_wrapper["row_plate"]
             row_vin = car_wrapper["row_vin"]
             
-            # 💡 寫入查定表 PKey 與 收購金額
             contract_info = pkey_map.get(row_plate) or pkey_map.get(row_vin) or {}
             row_dict["查定表PKey"] = contract_info.get("pkey", "")
             row_dict["收購金額"] = contract_info.get("price", "")
+            row_dict["連結"] = frontend_map.get(row_plate, "")
             
-            # 寫入官網廣告網址 (統一只寫到「連結」欄位)
-            link_url = frontend_map.get(row_plate, "")
-            row_dict["連結"] = link_url
-            
-            # 💡 標記銷售合約
-            has_sale = "V" if (row_plate in sales_contract_plates or row_vin in sales_contract_plates) else ""
-            row_dict["銷售合約"] = has_sale
+            # 💡 標記是否建立銷售合約
+            row_dict["銷售合約"] = "V" if row_plate in sales_contract_plates else ""
             
             final_cars_list.append(row_dict)
 
@@ -1176,17 +1156,38 @@ def view_inspection(PKey: str = ""):
     except Exception as e:
         return f"<h1>❌ 抓取失敗：網路異常 ({str(e)})</h1>"
 
-# 💡 呼叫進度追蹤 API (已轉換為 async def 非同步，保證不再塞車！)
 @app.get("/api/sync_progress")
 async def api_sync_progress():
     return global_sync_status
 
+# 💡 全新的背景更新機制
 @app.get("/api/sync_car_source")
-def api_sync_car_source(user_id: str = "", u: str = "", p: str = ""):
-    if not check_permission(user_id, "更新車源"): return {"status": "error", "message": "⛔ 權限不足！請聯繫管理員開通「更新車源」權限。"}
-    valid_u, valid_p = get_valid_credentials(u, p)
-    if not valid_u: return {"status": "need_login", "message": "⚠️ 系統自動嘗試備用密碼失敗，請手動輸入最新的帳號與密碼。"}
-    return core_sync_car_source(user_id, valid_u, valid_p)
+def api_sync_car_source(background_tasks: BackgroundTasks, user_id: str = "", u: str = "", p: str = ""):
+    global global_sync_status
+    if not check_permission(user_id, "更新車源"): 
+        return {"status": "error", "message": "⛔ 權限不足！請聯繫管理員開通「更新車源」權限。"}
+    
+    with sync_lock:
+        if global_sync_status.get("is_running"):
+            return {"status": "running", "message": "目前已有更新任務正在背景執行中，請直接查看畫面上的進度條！"}
+            
+        valid_u, valid_p = get_valid_credentials(u, p)
+        if not valid_u: 
+            return {"status": "need_login", "message": "⚠️ 系統自動嘗試備用密碼失敗，請手動輸入最新的帳號與密碼。"}
+            
+        global_sync_status["is_running"] = True
+        global_sync_status["message"] = "🚀 任務排入背景執行中..."
+        global_sync_status["progress"] = 1
+
+    def bg_task():
+        try:
+            core_sync_car_source(user_id, valid_u, valid_p)
+        except Exception as e:
+            global_sync_status["is_running"] = False
+            global_sync_status["message"] = f"❌ 發生異常：{str(e)}"
+            
+    background_tasks.add_task(bg_task)
+    return {"status": "started", "message": "✅ 更新任務已在背景啟動！您可以放心關閉網頁或繼續操作，系統會自動跑完。"}
 
 @app.post("/api/parse_ad")
 async def parse_ad(request: Request):
@@ -1596,22 +1597,33 @@ def handle_text_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"👤 您的 LINE ID 為：\n{user_id}"))
         return
 
+    # 💡 LINE 觸發也加上大門防護鎖與背景執行
     if text in ["更新車源", "抓取車源"]:
         if not check_permission(user_id, "更新車源"):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text="⛔ 抱歉，您沒有執行「更新車源」的權限。"))
             return
             
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🤖 身份確認！正在連線後台抓取車源，請稍候（約需15~30秒）...\n您也可以至「系統首頁」查看即時進度！"))
+        with sync_lock:
+            if global_sync_status.get("is_running"):
+                line_bot_api.reply_message(event.reply_token, TextSendMessage(text="⏳ 目前系統已經有更新任務正在進行中！\n因為安全防護機制目前爬蟲較為費時，請直接至「系統首頁」查看即時進度，無需重複觸發。"))
+                return
+            global_sync_status["is_running"] = True
+            global_sync_status["message"] = "LINE 觸發更新任務..."
+            global_sync_status["progress"] = 1
+            
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🤖 身份確認！正在連線後台抓取車源...\n為避免伺服器負荷，此過程將在背景安全執行（約需數分鐘）。\n您隨時可至「系統首頁」查看即時進度！"))
         def run_task():
             try:
                 valid_u, valid_p = get_valid_credentials()
                 if not valid_u:
                     line_bot_api.push_message(user_id, TextSendMessage(text="🚨 後台密碼已更改，自動嘗試備用密碼也全數失敗。\n請至網頁版手動輸入新密碼！"))
+                    global_sync_status["is_running"] = False
                     return
                 res = core_sync_car_source(user_id, valid_u, valid_p)
                 line_bot_api.push_message(user_id, TextSendMessage(text=res["message"]))
             except Exception as e:
                 line_bot_api.push_message(user_id, TextSendMessage(text=f"❌ 發生錯誤：{str(e)}"))
+                global_sync_status["is_running"] = False
         threading.Thread(target=run_task).start()
         return
 

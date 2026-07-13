@@ -797,6 +797,9 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                         if v_col != -1 and v_col < len(tds):
                             txt = tds[v_col].text.strip().upper()
                             if txt and txt not in ["—", "-", "NAN"]: pkey_map[txt] = info
+                
+                # 💡 爬蟲節流：翻頁喘口氣
+                time.sleep(0.1)
                 cp += 1
         except Exception as e: 
             print(f"Contract PKey fetch error: {e}")
@@ -833,6 +836,9 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                             txt = tds[s_col].text.strip().upper().replace("-", "")
                             if txt and txt not in ["—", "-", "NAN"]:
                                 sales_contract_plates.add(txt)
+                
+                # 💡 爬蟲節流：翻頁喘口氣
+                time.sleep(0.1)
                 sp += 1
         except Exception as e:
             print(f"Sales Contract fetch error: {e}")
@@ -888,6 +894,9 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                     "row_plate": row_plate,
                     "row_vin": row_vin
                 })
+            
+            # 💡 爬蟲節流：翻頁喘口氣
+            time.sleep(0.1)
             page_num += 1
 
         if len(all_cars_dicts) < 100: 
@@ -934,10 +943,14 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                     p_soup = BeautifulSoup(p_resp.text, 'html.parser')
                     for link in p_soup.find_all('a', href=re.compile(r'p1_buy_detail\.php\?detail_PKey=\d+')):
                         detail_links.add(urljoin("https://www.jwincar.com.tw/", link.get('href')))
+                    # 💡 爬蟲節流：翻頁喘口氣
+                    time.sleep(0.1)
             except Exception as e:
                 pass
                 
             def fetch_detail(url):
+                # 💡 爬蟲節流：讓大漢們點擊前先喝口水，避免塞車
+                time.sleep(0.2)
                 try:
                     res = front_session.get(url, timeout=15)
                     html = res.text
@@ -960,9 +973,10 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 except Exception: pass
 
             if detail_links:
-                global_sync_status["message"] = f"🧠 啟動 20 核心引擎，執行車牌特徵比對... (共 {len(detail_links)} 筆)"
+                global_sync_status["message"] = f"🧠 啟動 10 核心引擎，執行車牌特徵比對... (共 {len(detail_links)} 筆)"
                 global_sync_status["progress"] = 65
-                with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+                # 💡 減員：從 20 核心降低至 10 核心，確保系統平穩不卡頓
+                with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
                     executor.map(fetch_detail, list(detail_links))
                     
         except Exception as e:

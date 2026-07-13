@@ -150,9 +150,14 @@
                     </div>
                     <div class="w-full md:w-auto flex flex-col items-center gap-3 md:min-w-[300px]">
                         
-                        <button onclick="syncBackend()" id="syncBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition w-full flex items-center justify-center gap-2" style="display: none;">
-                            🌐 自動更新車源表
-                        </button>
+                        <div id="syncActionGroup" class="w-full flex flex-col gap-2" style="display: none;">
+                            <button onclick="syncBackend()" id="syncBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition w-full flex items-center justify-center gap-2">
+                                🌐 自動更新車源表
+                            </button>
+                            <button onclick="forceUnlock()" id="unlockBtn" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-8 rounded-lg shadow-md transition w-full items-center justify-center gap-2 hidden" title="當系統卡死超過5分鐘時可點此強制重置">
+                                🛑 強制停止重置
+                            </button>
+                        </div>
 
                         <hr id="dividerLine" class="w-full border-indigo-100 my-1" style="display: none;">
 
@@ -194,6 +199,7 @@
                 
                 const statusDiv = document.getElementById('uploadStatus');
                 const syncBtn = document.getElementById('syncBtn');
+                const unlockBtn = document.getElementById('unlockBtn');
                 const pContainer = document.getElementById('progressContainer');
                 const pBar = document.getElementById('progressBar');
                 const uploadBtn = document.getElementById('uploadBtn');
@@ -212,6 +218,10 @@
                         syncBtn.disabled = true;
                         syncBtn.classList.add("opacity-50", "cursor-not-allowed");
                         syncBtn.innerHTML = "⏳ 系統背景更新中...";
+                    }
+                    if(unlockBtn) {
+                        unlockBtn.classList.remove("hidden");
+                        unlockBtn.classList.add("flex");
                     }
                     if(uploadBtn) {
                         uploadBtn.disabled = true;
@@ -232,13 +242,20 @@
                         syncBtn.classList.remove("opacity-50", "cursor-not-allowed");
                         syncBtn.innerHTML = "🌐 自動更新車源表";
                     }
+                    if(unlockBtn) {
+                        unlockBtn.classList.add("hidden");
+                        unlockBtn.classList.remove("flex");
+                        unlockBtn.innerHTML = "🛑 強制停止重置";
+                    }
                     if(uploadBtn) {
                         uploadBtn.disabled = false;
                         uploadBtn.classList.remove("opacity-50", "cursor-not-allowed");
                     }
                     
-                    // 💡 背景任務完成時，彈出含有新車資訊的結算跳窗
-                    alert(data.message);
+                    // 💡 只有在「不是手動強制重置」的狀況下，才彈出結算跳窗 (新車列表)
+                    if (data.message && !data.message.includes("強制重置")) {
+                        alert(data.message);
+                    }
                 }
             } catch (e) {
                 // 網路中斷不報錯，繼續默默輪詢
@@ -327,7 +344,7 @@
             const canSync = String(perms['更新車源'] || '').toUpperCase() === 'V';
             
             document.getElementById('uploadSection').style.display = (isSuper || canUpload || canSync) ? 'block' : 'none';
-            document.getElementById('syncBtn').style.display = (isSuper || canSync) ? 'flex' : 'none';
+            document.getElementById('syncActionGroup').style.display = (isSuper || canSync) ? 'flex' : 'none';
             document.getElementById('fileUploadBlock').style.display = (isSuper || canUpload) ? 'flex' : 'none';
             document.getElementById('dividerLine').style.display = ((isSuper || canSync) && (isSuper || canUpload)) ? 'block' : 'none';
         }
@@ -436,7 +453,7 @@
                     alert(data.message);
                 } else {
                     // data.status === 'started' 或 'running'
-                    // 手動強制呼叫一次雷達掃描，讓畫面立刻接管進度條
+                    // 手動強制呼叫一次雷達掃描，讓畫面立刻接管進度條，取消多餘跳窗
                     pollSystemSync();
                 }
             } catch (e) { 
@@ -492,6 +509,22 @@
             } finally {
                 btn.disabled = false;
                 btn.classList.remove("opacity-50", "cursor-not-allowed");
+            }
+        }
+
+        async function forceUnlock() {
+            if (!confirm("確定要強制停止並重置系統嗎？\n⚠️ 僅建議在系統卡死超過5分鐘沒有動靜時使用。")) return;
+            
+            const unlockBtn = document.getElementById('unlockBtn');
+            if (unlockBtn) unlockBtn.innerHTML = "⏳ 停止中...";
+
+            try {
+                const curUserId = localStorage.getItem('jw_user_id') || "";
+                await fetch(`/api/force_unlock?user_id=${encodeURIComponent(curUserId)}`);
+                // UI 復原與提示會交由 pollSystemSync 自動接管處理！
+            } catch (e) {
+                alert("❌ 網路異常，無法發送中斷訊號。");
+                if (unlockBtn) unlockBtn.innerHTML = "🛑 強制停止重置";
             }
         }
 

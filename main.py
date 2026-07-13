@@ -669,7 +669,6 @@ def get_valid_credentials(force_u=None, force_p=None):
     if force_u and force_p:
         try:
             session = requests.Session(); session.headers.update(headers)
-            # 💡 加入 timeout=15 避免伺服器假死卡住
             session.post(login_url, data={"strID": force_u, "strPW": force_p, "Submit": "送出"}, timeout=15)
             if BeautifulSoup(session.get(data_url + "&page=1", timeout=15).text, "html.parser").find("table", {"id": "carTable"}):
                 return force_u, force_p
@@ -725,7 +724,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         login_url = "https://www.jwincar.com.tw/manage/login/index.php"
         data_url = "https://www.jwincar.com.tw/manage/accounting/accounting_car_list.php?stock=all"
         
-        # 💡 加入 timeout=15 避免伺服器假死
         session.post(login_url, data={"strID": login_user, "strPW": login_pwd, "Submit": "送出"}, timeout=15)
         
         # ----------------------------------------------------
@@ -1161,6 +1159,17 @@ def view_inspection(PKey: str = ""):
 @app.get("/api/sync_progress")
 async def api_sync_progress():
     return global_sync_status
+
+@app.get("/api/force_unlock")
+def api_force_unlock(user_id: str = ""):
+    if not check_permission(user_id, "更新車源") and not check_permission(user_id, "最高管理員"):
+        return {"status": "error", "message": "⛔ 權限不足！"}
+    global global_sync_status
+    with sync_lock:
+        global_sync_status["is_running"] = False
+        global_sync_status["message"] = "系統已由手動強制重置並就緒"
+        global_sync_status["progress"] = 0
+    return {"status": "success", "message": "✅ 系統卡住的任務已強制解除！現在可以重新執行更新。"}
 
 # 💡 全新的背景更新機制
 @app.get("/api/sync_car_source")

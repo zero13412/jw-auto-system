@@ -713,7 +713,7 @@ def get_valid_credentials(force_u=None, force_p=None):
     return None, None
 
 # =========================================================================
-# 💡 終極核心同步引擎 (加入爬蟲節流機制，保護 CPU 避免卡死)
+# 💡 終極核心同步引擎 (雙軌並行抓取，支援收購金額與合約業務)
 # =========================================================================
 def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     global global_sync_status
@@ -726,6 +726,83 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         
         session.post(login_url, data={"strID": login_user, "strPW": login_pwd, "Submit": "送出"}, timeout=15)
         
+        # ----------------------------------------------------
+        # 軌道 1：從「收購合約」抓取查定表的 PKey 與 收購金額
+        # ----------------------------------------------------
+        global_sync_status["message"] = "📝 正在掃描收購合約，解析查定代碼與收購金額..."
+        global_sync_status["progress"] = 10
+        pkey_map = {}
+        try:
+            contract_url = "https://www.jwincar.com.tw/manage/Contract/p14_contract_purchase_list.php"
+            cp, last_c_row = 1, ""
+            while cp <= 3000:
+                c_res = session.get(f"{contract_url}?page={cp}", timeout=15)
+                c_res.encoding = 'utf-8'
+                c_soup = BeautifulSoup(c_res.text, "html.parser")
+                c_table = c_soup.find("table")
+                if not c_table: break
+                
+                c_rows = c_table.find_all("tr")
+                if len(c_rows) <= 1: break
+                curr_c_row = c_rows[1].text.strip()
+                if curr_c_row == last_c_row: break
+                last_c_row = curr_c_row
+                
+                c_headers = [th.text.strip() for th in c_rows[0].find_all(["th", "td"])]
+                p_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["車牌", "車號", "牌照"])), -1)
+                v_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["車身", "車架", "VIN"])), -1)
+                
+                price_col = -1
+                for kw in ["收購", "買價", "成本", "成交", "金額", "車價", "總價"]:
+                    idx = next((i for i, h in enumerate(c_headers) if kw in h), -1)
+                    if idx != -1:
+                        price_col = idx
+                        break
+                
+                for row in c_rows[1:]:
+                    tds = row.find_all("td")
+                    if not tds: continue
+                    row_pkey = ""
+                    for td in tds:
+                        btn = td.find("input", value=re.compile(r"鑑定|查定|表")) or td.find("input", onclick=re.compile(r"PKey"))
+                        if btn and btn.has_attr("onclick"):
+                            m = re.search(r'PKey=(\d+)', btn["onclick"])
+                            if m: row_pkey = m.group(1); break
+                            
+                    pur_price = ""
+                    if price_col != -1 and price_col < len(tds):
+                        p_text = tds[price_col].text.strip()
+                        if not p_text:
+                            inp = tds[price_col].find("input")
+                            if inp and inp.has_attr("value"):
+                                p_text = str(inp["value"]).strip()
+                                
+                        m_price = re.search(r'[\d,\.]+', p_text)
+                        if m_price:
+                            num_str = m_price.group(0).replace(',', '')
+                            try:
+                                val = float(num_str)
+                                if val > 0:
+                                    if val < 10000: val = val * 10000
+                                    pur_price = str(int(val))
+                            except ValueError:
+                                pass
+
+                    info = {"pkey": row_pkey, "price": pur_price}
+                    
+                    if row_pkey or pur_price:
+                        if p_col != -1 and p_col < len(tds):
+                            txt = tds[p_col].text.strip().upper().replace("-", "")
+                            if txt and txt not in ["—", "-", "NAN"]: pkey_map[txt] = info
+                        if v_col != -1 and v_col < len(tds):
+                            txt = tds[v_col].text.strip().upper()
+                            if txt and txt not in ["—", "-", "NAN"]: pkey_map[txt] = info
+                
+                time.sleep(0.2)
+                cp += 1
+        except Exception as e: 
+            print(f"Contract PKey fetch error: {e}")
+
         # ----------------------------------------------------
         # 軌道 1.5：從「銷售合約」抓取已建立合約的車輛與業務
         # ----------------------------------------------------
@@ -763,7 +840,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                                     sales_name = tds[sales_col].text.strip()
                                 sales_contract_plates[txt] = sales_name
                 
-                # 💡 強制節流：喝口水，讓 CPU 喘息
                 time.sleep(0.2)
                 sp += 1
         except Exception as e:
@@ -821,7 +897,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                     "row_vin": row_vin
                 })
             
-            # 💡 強制節流：喝口水，讓 CPU 喘息
             time.sleep(0.2)
             page_num += 1
 
@@ -870,13 +945,11 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                     for link in p_soup.find_all('a', href=re.compile(r'p1_buy_detail\.php\?detail_PKey=\d+')):
                         detail_links.add(urljoin("https://www.jwincar.com.tw/", link.get('href')))
                     
-                    # 💡 強制節流：防範 Cloudflare 阻擋
                     time.sleep(0.2)
             except Exception as e:
                 pass
                 
             def fetch_detail(url):
-                # 💡 強制節流：確保多核心去點擊時，每個執行緒都有喘息空間
                 time.sleep(0.3)
                 try:
                     res = front_session.get(url, timeout=15)
@@ -903,7 +976,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             if detail_links:
                 global_sync_status["message"] = f"🧠 啟動 5 核心引擎，執行特徵比對... (共 {len(detail_links)} 筆)"
                 global_sync_status["progress"] = 65
-                # 💡 減員：從 20 核心降低至 5 核心，避免伺服器腦充血與防火牆阻擋
                 with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
                     executor.map(fetch_detail, list(detail_links))
                     
@@ -1596,13 +1668,12 @@ def handle_text_message(event):
                 valid_u, valid_p = get_valid_credentials()
                 if not valid_u:
                     line_bot_api.push_message(user_id, TextSendMessage(text="🚨 後台密碼已更改，自動嘗試備用密碼也全數失敗。\n請至網頁版手動輸入新密碼！"))
-                    with sync_lock:
-                        global_sync_status["is_running"] = False
                     return
                 res = core_sync_car_source(user_id, valid_u, valid_p)
                 line_bot_api.push_message(user_id, TextSendMessage(text=res["message"]))
             except Exception as e:
                 line_bot_api.push_message(user_id, TextSendMessage(text=f"❌ 發生錯誤：{str(e)}"))
+            finally:
                 with sync_lock:
                     global_sync_status["is_running"] = False
         threading.Thread(target=run_task).start()

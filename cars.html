@@ -194,7 +194,7 @@
                                     <!-- 💡 獨立的銷售合約標籤，用自動模糊判定法確保抓得到 -->
                                     <template v-if="hasSalesContract(car)">
                                         <div class="bg-indigo-600 text-white font-bold px-2 py-1 rounded shadow-sm inline-block text-xs sm:text-sm border border-indigo-700">
-                                            📝 此車已建立銷售合約
+                                            📝 此車{{ (car.合約業務 && car.合約業務 !== 'nan') ? '(' + car.合約業務 + ')' : '' }}已建立銷售合約
                                         </div>
                                     </template>
                                 </div>

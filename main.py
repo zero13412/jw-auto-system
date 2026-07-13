@@ -727,89 +727,11 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         session.post(login_url, data={"strID": login_user, "strPW": login_pwd, "Submit": "送出"}, timeout=15)
         
         # ----------------------------------------------------
-        # 軌道 1：從「收購合約」抓取查定表的 PKey 與 收購金額
-        # ----------------------------------------------------
-        global_sync_status["message"] = "📝 正在掃描收購合約，解析查定代碼與收購金額..."
-        global_sync_status["progress"] = 10
-        pkey_map = {}
-        try:
-            contract_url = "https://www.jwincar.com.tw/manage/Contract/p14_contract_purchase_list.php"
-            cp, last_c_row = 1, ""
-            while cp <= 3000:
-                c_res = session.get(f"{contract_url}?page={cp}", timeout=15)
-                c_res.encoding = 'utf-8'
-                c_soup = BeautifulSoup(c_res.text, "html.parser")
-                c_table = c_soup.find("table")
-                if not c_table: break
-                
-                c_rows = c_table.find_all("tr")
-                if len(c_rows) <= 1: break
-                curr_c_row = c_rows[1].text.strip()
-                if curr_c_row == last_c_row: break
-                last_c_row = curr_c_row
-                
-                c_headers = [th.text.strip() for th in c_rows[0].find_all(["th", "td"])]
-                p_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["車牌", "車號", "牌照"])), -1)
-                v_col = next((i for i, h in enumerate(c_headers) if any(kw in h for kw in ["車身", "車架", "VIN"])), -1)
-                
-                price_col = -1
-                for kw in ["收購", "買價", "成本", "成交", "金額", "車價", "總價"]:
-                    idx = next((i for i, h in enumerate(c_headers) if kw in h), -1)
-                    if idx != -1:
-                        price_col = idx
-                        break
-                
-                for row in c_rows[1:]:
-                    tds = row.find_all("td")
-                    if not tds: continue
-                    row_pkey = ""
-                    for td in tds:
-                        btn = td.find("input", value=re.compile(r"鑑定|查定|表")) or td.find("input", onclick=re.compile(r"PKey"))
-                        if btn and btn.has_attr("onclick"):
-                            m = re.search(r'PKey=(\d+)', btn["onclick"])
-                            if m: row_pkey = m.group(1); break
-                            
-                    pur_price = ""
-                    if price_col != -1 and price_col < len(tds):
-                        p_text = tds[price_col].text.strip()
-                        if not p_text:
-                            inp = tds[price_col].find("input")
-                            if inp and inp.has_attr("value"):
-                                p_text = str(inp["value"]).strip()
-                                
-                        m_price = re.search(r'[\d,\.]+', p_text)
-                        if m_price:
-                            num_str = m_price.group(0).replace(',', '')
-                            try:
-                                val = float(num_str)
-                                if val > 0:
-                                    if val < 10000: val = val * 10000
-                                    pur_price = str(int(val))
-                            except ValueError:
-                                pass
-
-                    info = {"pkey": row_pkey, "price": pur_price}
-                    
-                    if row_pkey or pur_price:
-                        if p_col != -1 and p_col < len(tds):
-                            txt = tds[p_col].text.strip().upper().replace("-", "")
-                            if txt and txt not in ["—", "-", "NAN"]: pkey_map[txt] = info
-                        if v_col != -1 and v_col < len(tds):
-                            txt = tds[v_col].text.strip().upper()
-                            if txt and txt not in ["—", "-", "NAN"]: pkey_map[txt] = info
-                
-                # 💡 強制節流：喝口水，讓 CPU 喘息處理網頁 UI 請求
-                time.sleep(0.2)
-                cp += 1
-        except Exception as e: 
-            print(f"Contract PKey fetch error: {e}")
-
-        # ----------------------------------------------------
-        # 軌道 1.5：從「銷售合約」抓取已建立合約的車輛
+        # 軌道 1.5：從「銷售合約」抓取已建立合約的車輛與業務
         # ----------------------------------------------------
         global_sync_status["message"] = "📝 正在掃描銷售合約清單..."
         global_sync_status["progress"] = 20
-        sales_contract_plates = set()
+        sales_contract_plates = {}
         try:
             sale_url = "https://www.jwincar.com.tw/manage/Contract/p15_contract_sale_list.php"
             sp, last_s_row = 1, ""
@@ -828,6 +750,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 
                 s_headers = [th.text.strip() for th in s_rows[0].find_all(["th", "td"])]
                 s_col = next((i for i, h in enumerate(s_headers) if any(kw in h for kw in ["車牌", "車號", "牌照"])), -1)
+                sales_col = next((i for i, h in enumerate(s_headers) if any(kw in h for kw in ["業務", "銷售", "負責"])), -1)
                 
                 if s_col != -1:
                     for row in s_rows[1:]:
@@ -835,7 +758,10 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                         if len(tds) > s_col:
                             txt = tds[s_col].text.strip().upper().replace("-", "")
                             if txt and txt not in ["—", "-", "NAN"]:
-                                sales_contract_plates.add(txt)
+                                sales_name = ""
+                                if sales_col != -1 and len(tds) > sales_col:
+                                    sales_name = tds[sales_col].text.strip()
+                                sales_contract_plates[txt] = sales_name
                 
                 # 💡 強制節流：喝口水，讓 CPU 喘息
                 time.sleep(0.2)
@@ -1000,8 +926,18 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             row_dict["收購金額"] = contract_info.get("price", "")
             row_dict["連結"] = frontend_map.get(row_plate, "")
             
-            # 💡 標記是否建立銷售合約
-            row_dict["銷售合約"] = "V" if row_plate in sales_contract_plates else ""
+            # 💡 標記是否建立銷售合約與業務
+            has_contract = False
+            contract_sales = ""
+            if row_plate and row_plate in sales_contract_plates:
+                has_contract = True
+                contract_sales = sales_contract_plates[row_plate]
+            elif row_vin and row_vin in sales_contract_plates:
+                has_contract = True
+                contract_sales = sales_contract_plates[row_vin]
+                
+            row_dict["銷售合約"] = "V" if has_contract else ""
+            row_dict["合約業務"] = contract_sales
             
             final_cars_list.append(row_dict)
 
@@ -1055,6 +991,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         if "連結" not in final_headers: final_headers.append("連結")
         if "收購金額" not in final_headers: final_headers.append("收購金額")
         if "銷售合約" not in final_headers: final_headers.append("銷售合約")
+        if "合約業務" not in final_headers: final_headers.append("合約業務")
 
         df_aligned = df_crawled.reindex(columns=final_headers).fillna("")
         data_to_upload = [final_headers] + df_aligned.values.tolist()

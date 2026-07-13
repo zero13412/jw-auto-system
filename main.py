@@ -713,7 +713,7 @@ def get_valid_credentials(force_u=None, force_p=None):
     return None, None
 
 # =========================================================================
-# 💡 終極核心同步引擎 (雙軌並行抓取，支援收購金額)
+# 💡 終極核心同步引擎 (加入爬蟲節流機制，保護 CPU 避免卡死)
 # =========================================================================
 def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
     global global_sync_status
@@ -798,8 +798,8 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                             txt = tds[v_col].text.strip().upper()
                             if txt and txt not in ["—", "-", "NAN"]: pkey_map[txt] = info
                 
-                # 💡 爬蟲節流：翻頁喘口氣
-                time.sleep(0.1)
+                # 💡 強制節流：喝口水，讓 CPU 喘息處理網頁 UI 請求
+                time.sleep(0.2)
                 cp += 1
         except Exception as e: 
             print(f"Contract PKey fetch error: {e}")
@@ -837,8 +837,8 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                             if txt and txt not in ["—", "-", "NAN"]:
                                 sales_contract_plates.add(txt)
                 
-                # 💡 爬蟲節流：翻頁喘口氣
-                time.sleep(0.1)
+                # 💡 強制節流：喝口水，讓 CPU 喘息
+                time.sleep(0.2)
                 sp += 1
         except Exception as e:
             print(f"Sales Contract fetch error: {e}")
@@ -895,15 +895,15 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                     "row_vin": row_vin
                 })
             
-            # 💡 爬蟲節流：翻頁喘口氣
-            time.sleep(0.1)
+            # 💡 強制節流：喝口水，讓 CPU 喘息
+            time.sleep(0.2)
             page_num += 1
 
         if len(all_cars_dicts) < 100: 
             return {"status": "error", "message": f"🚨 數據異常熔斷！為保護原始資料庫已自動拒絕寫入。"}
 
         # ----------------------------------------------------
-        # 軌道 3：🚀 官網前台多執行緒掃描器
+        # 軌道 3：🚀 官網前台多執行緒掃描器 (降載至 5 核心)
         # ----------------------------------------------------
         global_sync_status["message"] = "🕸️ 正在抓取官網全站網址清單..."
         global_sync_status["progress"] = 45
@@ -943,16 +943,18 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                     p_soup = BeautifulSoup(p_resp.text, 'html.parser')
                     for link in p_soup.find_all('a', href=re.compile(r'p1_buy_detail\.php\?detail_PKey=\d+')):
                         detail_links.add(urljoin("https://www.jwincar.com.tw/", link.get('href')))
-                    # 💡 爬蟲節流：翻頁喘口氣
-                    time.sleep(0.1)
+                    
+                    # 💡 強制節流：防範 Cloudflare 阻擋
+                    time.sleep(0.2)
             except Exception as e:
                 pass
                 
             def fetch_detail(url):
-                # 💡 爬蟲節流：讓大漢們點擊前先喝口水，避免塞車
-                time.sleep(0.2)
+                # 💡 強制節流：確保多核心去點擊時，每個執行緒都有喘息空間
+                time.sleep(0.3)
                 try:
                     res = front_session.get(url, timeout=15)
+                    if res.status_code != 200: return
                     html = res.text
                     plate_found = ""
                     m = re.search(r'提供車身號碼驗證[：:]?\s*([A-Za-z0-9]{2,4}[-\s]*[A-Za-z0-9]{2,4})', html)
@@ -973,10 +975,10 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 except Exception: pass
 
             if detail_links:
-                global_sync_status["message"] = f"🧠 啟動 10 核心引擎，執行車牌特徵比對... (共 {len(detail_links)} 筆)"
+                global_sync_status["message"] = f"🧠 啟動 5 核心引擎，執行特徵比對... (共 {len(detail_links)} 筆)"
                 global_sync_status["progress"] = 65
-                # 💡 減員：從 20 核心降低至 10 核心，確保系統平穩不卡頓
-                with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                # 💡 減員：從 20 核心降低至 5 核心，避免伺服器腦充血與防火牆阻擋
+                with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
                     executor.map(fetch_detail, list(detail_links))
                     
         except Exception as e:
@@ -1109,7 +1111,8 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         return {"status": "error", "message": f"爬蟲發生錯誤：{str(e)}"}
     finally: 
         # 💡 終極解鎖機制：無論任務成功、失敗還是崩潰，最後一刻一定把大門解鎖
-        global_sync_status["is_running"] = False
+        with sync_lock:
+            global_sync_status["is_running"] = False
         gc.collect()
 
 @app.get("/api/view_inspection", response_class=HTMLResponse)
@@ -1212,7 +1215,9 @@ def api_sync_car_source(background_tasks: BackgroundTasks, user_id: str = "", u:
         try:
             core_sync_car_source(user_id, valid_u, valid_p)
         except Exception as e:
-            global_sync_status["message"] = f"❌ 發生異常：{str(e)}"
+            with sync_lock:
+                global_sync_status["is_running"] = False
+                global_sync_status["message"] = f"❌ 發生異常：{str(e)}"
             
     background_tasks.add_task(bg_task)
     return {"status": "started", "message": "✅ 更新任務已在背景啟動！您可以放心關閉網頁或繼續操作，系統會自動跑完。"}
@@ -1654,12 +1659,13 @@ def handle_text_message(event):
                 valid_u, valid_p = get_valid_credentials()
                 if not valid_u:
                     line_bot_api.push_message(user_id, TextSendMessage(text="🚨 後台密碼已更改，自動嘗試備用密碼也全數失敗。\n請至網頁版手動輸入新密碼！"))
+                    with sync_lock:
+                        global_sync_status["is_running"] = False
                     return
                 res = core_sync_car_source(user_id, valid_u, valid_p)
                 line_bot_api.push_message(user_id, TextSendMessage(text=res["message"]))
             except Exception as e:
                 line_bot_api.push_message(user_id, TextSendMessage(text=f"❌ 發生錯誤：{str(e)}"))
-            finally:
                 with sync_lock:
                     global_sync_status["is_running"] = False
         threading.Thread(target=run_task).start()

@@ -669,8 +669,9 @@ def get_valid_credentials(force_u=None, force_p=None):
     if force_u and force_p:
         try:
             session = requests.Session(); session.headers.update(headers)
-            session.post(login_url, data={"strID": force_u, "strPW": force_p, "Submit": "送出"})
-            if BeautifulSoup(session.get(data_url + "&page=1", timeout=10).text, "html.parser").find("table", {"id": "carTable"}):
+            # 💡 加入 timeout=15 避免伺服器假死卡住
+            session.post(login_url, data={"strID": force_u, "strPW": force_p, "Submit": "送出"}, timeout=15)
+            if BeautifulSoup(session.get(data_url + "&page=1", timeout=15).text, "html.parser").find("table", {"id": "carTable"}):
                 return force_u, force_p
         except Exception: 
             pass
@@ -679,8 +680,8 @@ def get_valid_credentials(force_u=None, force_p=None):
     if cached_valid_u and cached_valid_p:
         try:
             session = requests.Session(); session.headers.update(headers)
-            session.post(login_url, data={"strID": cached_valid_u, "strPW": cached_valid_p, "Submit": "送出"})
-            if BeautifulSoup(session.get(data_url + "&page=1", timeout=10).text, "html.parser").find("table", {"id": "carTable"}):
+            session.post(login_url, data={"strID": cached_valid_u, "strPW": cached_valid_p, "Submit": "送出"}, timeout=15)
+            if BeautifulSoup(session.get(data_url + "&page=1", timeout=15).text, "html.parser").find("table", {"id": "carTable"}):
                 return cached_valid_u, cached_valid_p
         except Exception: 
             pass
@@ -698,8 +699,8 @@ def get_valid_credentials(force_u=None, force_p=None):
     for test_u, test_p in credentials_to_try:
         try:
             session = requests.Session(); session.headers.update(headers)
-            session.post(login_url, data={"strID": test_u, "strPW": test_p, "Submit": "送出"})
-            if BeautifulSoup(session.get(data_url + "&page=1", timeout=10).text, "html.parser").find("table", {"id": "carTable"}):
+            session.post(login_url, data={"strID": test_u, "strPW": test_p, "Submit": "送出"}, timeout=15)
+            if BeautifulSoup(session.get(data_url + "&page=1", timeout=15).text, "html.parser").find("table", {"id": "carTable"}):
                 cached_valid_u, cached_valid_p = test_u, test_p
                 try:
                     if test_u != sheet_u or test_p != sheet_p: 
@@ -723,7 +724,9 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
         login_url = "https://www.jwincar.com.tw/manage/login/index.php"
         data_url = "https://www.jwincar.com.tw/manage/accounting/accounting_car_list.php?stock=all"
-        session.post(login_url, data={"strID": login_user, "strPW": login_pwd, "Submit": "送出"})
+        
+        # 💡 加入 timeout=15 避免伺服器假死
+        session.post(login_url, data={"strID": login_user, "strPW": login_pwd, "Submit": "送出"}, timeout=15)
         
         # ----------------------------------------------------
         # 軌道 1：從「收購合約」抓取查定表的 PKey 與 收購金額
@@ -735,7 +738,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             contract_url = "https://www.jwincar.com.tw/manage/Contract/p14_contract_purchase_list.php"
             cp, last_c_row = 1, ""
             while cp <= 3000:
-                c_res = session.get(f"{contract_url}?page={cp}", timeout=10)
+                c_res = session.get(f"{contract_url}?page={cp}", timeout=15)
                 c_res.encoding = 'utf-8'
                 c_soup = BeautifulSoup(c_res.text, "html.parser")
                 c_table = c_soup.find("table")
@@ -810,7 +813,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             sale_url = "https://www.jwincar.com.tw/manage/Contract/p15_contract_sale_list.php"
             sp, last_s_row = 1, ""
             while sp <= 3000:
-                s_res = session.get(f"{sale_url}?page={sp}", timeout=10)
+                s_res = session.get(f"{sale_url}?page={sp}", timeout=15)
                 s_res.encoding = 'utf-8'
                 s_soup = BeautifulSoup(s_res.text, "html.parser")
                 s_table = s_soup.find("table")
@@ -846,7 +849,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         page_num, last_first_row = 1, ""
         
         while page_num <= 3000:
-            res = session.get(data_url + f"&page={page_num}")
+            res = session.get(data_url + f"&page={page_num}", timeout=15)
             res.encoding = 'utf-8'
             soup = BeautifulSoup(res.text, "html.parser")
             table = soup.find("table", {"id": "carTable"})
@@ -890,7 +893,6 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             page_num += 1
 
         if len(all_cars_dicts) < 100: 
-            global_sync_status["is_running"] = False
             return {"status": "error", "message": f"🚨 數據異常熔斷！為保護原始資料庫已自動拒絕寫入。"}
 
         # ----------------------------------------------------
@@ -915,7 +917,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             }
             
             try:
-                resp = front_session.post(post_url, data=post_data, timeout=10)
+                resp = front_session.post(post_url, data=post_data, timeout=15)
                 resp.encoding = 'utf-8'
                 soup = BeautifulSoup(resp.text, 'html.parser')
                 total_pages = 1
@@ -929,7 +931,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                     
                 for page in range(2, total_pages + 1):
                     post_data['PageA'] = str(page)
-                    p_resp = front_session.post(post_url, data=post_data, timeout=10)
+                    p_resp = front_session.post(post_url, data=post_data, timeout=15)
                     p_resp.encoding = 'utf-8'
                     p_soup = BeautifulSoup(p_resp.text, 'html.parser')
                     for link in p_soup.find_all('a', href=re.compile(r'p1_buy_detail\.php\?detail_PKey=\d+')):
@@ -939,7 +941,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 
             def fetch_detail(url):
                 try:
-                    res = front_session.get(url, timeout=5)
+                    res = front_session.get(url, timeout=15)
                     html = res.text
                     plate_found = ""
                     m = re.search(r'提供車身號碼驗證[：:]?\s*([A-Za-z0-9]{2,4}[-\s]*[A-Za-z0-9]{2,4})', html)
@@ -1088,14 +1090,14 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             
         global_sync_status["message"] = msg
         global_sync_status["progress"] = 100
-        global_sync_status["is_running"] = False
         return {"status": "success", "message": msg}
 
     except Exception as e: 
         global_sync_status["message"] = f"❌ 發生錯誤：{str(e)}"
-        global_sync_status["is_running"] = False
         return {"status": "error", "message": f"爬蟲發生錯誤：{str(e)}"}
     finally: 
+        # 💡 終極解鎖機制：無論任務成功、失敗還是崩潰，最後一刻一定把大門解鎖
+        global_sync_status["is_running"] = False
         gc.collect()
 
 @app.get("/api/view_inspection", response_class=HTMLResponse)
@@ -1110,9 +1112,9 @@ def view_inspection(PKey: str = ""):
             view_api_session = requests.Session()
             view_api_session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
             u, p = get_valid_credentials()
-            if u and p: view_api_session.post(login_url, data={"strID": u, "strPW": p, "Submit": "送出"})
+            if u and p: view_api_session.post(login_url, data={"strID": u, "strPW": p, "Submit": "送出"}, timeout=15)
             
-        res = view_api_session.get(target_url, timeout=10)
+        res = view_api_session.get(target_url, timeout=15)
         res.encoding = 'utf-8'
         
         if "login/index.php" in res.text or "請先登入" in res.text or "請輸入密碼" in res.text or "login" in res.url.lower():
@@ -1120,8 +1122,8 @@ def view_inspection(PKey: str = ""):
             if not u: return "<h1>❌ 錯誤：自動登入失敗，請確認後台密碼。</h1>"
             view_api_session = requests.Session()
             view_api_session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-            view_api_session.post(login_url, data={"strID": u, "strPW": p, "Submit": "送出"})
-            res = view_api_session.get(target_url, timeout=10)
+            view_api_session.post(login_url, data={"strID": u, "strPW": p, "Submit": "送出"}, timeout=15)
+            res = view_api_session.get(target_url, timeout=15)
             res.encoding = 'utf-8'
             
         soup = BeautifulSoup(res.text, "html.parser")
@@ -1171,10 +1173,14 @@ def api_sync_car_source(background_tasks: BackgroundTasks, user_id: str = "", u:
         if global_sync_status.get("is_running"):
             return {"status": "running", "message": "目前已有更新任務正在背景執行中，請直接查看畫面上的進度條！"}
             
-        valid_u, valid_p = get_valid_credentials(u, p)
-        if not valid_u: 
-            return {"status": "need_login", "message": "⚠️ 系統自動嘗試備用密碼失敗，請手動輸入最新的帳號與密碼。"}
-            
+    # 💡 將耗時的密碼檢查移出「大門外」，避免因為網路卡住而鎖死整個系統
+    valid_u, valid_p = get_valid_credentials(u, p)
+    if not valid_u: 
+        return {"status": "need_login", "message": "⚠️ 系統自動嘗試備用密碼失敗，請手動輸入最新的帳號與密碼。"}
+        
+    with sync_lock:
+        if global_sync_status.get("is_running"):
+            return {"status": "running", "message": "目前已有更新任務正在背景執行中，請直接查看畫面上的進度條！"}
         global_sync_status["is_running"] = True
         global_sync_status["message"] = "🚀 任務排入背景執行中..."
         global_sync_status["progress"] = 1
@@ -1183,7 +1189,6 @@ def api_sync_car_source(background_tasks: BackgroundTasks, user_id: str = "", u:
         try:
             core_sync_car_source(user_id, valid_u, valid_p)
         except Exception as e:
-            global_sync_status["is_running"] = False
             global_sync_status["message"] = f"❌ 發生異常：{str(e)}"
             
     background_tasks.add_task(bg_task)
@@ -1597,6 +1602,15 @@ def handle_text_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"👤 您的 LINE ID 為：\n{user_id}"))
         return
 
+    # 🛠️ 隱藏版緊急指令：強制解除系統死鎖
+    if text in ["強制解鎖", "重置系統", "重置爬蟲"]:
+        with sync_lock:
+            global_sync_status["is_running"] = False
+            global_sync_status["message"] = "系統已強制重置並就緒"
+            global_sync_status["progress"] = 0
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="✅ 系統卡住的任務已強制解除！現在可以重新執行更新了。"))
+        return
+
     # 💡 LINE 觸發也加上大門防護鎖與背景執行
     if text in ["更新車源", "抓取車源"]:
         if not check_permission(user_id, "更新車源"):
@@ -1617,13 +1631,14 @@ def handle_text_message(event):
                 valid_u, valid_p = get_valid_credentials()
                 if not valid_u:
                     line_bot_api.push_message(user_id, TextSendMessage(text="🚨 後台密碼已更改，自動嘗試備用密碼也全數失敗。\n請至網頁版手動輸入新密碼！"))
-                    global_sync_status["is_running"] = False
                     return
                 res = core_sync_car_source(user_id, valid_u, valid_p)
                 line_bot_api.push_message(user_id, TextSendMessage(text=res["message"]))
             except Exception as e:
                 line_bot_api.push_message(user_id, TextSendMessage(text=f"❌ 發生錯誤：{str(e)}"))
-                global_sync_status["is_running"] = False
+            finally:
+                with sync_lock:
+                    global_sync_status["is_running"] = False
         threading.Thread(target=run_task).start()
         return
 
@@ -1645,7 +1660,7 @@ def handle_text_message(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"❌ 寫入錯誤：{str(e)}"))
         return
 
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🤖 您好！我是自動小幫手。\n\n▶️ 【車源更新】請說：「更新車源」\n▶️ 【我的權限】請說：「我的ID」\n▶️ 【手動記客】客資 / 姓名 / 電話 / 需求"))
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🤖 您好！我是自動小幫手。\n\n▶️ 【車源更新】請說：「更新車源」\n▶️ 【我的權限】請說：「我的ID」\n▶️ 【手動記客】客資 / 姓名 / 電話 / 需求\n▶️ 【卡住救援】請說：「強制解鎖」"))
 
 @handler.add(MessageEvent, message=FileMessage)
 def handle_file_message(event):

@@ -49,7 +49,7 @@
                         <input type="month" v-model="selectedMonth" @change="fetchAndProcessData" class="w-full sm:w-auto border-2 border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-amber-400 focus:outline-none font-bold text-lg text-amber-700 shadow-inner">
                     </div>
 
-                    <!-- 模式切換按鈕 (新增) -->
+                    <!-- 模式切換按鈕 -->
                     <div class="flex bg-gray-100 p-1 rounded-lg w-full sm:w-auto">
                         <button @click="viewMode = 'ranking'" 
                                 :class="viewMode === 'ranking' ? 'bg-white text-amber-700 shadow-sm border-gray-200' : 'text-gray-500 hover:text-gray-700'" 
@@ -131,7 +131,7 @@
                     </div>
                 </div>
 
-                <!-- 模式 2：日期列表 (新增) -->
+                <!-- 模式 2：日期列表 -->
                 <div v-else-if="viewMode === 'list'" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
                     <table class="w-full text-left whitespace-nowrap">
                         <thead class="bg-amber-50 text-amber-800 text-sm border-b border-amber-200">
@@ -144,7 +144,7 @@
                             </tr>
                         </thead>
                         <tbody class="text-sm">
-                            <tr v-for="(car, idx) in listData" :key="idx" class="border-b border-gray-200 transition" :class="car._bgToggle ? 'bg-white hover:bg-gray-50' : 'bg-orange-50/50 hover:bg-orange-100/50'">
+                            <tr v-for="(car, idx) in listData" :key="idx" class="border-b border-gray-200 transition" :class="car._bgToggle ? 'bg-white hover:bg-gray-50' : 'bg-slate-100 hover:bg-slate-200'">
                                 <td class="p-4 font-bold text-amber-700">
                                     {{ formatShortDate(car['合約日期']) }}
                                 </td>
@@ -187,7 +187,6 @@
                 const now = new Date();
                 const year = now.getFullYear();
                 const month = String(now.getMonth() + 1).padStart(2, '0');
-                const day = String(now.getDate()).padStart(2, '0');
                 selectedMonth.value = `${year}-${month}`;
 
                 const fetchAndProcessData = async () => {
@@ -277,7 +276,6 @@
                         });
 
                         listData.value = flatCars;
-
                         totalCars.value = totalCount;
 
                     } catch (e) {

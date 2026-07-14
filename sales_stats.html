@@ -47,10 +47,16 @@
                     <div class="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
                         <label class="font-bold text-gray-700 whitespace-nowrap">📅 選擇統計月份：</label>
                         <input type="month" v-model="selectedMonth" @change="fetchAndProcessData" class="w-full sm:w-auto border-2 border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-amber-400 focus:outline-none font-bold text-lg text-amber-700 shadow-inner">
+                        
+                        <!-- 💡 隱藏老闆合約的開關 -->
+                        <label class="flex items-center gap-2 cursor-pointer bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-2 rounded-lg transition w-full sm:w-auto shadow-sm">
+                            <input type="checkbox" v-model="hideBoss" @change="processData" class="w-5 h-5 text-red-600 rounded cursor-pointer accent-red-600">
+                            <span class="text-sm font-bold text-red-700 whitespace-nowrap">隱藏老闆 (劉承鈞)</span>
+                        </label>
                     </div>
 
                     <!-- 模式切換按鈕 -->
-                    <div class="flex bg-gray-100 p-1 rounded-lg w-full sm:w-auto">
+                    <div class="flex bg-gray-100 p-1 rounded-lg w-full sm:w-auto mt-2 sm:mt-0">
                         <button @click="viewMode = 'ranking'" 
                                 :class="viewMode === 'ranking' ? 'bg-white text-amber-700 shadow-sm border-gray-200' : 'text-gray-500 hover:text-gray-700'" 
                                 class="flex-1 sm:flex-none px-6 py-2 rounded-md font-bold transition-all text-sm sm:text-base border border-transparent">
@@ -144,7 +150,7 @@
                             </tr>
                         </thead>
                         <tbody class="text-sm">
-                            <tr v-for="(car, idx) in listData" :key="idx" class="border-b transition" :class="car._bgType === 'A' ? 'bg-white hover:bg-gray-50 border-gray-100' : 'bg-slate-100 hover:bg-slate-200 border-slate-200'">
+                            <tr v-for="(car, idx) in listData" :key="idx" class="border-b border-gray-200 transition" :class="car._bgType === 'A' ? 'bg-white hover:bg-gray-50' : 'bg-slate-100 hover:bg-slate-200'">
                                 <td class="p-4 font-bold text-amber-700">
                                     {{ formatShortDate(car._normDate) }}
                                 </td>
@@ -179,8 +185,11 @@
                 const selectedMonth = ref('');
                 const loading = ref(false);
                 const viewMode = ref('ranking'); // 控制模式的變數
+                const hideBoss = ref(true); // 預設隱藏老闆合約
+                const rawAllCars = ref([]); // 暫存從後端抓回來的所有原始資料
+
                 const rankedStats = ref([]);
-                const listData = ref([]); // 給日期列表用的平坦資料
+                const listData = ref([]); 
                 const totalCars = ref(0);
 
                 // Set default month to current month
@@ -189,101 +198,16 @@
                 const month = String(now.getMonth() + 1).padStart(2, '0');
                 selectedMonth.value = `${year}-${month}`;
 
+                // 抓取資料 (只在更換月份或初次載入時呼叫)
                 const fetchAndProcessData = async () => {
                     loading.value = true;
                     try {
-                        // 獲取最大數量的車輛 (不隱藏已售，才能統計到歷史資料)
                         const res = await fetch('/api/cars?limit=5000&hide_sold=false&hide_cert=false&hide_reserved=false');
                         const json = await res.json();
-                        const allCars = json.data;
-
-                        const targetYearMonth = selectedMonth.value; 
-                        const [tYear, tMonth] = targetYearMonth.split('-');
-
-                        let statsMap = {};
-                        let totalCount = 0;
-                        let flatCars = []; 
-
-                        allCars.forEach(car => {
-                            // 模糊搜尋判斷此車是否有銷售合約
-                            let isContracted = false;
-                            for (let key in car) {
-                                if (key.includes('合約') && !key.includes('日期') && !key.includes('業務')) {
-                                    if (String(car[key]).trim().toUpperCase() === 'V') isContracted = true;
-                                }
-                            }
-
-                            // 如果有合約且有日期，進行分析
-                            if (isContracted && car['合約日期']) {
-                                const dateStr = String(car['合約日期']).trim();
-                                
-                                // 支援多種日期格式解析
-                                const dateMatch = dateStr.match(/(\d{4})[-\/](\d{1,2})/);
-                                if (dateMatch) {
-                                    const cYear = dateMatch[1];
-                                    const cMonth = String(dateMatch[2]).padStart(2, '0');
-                                    
-                                    // 判斷是否為選擇的月份
-                                    if (cYear === tYear && cMonth === tMonth) {
-                                        const salesName = (car['合約業務'] && car['合約業務'] !== 'nan') ? String(car['合約業務']).trim() : '未指定業務';
-                                        
-                                        // 💡 核心修正：標準化日期字串 (補零)，確保排序不會亂掉
-                                        let normDate = dateStr;
-                                        const fullMatch = dateStr.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
-                                        if (fullMatch) {
-                                            normDate = `${fullMatch[1]}-${String(fullMatch[2]).padStart(2, '0')}-${String(fullMatch[3]).padStart(2, '0')}`;
-                                        }
-                                        car._normDate = normDate;
-
-                                        // === 排行榜邏輯 ===
-                                        if (!statsMap[salesName]) {
-                                            statsMap[salesName] = { name: salesName, count: 0, cars: [] };
-                                        }
-                                        statsMap[salesName].count++;
-                                        statsMap[salesName].cars.push(car);
-                                        
-                                        // === 列表邏輯 ===
-                                        let carForList = { ...car, _salesName: salesName };
-                                        flatCars.push(carForList);
-
-                                        totalCount++;
-                                    }
-                                }
-                            }
-                        });
-
-                        // 陣列化並針對成交台數進行遞減排序 (排行榜)
-                        let arr = Object.values(statsMap).sort((a, b) => b.count - a.count);
+                        rawAllCars.value = json.data;
                         
-                        // 將每位業務的車輛清單依據日期進行排序
-                        arr.forEach(stat => {
-                            stat.cars.sort((a, b) => {
-                                return String(b._normDate).localeCompare(String(a._normDate)); // 倒序
-                            });
-                        });
-                        rankedStats.value = arr;
-
-                        // 將平面列表依據"補零後"的標準日期進行遞減排序
-                        flatCars.sort((a, b) => {
-                            return String(b._normDate).localeCompare(String(a._normDate));
-                        });
-
-                        // 💡 核心修正：嚴格依獨立日期建立 A/B 分組底色
-                        let uniqueDates = [];
-                        flatCars.forEach(car => {
-                            if (!uniqueDates.includes(car._normDate)) {
-                                uniqueDates.push(car._normDate);
-                            }
-                        });
-
-                        flatCars.forEach(car => {
-                            let dateIndex = uniqueDates.indexOf(car._normDate);
-                            // 偶數為A(白色), 奇數為B(藍灰色)
-                            car._bgType = (dateIndex % 2 === 0) ? 'A' : 'B';
-                        });
-
-                        listData.value = flatCars;
-                        totalCars.value = totalCount;
+                        // 抓完資料後，呼叫處理邏輯
+                        processData();
 
                     } catch (e) {
                         console.error(e);
@@ -291,6 +215,93 @@
                     } finally {
                         loading.value = false;
                     }
+                };
+
+                // 將過濾與統計的邏輯獨立出來，這樣切換勾選框時就不需要重新發送網路請求
+                const processData = () => {
+                    const targetYearMonth = selectedMonth.value; 
+                    const [tYear, tMonth] = targetYearMonth.split('-');
+
+                    let statsMap = {};
+                    let totalCount = 0;
+                    let flatCars = []; 
+
+                    rawAllCars.value.forEach(car => {
+                        let isContracted = false;
+                        for (let key in car) {
+                            if (key.includes('合約') && !key.includes('日期') && !key.includes('業務')) {
+                                if (String(car[key]).trim().toUpperCase() === 'V') isContracted = true;
+                            }
+                        }
+
+                        if (isContracted && car['合約日期']) {
+                            const salesName = (car['合約業務'] && car['合約業務'] !== 'nan') ? String(car['合約業務']).trim() : '未指定業務';
+                            
+                            // 💡 核心邏輯：如果勾選了隱藏老闆，且業務名稱包含劉承鈞，就直接跳過不計算
+                            if (hideBoss.value && salesName.includes('劉承鈞')) {
+                                return; 
+                            }
+
+                            const dateStr = String(car['合約日期']).trim();
+                            const dateMatch = dateStr.match(/(\d{4})[-\/](\d{1,2})/);
+                            
+                            if (dateMatch) {
+                                const cYear = dateMatch[1];
+                                const cMonth = String(dateMatch[2]).padStart(2, '0');
+                                
+                                if (cYear === tYear && cMonth === tMonth) {
+                                    
+                                    let normDate = dateStr;
+                                    const fullMatch = dateStr.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+                                    if (fullMatch) {
+                                        normDate = `${fullMatch[1]}-${String(fullMatch[2]).padStart(2, '0')}-${String(fullMatch[3]).padStart(2, '0')}`;
+                                    }
+                                    car._normDate = normDate;
+
+                                    if (!statsMap[salesName]) {
+                                        statsMap[salesName] = { name: salesName, count: 0, cars: [] };
+                                    }
+                                    statsMap[salesName].count++;
+                                    statsMap[salesName].cars.push(car);
+                                    
+                                    let carForList = { ...car, _salesName: salesName };
+                                    flatCars.push(carForList);
+
+                                    totalCount++;
+                                }
+                            }
+                        }
+                    });
+
+                    // 排序排行榜
+                    let arr = Object.values(statsMap).sort((a, b) => b.count - a.count);
+                    arr.forEach(stat => {
+                        stat.cars.sort((a, b) => {
+                            return String(b._normDate).localeCompare(String(a._normDate));
+                        });
+                    });
+                    rankedStats.value = arr;
+
+                    // 排序日期列表
+                    flatCars.sort((a, b) => {
+                        return String(b._normDate).localeCompare(String(a._normDate));
+                    });
+
+                    // 建立日期交替底色
+                    let uniqueDates = [];
+                    flatCars.forEach(car => {
+                        if (!uniqueDates.includes(car._normDate)) {
+                            uniqueDates.push(car._normDate);
+                        }
+                    });
+
+                    flatCars.forEach(car => {
+                        let dateIndex = uniqueDates.indexOf(car._normDate);
+                        car._bgType = (dateIndex % 2 === 0) ? 'A' : 'B';
+                    });
+
+                    listData.value = flatCars;
+                    totalCars.value = totalCount;
                 };
 
                 // 輔助函式：讓日期顯示更乾淨俐落
@@ -319,7 +330,6 @@
                     'bg-sky-100 text-sky-800 border-sky-200'
                 ];
 
-                // 利用名字計算固定雜湊值
                 const getSalesColor = (salesName) => {
                     if (!salesName || salesName === '未指定業務') return 'bg-gray-100 text-gray-800 border-gray-200';
                     let hash = 0;
@@ -338,10 +348,12 @@
                     selectedMonth, 
                     loading, 
                     viewMode, 
+                    hideBoss,
                     rankedStats, 
                     listData, 
                     totalCars, 
                     fetchAndProcessData,
+                    processData,
                     formatShortDate,
                     getSalesColor
                 };

@@ -118,7 +118,7 @@
                                 <tbody>
                                     <tr v-for="(car, idx) in stat.cars" :key="idx" class="border-b last:border-0 hover:bg-amber-50 transition-colors">
                                         <td class="p-3 text-gray-500 font-bold w-24 align-top">
-                                            {{ (car['合約日期'] || '').split(' ')[0] }}
+                                            {{ formatShortDate(car._normDate) }}
                                         </td>
                                         <td class="p-3 align-top">
                                             <div class="font-black text-blue-700 mb-1">{{ car['車牌'] }}</div>
@@ -144,9 +144,9 @@
                             </tr>
                         </thead>
                         <tbody class="text-sm">
-                            <tr v-for="(car, idx) in listData" :key="idx" class="border-b border-gray-200 transition" :class="car._bgToggle ? 'bg-white hover:bg-gray-50' : 'bg-slate-100 hover:bg-slate-200'">
+                            <tr v-for="(car, idx) in listData" :key="idx" class="border-b transition" :class="car._bgType === 'A' ? 'bg-white hover:bg-gray-50 border-gray-100' : 'bg-slate-100 hover:bg-slate-200 border-slate-200'">
                                 <td class="p-4 font-bold text-amber-700">
-                                    {{ formatShortDate(car['合約日期']) }}
+                                    {{ formatShortDate(car._normDate) }}
                                 </td>
                                 <td class="p-4 font-bold text-gray-800">
                                     <span class="px-3 py-1 rounded-full text-xs border shadow-sm font-bold" :class="getSalesColor(car._salesName)">
@@ -202,7 +202,7 @@
 
                         let statsMap = {};
                         let totalCount = 0;
-                        let flatCars = []; // 暫存符合該月的所有車輛，供列表模式使用
+                        let flatCars = []; 
 
                         allCars.forEach(car => {
                             // 模糊搜尋判斷此車是否有銷售合約
@@ -217,7 +217,7 @@
                             if (isContracted && car['合約日期']) {
                                 const dateStr = String(car['合約日期']).trim();
                                 
-                                // 支援多種日期格式解析 (2026-07-14, 2026/07/14, 2026-7-1 等)
+                                // 支援多種日期格式解析
                                 const dateMatch = dateStr.match(/(\d{4})[-\/](\d{1,2})/);
                                 if (dateMatch) {
                                     const cYear = dateMatch[1];
@@ -227,6 +227,14 @@
                                     if (cYear === tYear && cMonth === tMonth) {
                                         const salesName = (car['合約業務'] && car['合約業務'] !== 'nan') ? String(car['合約業務']).trim() : '未指定業務';
                                         
+                                        // 💡 核心修正：標準化日期字串 (補零)，確保排序不會亂掉
+                                        let normDate = dateStr;
+                                        const fullMatch = dateStr.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+                                        if (fullMatch) {
+                                            normDate = `${fullMatch[1]}-${String(fullMatch[2]).padStart(2, '0')}-${String(fullMatch[3]).padStart(2, '0')}`;
+                                        }
+                                        car._normDate = normDate;
+
                                         // === 排行榜邏輯 ===
                                         if (!statsMap[salesName]) {
                                             statsMap[salesName] = { name: salesName, count: 0, cars: [] };
@@ -235,7 +243,6 @@
                                         statsMap[salesName].cars.push(car);
                                         
                                         // === 列表邏輯 ===
-                                        // 把業務名字塞進物件，方便等一下在 Table 顯示
                                         let carForList = { ...car, _salesName: salesName };
                                         flatCars.push(carForList);
 
@@ -251,28 +258,28 @@
                         // 將每位業務的車輛清單依據日期進行排序
                         arr.forEach(stat => {
                             stat.cars.sort((a, b) => {
-                                return String(b['合約日期']).localeCompare(String(a['合約日期'])); // 倒序
+                                return String(b._normDate).localeCompare(String(a._normDate)); // 倒序
                             });
                         });
                         rankedStats.value = arr;
 
-                        // 將平面列表依據日期進行遞減排序 (列表模式)
+                        // 將平面列表依據"補零後"的標準日期進行遞減排序
                         flatCars.sort((a, b) => {
-                            const dateA = String(a['合約日期']).replace(/\//g, '-');
-                            const dateB = String(b['合約日期']).replace(/\//g, '-');
-                            return dateB.localeCompare(dateA);
+                            return String(b._normDate).localeCompare(String(a._normDate));
                         });
 
-                        // 💡 NEW: 計算日期分組顏色 (同一天同底色)
-                        let currentDateStr = '';
-                        let currentToggle = true;
+                        // 💡 核心修正：嚴格依獨立日期建立 A/B 分組底色
+                        let uniqueDates = [];
                         flatCars.forEach(car => {
-                            const carDate = formatShortDate(car['合約日期']);
-                            if (carDate !== currentDateStr) {
-                                currentToggle = !currentToggle;
-                                currentDateStr = carDate;
+                            if (!uniqueDates.includes(car._normDate)) {
+                                uniqueDates.push(car._normDate);
                             }
-                            car._bgToggle = currentToggle;
+                        });
+
+                        flatCars.forEach(car => {
+                            let dateIndex = uniqueDates.indexOf(car._normDate);
+                            // 偶數為A(白色), 奇數為B(藍灰色)
+                            car._bgType = (dateIndex % 2 === 0) ? 'A' : 'B';
                         });
 
                         listData.value = flatCars;
@@ -286,17 +293,17 @@
                     }
                 };
 
-                // 輔助函式：讓日期顯示更乾淨俐落 (隱藏年份，只顯示 月/日)
+                // 輔助函式：讓日期顯示更乾淨俐落
                 const formatShortDate = (dateStr) => {
                     if (!dateStr) return '';
-                    const parts = dateStr.split(/[-/]/);
+                    const parts = dateStr.split('-');
                     if (parts.length >= 3) {
-                        return `${parts[1]}/${parts[2]}`; // 回傳 "07/14"
+                        return `${parts[1]}/${parts[2]}`; 
                     }
                     return dateStr;
                 };
 
-                // 💡 NEW: 業務專屬配色庫
+                // 業務專屬配色庫
                 const colorPalettes = [
                     'bg-blue-100 text-blue-800 border-blue-200',
                     'bg-emerald-100 text-emerald-800 border-emerald-200',
@@ -312,7 +319,7 @@
                     'bg-sky-100 text-sky-800 border-sky-200'
                 ];
 
-                // 💡 NEW: 利用名字計算固定雜湊值，確保同一位業務永遠是同一個顏色
+                // 利用名字計算固定雜湊值
                 const getSalesColor = (salesName) => {
                     if (!salesName || salesName === '未指定業務') return 'bg-gray-100 text-gray-800 border-gray-200';
                     let hash = 0;

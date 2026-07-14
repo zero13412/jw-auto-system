@@ -144,12 +144,12 @@
                             </tr>
                         </thead>
                         <tbody class="text-sm">
-                            <tr v-for="(car, idx) in listData" :key="idx" class="border-b border-gray-100 hover:bg-amber-50/50 transition">
+                            <tr v-for="(car, idx) in listData" :key="idx" class="border-b border-gray-200 transition" :class="car._bgToggle ? 'bg-white hover:bg-gray-50' : 'bg-orange-50/50 hover:bg-orange-100/50'">
                                 <td class="p-4 font-bold text-amber-700">
                                     {{ formatShortDate(car['合約日期']) }}
                                 </td>
                                 <td class="p-4 font-bold text-gray-800">
-                                    <span class="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-xs border border-amber-200 shadow-sm">
+                                    <span class="px-3 py-1 rounded-full text-xs border shadow-sm font-bold" :class="getSalesColor(car._salesName)">
                                         {{ car._salesName }}
                                     </span>
                                 </td>
@@ -263,6 +263,19 @@
                             const dateB = String(b['合約日期']).replace(/\//g, '-');
                             return dateB.localeCompare(dateA);
                         });
+
+                        // 💡 NEW: 計算日期分組顏色 (同一天同底色)
+                        let currentDateStr = '';
+                        let currentToggle = true;
+                        flatCars.forEach(car => {
+                            const carDate = formatShortDate(car['合約日期']);
+                            if (carDate !== currentDateStr) {
+                                currentToggle = !currentToggle;
+                                currentDateStr = carDate;
+                            }
+                            car._bgToggle = currentToggle;
+                        });
+
                         listData.value = flatCars;
 
                         totalCars.value = totalCount;
@@ -285,6 +298,33 @@
                     return dateStr;
                 };
 
+                // 💡 NEW: 業務專屬配色庫
+                const colorPalettes = [
+                    'bg-blue-100 text-blue-800 border-blue-200',
+                    'bg-emerald-100 text-emerald-800 border-emerald-200',
+                    'bg-purple-100 text-purple-800 border-purple-200',
+                    'bg-rose-100 text-rose-800 border-rose-200',
+                    'bg-teal-100 text-teal-800 border-teal-200',
+                    'bg-indigo-100 text-indigo-800 border-indigo-200',
+                    'bg-pink-100 text-pink-800 border-pink-200',
+                    'bg-cyan-100 text-cyan-800 border-cyan-200',
+                    'bg-amber-100 text-amber-800 border-amber-200',
+                    'bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200',
+                    'bg-lime-100 text-lime-800 border-lime-200',
+                    'bg-sky-100 text-sky-800 border-sky-200'
+                ];
+
+                // 💡 NEW: 利用名字計算固定雜湊值，確保同一位業務永遠是同一個顏色
+                const getSalesColor = (salesName) => {
+                    if (!salesName || salesName === '未指定業務') return 'bg-gray-100 text-gray-800 border-gray-200';
+                    let hash = 0;
+                    for (let i = 0; i < salesName.length; i++) {
+                        hash = salesName.charCodeAt(i) + ((hash << 5) - hash);
+                    }
+                    const index = Math.abs(hash) % colorPalettes.length;
+                    return colorPalettes[index];
+                };
+
                 onMounted(() => {
                     fetchAndProcessData();
                 });
@@ -297,7 +337,8 @@
                     listData, 
                     totalCars, 
                     fetchAndProcessData,
-                    formatShortDate
+                    formatShortDate,
+                    getSalesColor
                 };
             }
         }).mount('#app');

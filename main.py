@@ -828,7 +828,18 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 s_headers = [th.text.strip() for th in s_rows[0].find_all(["th", "td"])]
                 s_col = next((i for i, h in enumerate(s_headers) if any(kw in h for kw in ["車牌", "車號", "牌照"])), -1)
                 sales_col = next((i for i, h in enumerate(s_headers) if any(kw in h for kw in ["業務", "銷售", "負責"])), -1)
-                date_col = next((i for i, h in enumerate(s_headers) if any(kw in h for kw in ["日期", "時間", "建立", "簽約"])), -1)
+                
+                # 💡 精準抓取「建立日期」或「簽約日期」，並刻意避開「交車日期」
+                date_col = -1
+                for i, h in enumerate(s_headers):
+                    if "建立" in h or "簽約" in h:
+                        date_col = i
+                        break
+                if date_col == -1:
+                    for i, h in enumerate(s_headers):
+                        if "日期" in h and "交車" not in h:
+                            date_col = i
+                            break
                 
                 if s_col != -1:
                     for row in s_rows[1:]:

@@ -8,6 +8,7 @@
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 
     <script>
+        // 權限檢查邏輯
         const userId = localStorage.getItem('jw_user_id');
         const permsRaw = localStorage.getItem('jw_permissions');
         
@@ -16,14 +17,15 @@
         } else {
             const perms = JSON.parse(permsRaw);
             const isSuperAdmin = String(perms['最高管理員']).toUpperCase() === 'V';
-            const hasAuth = String(perms['當月成交']).toUpperCase() === 'V'; 
+            const hasAuth = String(perms['當月成交']).toUpperCase() === 'V' || String(perms['戰情室']).toUpperCase() === 'V'; 
             
             if (!isSuperAdmin && !hasAuth) {
-                alert("⛔ 存取被拒絕！您沒有【當月成交】的使用權限。");
+                alert("⛔ 存取被拒絕！您沒有【當月成交】的使用權限，請聯繫阿鍇為您開通。");
                 window.location.href = "/";
             }
         }
     </script>
+
     <style>
         body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
         [v-cloak] { display: none !important; }
@@ -31,185 +33,228 @@
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
-<body>
-    <div id="app" class="flex flex-col h-screen" v-cloak>
-        <header class="bg-amber-600 text-white p-3 sm:p-4 shadow-md flex justify-between items-center z-10 shrink-0">
-            <h1 class="text-base sm:text-xl font-bold truncate pr-2">🏆 當月成交台數統計表</h1>
-            <a href="/" class="bg-yellow-800 hover:bg-yellow-900 text-white font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm whitespace-nowrap">
-                🏠 首頁
-            </a>
+<body class="bg-gray-100 flex flex-col h-screen overflow-hidden">
+    <div id="app" class="flex flex-col h-full" v-cloak>
+        
+        <!-- 頂部導覽列 -->
+        <header class="bg-indigo-700 text-white p-3 sm:p-4 shadow-md flex justify-between items-center z-10 shrink-0">
+            <h1 class="text-base sm:text-xl font-bold truncate pr-2">🏆 當月成交戰情看板</h1>
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <a href="/" class="bg-yellow-500 hover:bg-yellow-600 text-indigo-900 font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm">
+                    🏠 首頁
+                </a>
+            </div>
         </header>
 
         <main class="flex-1 overflow-y-auto p-4 sm:p-6 w-full relative">
-            <div class="max-w-6xl mx-auto space-y-6 pb-10">
+            <div class="max-w-7xl mx-auto space-y-6 pb-10">
                 
-                <div class="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div class="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-                        <label class="font-bold text-gray-700 whitespace-nowrap">📅 選擇統計月份：</label>
-                        <input type="month" v-model="selectedMonth" @change="fetchAndProcessData" class="w-full sm:w-auto border-2 border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-amber-400 focus:outline-none font-bold text-lg text-amber-700 shadow-inner">
-                    </div>
-                    <div class="text-center sm:text-right bg-amber-50 px-6 py-3 rounded-lg border border-amber-100 w-full sm:w-auto">
-                        <p class="text-sm text-gray-500 font-bold mb-1">本月總成交台數</p>
-                        <p class="text-4xl font-black text-amber-600">{{ totalCars }} <span class="text-lg text-amber-800">台</span></p>
-                    </div>
-                </div>
-
-                <div v-if="loading" class="flex flex-col items-center justify-center py-20">
-                    <span class="text-4xl font-bold text-amber-500 animate-pulse mb-4">🏆</span>
-                    <span class="text-xl font-bold text-amber-600 animate-pulse">正在為您精算成交數據...</span>
-                </div>
-
-                <div v-else-if="rankedStats.length === 0" class="text-center py-20 bg-white rounded-xl border-2 border-dashed border-gray-300 shadow-sm">
-                    <div class="text-5xl mb-3 opacity-50">📂</div>
-                    <span class="text-lg text-gray-500 font-bold">這個月份目前還沒有合約紀錄喔！</span>
-                </div>
-
-                <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <!-- 控制面板：月份選擇與模式切換 -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 sm:p-5 flex flex-col sm:flex-row justify-between items-center gap-4 sticky top-0 z-20">
                     
-                    <div v-for="(stat, index) in rankedStats" :key="index" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow duration-300 flex flex-col">
-                        
-                        <!-- Header with dynamic medals -->
-                        <div class="p-4 border-b flex justify-between items-center"
-                             :class="{
-                                 'bg-gradient-to-r from-yellow-100 to-amber-100 border-amber-200': index === 0,
-                                 'bg-gradient-to-r from-gray-100 to-slate-200 border-slate-300': index === 1,
-                                 'bg-gradient-to-r from-orange-50 to-orange-100 border-orange-200': index === 2,
-                                 'bg-gray-50': index > 2
-                             }">
-                            <div class="flex items-center gap-3">
-                                <div class="w-10 h-10 rounded-full text-white flex items-center justify-center font-black text-xl shadow-md"
-                                     :class="{
-                                         'bg-yellow-500 ring-2 ring-yellow-300': index === 0,
-                                         'bg-slate-400 ring-2 ring-slate-300': index === 1,
-                                         'bg-orange-500 ring-2 ring-orange-300': index === 2,
-                                         'bg-gray-400': index > 2
-                                     }">
-                                    <span v-if="index === 0">🥇</span>
-                                    <span v-else-if="index === 1">🥈</span>
-                                    <span v-else-if="index === 2">🥉</span>
-                                    <span v-else>{{ index + 1 }}</span>
-                                </div>
-                                <h2 class="text-xl font-bold text-gray-800">{{ stat.name }}</h2>
-                            </div>
-                            <div class="text-3xl font-black text-gray-800"
-                                 :class="{'text-yellow-600': index === 0, 'text-slate-600': index === 1, 'text-orange-600': index === 2}">
-                                {{ stat.count }} <span class="text-sm font-bold text-gray-500">台</span>
-                            </div>
-                        </div>
-                        
-                        <!-- List of cars -->
-                        <div class="p-0 flex-1 overflow-y-auto max-h-64 no-scrollbar">
-                            <table class="w-full text-sm text-left">
-                                <tbody>
-                                    <tr v-for="(car, idx) in stat.cars" :key="idx" class="border-b last:border-0 hover:bg-amber-50 transition-colors">
-                                        <td class="p-3 text-gray-500 font-bold w-24 align-top">
-                                            {{ (car['合約日期'] || '').split(' ')[0] }}
-                                        </td>
-                                        <td class="p-3 align-top">
-                                            <div class="font-black text-blue-700 mb-1">{{ car['車牌'] }}</div>
-                                            <div class="text-xs text-gray-600 font-bold leading-tight">{{ car['廠牌'] }} {{ car['車型'] }}</div>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-
+                    <div class="flex items-center gap-3 w-full sm:w-auto">
+                        <label class="font-bold text-gray-700 whitespace-nowrap">📅 查詢月份：</label>
+                        <input type="month" v-model="currentMonth" class="border-2 border-indigo-200 rounded-lg p-2 text-indigo-700 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400 w-full sm:w-auto cursor-pointer">
                     </div>
+
+                    <div class="flex bg-gray-100 p-1 rounded-lg w-full sm:w-auto">
+                        <button @click="viewMode = 'ranking'" 
+                                :class="viewMode === 'ranking' ? 'bg-white text-indigo-700 shadow-sm border-gray-200' : 'text-gray-500 hover:text-gray-700'" 
+                                class="flex-1 sm:flex-none px-6 py-2 rounded-md font-bold transition-all text-sm sm:text-base border border-transparent">
+                            🏆 業務排行
+                        </button>
+                        <button @click="viewMode = 'list'" 
+                                :class="viewMode === 'list' ? 'bg-white text-indigo-700 shadow-sm border-gray-200' : 'text-gray-500 hover:text-gray-700'" 
+                                class="flex-1 sm:flex-none px-6 py-2 rounded-md font-bold transition-all text-sm sm:text-base border border-transparent">
+                            📄 日期列表
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 狀態顯示：載入中 -->
+                <div v-if="isLoading" class="flex flex-col items-center justify-center py-20 text-indigo-400">
+                    <div class="animate-spin text-5xl mb-4">⚙️</div>
+                    <p class="font-bold text-lg animate-pulse">正在載入並解析合約資料...</p>
+                </div>
+
+                <!-- 狀態顯示：無資料 -->
+                <div v-else-if="filteredData.length === 0" class="bg-white rounded-xl shadow-sm border border-gray-200 p-16 text-center">
+                    <div class="text-6xl mb-4 grayscale opacity-50">📂</div>
+                    <h3 class="text-xl font-bold text-gray-500">該月份目前尚無成交紀錄</h3>
+                    <p class="text-gray-400 text-sm mt-2">請確認是否已點擊首頁的「自動更新車源表」抓取最新合約</p>
+                </div>
+
+                <!-- 內容顯示區 -->
+                <div v-else class="space-y-6">
+                    
+                    <!-- 統計標籤 (共用) -->
+                    <div class="flex items-center gap-4 bg-indigo-50 border border-indigo-100 p-4 rounded-xl">
+                        <div class="text-4xl">🔥</div>
+                        <div>
+                            <p class="text-indigo-900 font-bold text-lg">本月總成交： <span class="text-3xl text-red-600">{{ filteredData.length }}</span> 台</p>
+                            <p class="text-sm text-indigo-600 mt-1">來自 {{ rankingData.length }} 位業務的努力成果</p>
+                        </div>
+                    </div>
+
+                    <!-- 🔴 模式 1：業務排行榜看板 -->
+                    <div v-if="viewMode === 'ranking'" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                        <div v-for="(person, index) in rankingData" :key="person.name" class="bg-white p-5 rounded-xl shadow-sm border border-gray-200 flex flex-col relative overflow-hidden hover:shadow-md transition">
+                            
+                            <!-- 獎牌標籤 -->
+                            <div v-if="index === 0" class="absolute top-0 right-0 bg-yellow-400 text-white font-bold text-sm px-4 py-1.5 rounded-bl-xl shadow-sm">🥇 冠軍</div>
+                            <div v-if="index === 1" class="absolute top-0 right-0 bg-gray-400 text-white font-bold text-sm px-4 py-1.5 rounded-bl-xl shadow-sm">🥈 亞軍</div>
+                            <div v-if="index === 2" class="absolute top-0 right-0 bg-amber-600 text-white font-bold text-sm px-4 py-1.5 rounded-bl-xl shadow-sm">🥉 季軍</div>
+
+                            <h3 class="text-xl font-bold text-gray-800 mb-1 mt-2">{{ person.name }}</h3>
+                            <div class="text-5xl font-extrabold text-indigo-600 mb-5">{{ person.count }} <span class="text-base text-gray-500 font-normal">台</span></div>
+                            
+                            <!-- 賣出的車輛明細 (最多顯示 5 台，多的收合) -->
+                            <div class="space-y-2 mt-auto border-t pt-3">
+                                <div v-for="(car, cIdx) in person.list" :key="cIdx" class="text-xs text-gray-600 flex justify-between bg-gray-50 p-2.5 rounded hover:bg-gray-100">
+                                    <span class="truncate pr-2 font-bold">{{ car['年份'] }} {{ car['廠牌'] }}</span>
+                                    <span class="font-mono text-gray-500 whitespace-nowrap">{{ car['車牌'] || '(無車牌)' }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 🔴 模式 2：依日期排序列表看板 -->
+                    <div v-if="viewMode === 'list'" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-x-auto">
+                        <table class="w-full text-left whitespace-nowrap">
+                            <thead class="bg-gray-100 text-gray-600 text-sm">
+                                <tr>
+                                    <th class="p-4 font-bold border-b w-32">合約建立日期</th>
+                                    <th class="p-4 font-bold border-b w-32">銷售業務</th>
+                                    <th class="p-4 font-bold border-b">廠牌與車型</th>
+                                    <th class="p-4 font-bold border-b w-32 text-center">車牌</th>
+                                    <th class="p-4 font-bold border-b w-32 text-right">網路價(萬)</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-sm">
+                                <tr v-for="car in listData" :key="car['車牌'] + car['合約日期']" class="border-b border-gray-100 hover:bg-indigo-50/50 transition">
+                                    <td class="p-4 font-bold text-indigo-600">
+                                        {{ formatShortDate(car['合約日期']) }}
+                                    </td>
+                                    <td class="p-4 font-bold text-gray-800">
+                                        <span class="bg-cyan-100 text-cyan-800 px-3 py-1 rounded-full text-xs border border-cyan-200 shadow-sm">
+                                            {{ car['合約業務'] || '未指定' }}
+                                        </span>
+                                    </td>
+                                    <td class="p-4 text-gray-700">
+                                        {{ car['年份'] }} <span class="font-bold text-gray-900">{{ car['廠牌'] }}</span> {{ car['車型'] }}
+                                    </td>
+                                    <td class="p-4 font-mono font-bold text-gray-500 text-center">
+                                        {{ car['車牌'] || '(無)' }}
+                                    </td>
+                                    <td class="p-4 text-right font-bold text-red-600">
+                                        {{ car['顯示價格'] > 0 ? car['顯示價格'] : '--' }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
                 </div>
             </div>
         </main>
     </div>
 
     <script>
-        const { createApp, ref, onMounted } = Vue;
+        const { createApp, ref, computed, onMounted } = Vue;
 
         createApp({
             setup() {
-                const selectedMonth = ref('');
-                const loading = ref(false);
-                const rankedStats = ref([]);
-                const totalCars = ref(0);
+                const isLoading = ref(true);
+                const cars = ref([]);
+                
+                // 預設抓取當前電腦系統時間的月份 (格式 YYYY-MM)
+                const today = new Date();
+                const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+                const currentMonth = ref(defaultMonth);
+                
+                // 切換模式的變數：'ranking' (排行) 或 'list' (列表)
+                const viewMode = ref('ranking'); 
 
-                // Set default month to current month
-                const now = new Date();
-                const year = now.getFullYear();
-                const month = String(now.getMonth() + 1).padStart(2, '0');
-                selectedMonth.value = `${year}-${month}`;
-
-                const fetchAndProcessData = async () => {
-                    loading.value = true;
+                // 從大腦 API 抓取所有車源 (包含已售出)
+                const loadData = async () => {
+                    isLoading.value = true;
                     try {
-                        // 獲取最大數量的車輛 (不隱藏已售，才能統計到歷史資料)
-                        const res = await fetch('/api/cars?limit=5000&hide_sold=false&hide_cert=false&hide_reserved=false');
+                        const res = await fetch('/api/cars?limit=10000');
                         const json = await res.json();
-                        const allCars = json.data;
-
-                        const targetYearMonth = selectedMonth.value; 
-                        const [tYear, tMonth] = targetYearMonth.split('-');
-
-                        let statsMap = {};
-                        let totalCount = 0;
-
-                        allCars.forEach(car => {
-                            // 模糊搜尋判斷此車是否有銷售合約
-                            let isContracted = false;
-                            for (let key in car) {
-                                if (key.includes('合約') && !key.includes('日期') && !key.includes('業務')) {
-                                    if (String(car[key]).trim().toUpperCase() === 'V') isContracted = true;
-                                }
-                            }
-
-                            // 如果有合約且有日期，進行分析
-                            if (isContracted && car['合約日期']) {
-                                const dateStr = String(car['合約日期']).trim();
-                                
-                                // 支援多種日期格式解析 (2026-07-14, 2026/07/14, 2026-7-1 等)
-                                const dateMatch = dateStr.match(/(\d{4})[-\/](\d{1,2})/);
-                                if (dateMatch) {
-                                    const cYear = dateMatch[1];
-                                    const cMonth = String(dateMatch[2]).padStart(2, '0');
-                                    
-                                    // 判斷是否為選擇的月份
-                                    if (cYear === tYear && cMonth === tMonth) {
-                                        const salesName = (car['合約業務'] && car['合約業務'] !== 'nan') ? String(car['合約業務']).trim() : '未指定業務';
-                                        
-                                        if (!statsMap[salesName]) {
-                                            statsMap[salesName] = { name: salesName, count: 0, cars: [] };
-                                        }
-                                        statsMap[salesName].count++;
-                                        statsMap[salesName].cars.push(car);
-                                        totalCount++;
-                                    }
-                                }
-                            }
-                        });
-
-                        // 陣列化並針對成交台數進行遞減排序 (排行榜)
-                        let arr = Object.values(statsMap).sort((a, b) => b.count - a.count);
-                        
-                        // 將每位業務的車輛清單依據日期進行排序
-                        arr.forEach(stat => {
-                            stat.cars.sort((a, b) => {
-                                return String(a['合約日期']).localeCompare(String(b['合約日期']));
-                            });
-                        });
-
-                        rankedStats.value = arr;
-                        totalCars.value = totalCount;
-
+                        // 只需要有「合約日期」紀錄的車輛
+                        cars.value = json.data.filter(c => c['合約日期'] && String(c['合約日期']).trim() !== '');
                     } catch (e) {
-                        console.error(e);
-                        alert("資料獲取失敗，請檢查網路連線");
+                        console.error('抓取資料失敗:', e);
                     } finally {
-                        loading.value = false;
+                        isLoading.value = false;
                     }
                 };
 
-                onMounted(() => {
-                    fetchAndProcessData();
+                // 根據使用者選擇的月份過濾車輛
+                const filteredData = computed(() => {
+                    const selMonth = currentMonth.value; // ex: "2023-10"
+                    if (!selMonth) return cars.value;
+
+                    // 處理杰運合約系統可能的日期格式："2023/10/05" 或 "2023-10-05"
+                    const searchStrSlash = selMonth.replace('-', '/'); 
+                    
+                    return cars.value.filter(c => {
+                        const dateStr = String(c['合約日期']).trim();
+                        return dateStr.startsWith(selMonth) || dateStr.startsWith(searchStrSlash);
+                    });
                 });
 
-                return { selectedMonth, loading, rankedStats, totalCars, fetchAndProcessData };
+                // 🏅 [模式1] 計算並排序業務排行榜
+                const rankingData = computed(() => {
+                    const map = {};
+                    filteredData.value.forEach(c => {
+                        let sales = String(c['合約業務'] || '').trim();
+                        if (!sales) sales = '未知業務';
+                        
+                        if (!map[sales]) map[sales] = [];
+                        map[sales].push(c);
+                    });
+                    
+                    // 轉為陣列並依照售出數量大到小排序
+                    return Object.entries(map).map(([name, list]) => {
+                        return { name, count: list.length, list };
+                    }).sort((a, b) => b.count - a.count);
+                });
+
+                // 📄 [模式2] 依日期新到舊排序的列表
+                const listData = computed(() => {
+                    return [...filteredData.value].sort((a, b) => {
+                        const dateA = String(a['合約日期']).replace(/\//g, '-');
+                        const dateB = String(b['合約日期']).replace(/\//g, '-');
+                        // 字串比對降序 (日期新的在上面)
+                        return dateB.localeCompare(dateA);
+                    });
+                });
+
+                // 輔助函式：讓日期顯示更乾淨俐落 (隱藏年份，只顯示 月/日)
+                const formatShortDate = (dateStr) => {
+                    if (!dateStr) return '';
+                    // 假設傳入 "2023/10/05" 或 "2023-10-05"，切出後面部分
+                    const parts = dateStr.split(/[-/]/);
+                    if (parts.length >= 3) {
+                        return `${parts[1]}/${parts[2]}`; // 回傳 "10/05"
+                    }
+                    return dateStr;
+                };
+
+                onMounted(() => {
+                    loadData();
+                });
+
+                return { 
+                    isLoading, 
+                    currentMonth, 
+                    viewMode, 
+                    filteredData, 
+                    rankingData, 
+                    listData,
+                    formatShortDate
+                };
             }
         }).mount('#app');
     </script>

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🏆 當月成交台數統計表 - 杰運汽車</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <script>
+        const userId = localStorage.getItem('jw_user_id');
+        const permsRaw = localStorage.getItem('jw_permissions');
+        
+        if (!userId || !permsRaw) {
+            window.location.href = "/";
+        } else {
+            const perms = JSON.parse(permsRaw);
+            const isSuperAdmin = String(perms['最高管理員']).toUpperCase() === 'V';
+            const hasAuth = String(perms['當月成交']).toUpperCase() === 'V'; 
+            
+            if (!isSuperAdmin && !hasAuth) {
+                alert("⛔ 存取被拒絕！您沒有【當月成交】的使用權限。");
+                window.location.href = "/";
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
+        [v-cloak] { display: none !important; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body>
+    <div id="app" class="flex flex-col h-screen" v-cloak>
+        <header class="bg-amber-600 text-white p-3 sm:p-4 shadow-md flex justify-between items-center z-10 shrink-0">
+            <h1 class="text-base sm:text-xl font-bold truncate pr-2">🏆 當月成交台數統計表</h1>
+            <a href="/" class="bg-yellow-800 hover:bg-yellow-900 text-white font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded text-sm transition shadow-sm whitespace-nowrap">
+                🏠 首頁
+            </a>
+        </header>
+
+        <main class="flex-1 overflow-y-auto p-4 sm:p-6 w-full relative">
+            <div class="max-w-6xl mx-auto space-y-6 pb-10">
+                
+                <div class="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div class="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+                        <label class="font-bold text-gray-700 whitespace-nowrap">📅 選擇統計月份：</label>
+                        <input type="month" v-model="selectedMonth" @change="fetchAndProcessData" class="w-full sm:w-auto border-2 border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-amber-400 focus:outline-none font-bold text-lg text-amber-700 shadow-inner">
+                    </div>
+                    <div class="text-center sm:text-right bg-amber-50 px-6 py-3 rounded-lg border border-amber-100 w-full sm:w-auto">
+                        <p class="text-sm text-gray-500 font-bold mb-1">本月總成交台數</p>
+                        <p class="text-4xl font-black text-amber-600">{{ totalCars }} <span class="text-lg text-amber-800">台</span></p>
+                    </div>
+                </div>
+
+                <div v-if="loading" class="flex flex-col items-center justify-center py-20">
+                    <span class="text-4xl font-bold text-amber-500 animate-pulse mb-4">🏆</span>
+                    <span class="text-xl font-bold text-amber-600 animate-pulse">正在為您精算成交數據...</span>
+                </div>
+
+                <div v-else-if="rankedStats.length === 0" class="text-center py-20 bg-white rounded-xl border-2 border-dashed border-gray-300 shadow-sm">
+                    <div class="text-5xl mb-3 opacity-50">📂</div>
+                    <span class="text-lg text-gray-500 font-bold">這個月份目前還沒有合約紀錄喔！</span>
+                </div>
+
+                <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    
+                    <div v-for="(stat, index) in rankedStats" :key="index" class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-shadow duration-300 flex flex-col">
+                        
+                        <!-- Header with dynamic medals -->
+                        <div class="p-4 border-b flex justify-between items-center"
+                             :class="{
+                                 'bg-gradient-to-r from-yellow-100 to-amber-100 border-amber-200': index === 0,
+                                 'bg-gradient-to-r from-gray-100 to-slate-200 border-slate-300': index === 1,
+                                 'bg-gradient-to-r from-orange-50 to-orange-100 border-orange-200': index === 2,
+                                 'bg-gray-50': index > 2
+                             }">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-full text-white flex items-center justify-center font-black text-xl shadow-md"
+                                     :class="{
+                                         'bg-yellow-500 ring-2 ring-yellow-300': index === 0,
+                                         'bg-slate-400 ring-2 ring-slate-300': index === 1,
+                                         'bg-orange-500 ring-2 ring-orange-300': index === 2,
+                                         'bg-gray-400': index > 2
+                                     }">
+                                    <span v-if="index === 0">🥇</span>
+                                    <span v-else-if="index === 1">🥈</span>
+                                    <span v-else-if="index === 2">🥉</span>
+                                    <span v-else>{{ index + 1 }}</span>
+                                </div>
+                                <h2 class="text-xl font-bold text-gray-800">{{ stat.name }}</h2>
+                            </div>
+                            <div class="text-3xl font-black text-gray-800"
+                                 :class="{'text-yellow-600': index === 0, 'text-slate-600': index === 1, 'text-orange-600': index === 2}">
+                                {{ stat.count }} <span class="text-sm font-bold text-gray-500">台</span>
+                            </div>
+                        </div>
+                        
+                        <!-- List of cars -->
+                        <div class="p-0 flex-1 overflow-y-auto max-h-64 no-scrollbar">
+                            <table class="w-full text-sm text-left">
+                                <tbody>
+                                    <tr v-for="(car, idx) in stat.cars" :key="idx" class="border-b last:border-0 hover:bg-amber-50 transition-colors">
+                                        <td class="p-3 text-gray-500 font-bold w-24 align-top">
+                                            {{ (car['合約日期'] || '').split(' ')[0] }}
+                                        </td>
+                                        <td class="p-3 align-top">
+                                            <div class="font-black text-blue-700 mb-1">{{ car['車牌'] }}</div>
+                                            <div class="text-xs text-gray-600 font-bold leading-tight">{{ car['廠牌'] }} {{ car['車型'] }}</div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted } = Vue;
+
+        createApp({
+            setup() {
+                const selectedMonth = ref('');
+                const loading = ref(false);
+                const rankedStats = ref([]);
+                const totalCars = ref(0);
+
+                // Set default month to current month
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                selectedMonth.value = `${year}-${month}`;
+
+                const fetchAndProcessData = async () => {
+                    loading.value = true;
+                    try {
+                        // 獲取最大數量的車輛 (不隱藏已售，才能統計到歷史資料)
+                        const res = await fetch('/api/cars?limit=5000&hide_sold=false&hide_cert=false&hide_reserved=false');
+                        const json = await res.json();
+                        const allCars = json.data;
+
+                        const targetYearMonth = selectedMonth.value; 
+                        const [tYear, tMonth] = targetYearMonth.split('-');
+
+                        let statsMap = {};
+                        let totalCount = 0;
+
+                        allCars.forEach(car => {
+                            // 模糊搜尋判斷此車是否有銷售合約
+                            let isContracted = false;
+                            for (let key in car) {
+                                if (key.includes('合約') && !key.includes('日期') && !key.includes('業務')) {
+                                    if (String(car[key]).trim().toUpperCase() === 'V') isContracted = true;
+                                }
+                            }
+
+                            // 如果有合約且有日期，進行分析
+                            if (isContracted && car['合約日期']) {
+                                const dateStr = String(car['合約日期']).trim();
+                                
+                                // 支援多種日期格式解析 (2026-07-14, 2026/07/14, 2026-7-1 等)
+                                const dateMatch = dateStr.match(/(\d{4})[-\/](\d{1,2})/);
+                                if (dateMatch) {
+                                    const cYear = dateMatch[1];
+                                    const cMonth = String(dateMatch[2]).padStart(2, '0');
+                                    
+                                    // 判斷是否為選擇的月份
+                                    if (cYear === tYear && cMonth === tMonth) {
+                                        const salesName = (car['合約業務'] && car['合約業務'] !== 'nan') ? String(car['合約業務']).trim() : '未指定業務';
+                                        
+                                        if (!statsMap[salesName]) {
+                                            statsMap[salesName] = { name: salesName, count: 0, cars: [] };
+                                        }
+                                        statsMap[salesName].count++;
+                                        statsMap[salesName].cars.push(car);
+                                        totalCount++;
+                                    }
+                                }
+                            }
+                        });
+
+                        // 陣列化並針對成交台數進行遞減排序 (排行榜)
+                        let arr = Object.values(statsMap).sort((a, b) => b.count - a.count);
+                        
+                        // 將每位業務的車輛清單依據日期進行排序
+                        arr.forEach(stat => {
+                            stat.cars.sort((a, b) => {
+                                return String(a['合約日期']).localeCompare(String(b['合約日期']));
+                            });
+                        });
+
+                        rankedStats.value = arr;
+                        totalCars.value = totalCount;
+
+                    } catch (e) {
+                        console.error(e);
+                        alert("資料獲取失敗，請檢查網路連線");
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                onMounted(() => {
+                    fetchAndProcessData();
+                });
+
+                return { selectedMonth, loading, rankedStats, totalCars, fetchAndProcessData };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>

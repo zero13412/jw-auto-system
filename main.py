@@ -828,6 +828,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                 s_headers = [th.text.strip() for th in s_rows[0].find_all(["th", "td"])]
                 s_col = next((i for i, h in enumerate(s_headers) if any(kw in h for kw in ["車牌", "車號", "牌照"])), -1)
                 sales_col = next((i for i, h in enumerate(s_headers) if any(kw in h for kw in ["業務", "銷售", "負責"])), -1)
+                date_col = next((i for i, h in enumerate(s_headers) if any(kw in h for kw in ["日期", "時間", "建立", "簽約"])), -1)
                 
                 if s_col != -1:
                     for row in s_rows[1:]:
@@ -838,7 +839,10 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
                                 sales_name = ""
                                 if sales_col != -1 and len(tds) > sales_col:
                                     sales_name = tds[sales_col].text.strip()
-                                sales_contract_plates[txt] = sales_name
+                                contract_date = ""
+                                if date_col != -1 and len(tds) > date_col:
+                                    contract_date = tds[date_col].text.strip()
+                                sales_contract_plates[txt] = {"sales": sales_name, "date": contract_date}
                 
                 time.sleep(0.2)
                 sp += 1
@@ -998,18 +1002,22 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
             row_dict["收購金額"] = contract_info.get("price", "")
             row_dict["連結"] = frontend_map.get(row_plate, "")
             
-            # 💡 標記是否建立銷售合約與業務
+            # 💡 標記是否建立銷售合約與業務、日期
             has_contract = False
             contract_sales = ""
+            contract_date = ""
             if row_plate and row_plate in sales_contract_plates:
                 has_contract = True
-                contract_sales = sales_contract_plates[row_plate]
+                contract_sales = sales_contract_plates[row_plate].get("sales", "")
+                contract_date = sales_contract_plates[row_plate].get("date", "")
             elif row_vin and row_vin in sales_contract_plates:
                 has_contract = True
-                contract_sales = sales_contract_plates[row_vin]
+                contract_sales = sales_contract_plates[row_vin].get("sales", "")
+                contract_date = sales_contract_plates[row_vin].get("date", "")
                 
             row_dict["銷售合約"] = "V" if has_contract else ""
             row_dict["合約業務"] = contract_sales
+            row_dict["合約日期"] = contract_date
             
             final_cars_list.append(row_dict)
 
@@ -1064,6 +1072,7 @@ def core_sync_car_source(user_id: str, login_user: str, login_pwd: str):
         if "收購金額" not in final_headers: final_headers.append("收購金額")
         if "銷售合約" not in final_headers: final_headers.append("銷售合約")
         if "合約業務" not in final_headers: final_headers.append("合約業務")
+        if "合約日期" not in final_headers: final_headers.append("合約日期")
 
         df_aligned = df_crawled.reindex(columns=final_headers).fillna("")
         data_to_upload = [final_headers] + df_aligned.values.tolist()

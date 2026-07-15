@@ -2,191 +2,178 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>杰運汽車新竹店阿鍇專用 - 內部系統</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>杰運汽車內部系統 - 阿鍇專用</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <style>
-        body { font-family: 'Microsoft JhengHei', sans-serif; }
-        .progress-bar-stripes {
-            background-image: linear-gradient(45deg, rgba(255, 255, 255, 0.15) 25%, transparent 25%, transparent 50%, rgba(255, 255, 255, 0.15) 50%, rgba(255, 255, 255, 0.15) 75%, transparent 75%, transparent);
-            background-size: 1rem 1rem;
-            animation: progress-stripes 1s linear infinite;
-        }
-        @keyframes progress-stripes {
-            from { background-position: 1rem 0; }
-            to { background-position: 0 0; }
-        }
+        body { font-family: 'Microsoft JhengHei', sans-serif; background-color: #F3F4F6; }
+        .grid-button { transition: transform 0.1s, box-shadow 0.1s; }
+        .grid-button:active { transform: scale(0.95); box-shadow: none; }
+        .locked { opacity: 0.5; filter: grayscale(100%); pointer-events: none; }
     </style>
 </head>
-<body class="bg-slate-100 min-h-screen flex items-center justify-center p-4 relative">
-    
-    <div id="loadingOverlay" class="fixed inset-0 bg-slate-900 z-50 flex flex-col items-center justify-center text-white">
-        <div class="text-2xl sm:text-3xl font-bold animate-pulse mb-4 flex items-center gap-3">
-            <span class="text-4xl">🛡️</span> 正在同步雲端權限...
-        </div>
-        <p class="text-gray-400">請稍後 正在載入網頁</p>
-    </div>
+<body class="flex flex-col h-screen">
 
-    <div id="loginModal" class="fixed inset-0 bg-slate-900 bg-opacity-80 z-[60] flex items-center justify-center hidden" style="backdrop-filter: blur(4px);">
-        <div class="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 w-11/12 max-w-sm border border-gray-200 transform transition-all">
-            <div class="flex items-center gap-3 mb-2 text-red-600">
-                <span class="text-3xl">🚨</span>
-                <h3 class="text-xl font-bold">系統密碼已變更</h3>
-            </div>
-            <p id="loginModalMsg" class="text-sm text-gray-600 mb-6 font-bold">請輸入最新的帳號與密碼</p>
-            
+    <!-- 身份認證 Modal -->
+    <div id="authModal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-xl shadow-2xl p-8 max-w-sm w-full mx-4 border border-gray-100">
+            <h2 class="text-2xl font-black text-gray-800 mb-6 text-center">🔐 系統登入</h2>
             <div class="space-y-4">
                 <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-1">登入帳號</label>
-                    <input type="text" id="modalUser" class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition" placeholder="請輸入帳號">
+                    <label class="block text-sm font-bold text-gray-700 mb-1">請輸入您的姓名</label>
+                    <input type="text" id="userNameInput" class="w-full border-2 border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="例如：林阿鍇">
                 </div>
                 <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-1">登入密碼</label>
-                    <input type="password" id="modalPwd" class="w-full border-2 border-gray-300 rounded-lg p-3 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 focus:outline-none transition" placeholder="請輸入密碼">
+                    <label class="block text-sm font-bold text-gray-700 mb-1">請輸入您的 LINE ID</label>
+                    <input type="text" id="userIdInput" class="w-full border-2 border-gray-300 rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="輸入在 LINE 取得的 ID">
+                    <p class="text-xs text-gray-500 mt-2 font-bold">💡 忘記 ID？請在 LINE 群組輸入「我的ID」即可獲取。</p>
                 </div>
-            </div>
-            
-            <div class="mt-8 flex justify-end gap-3">
-                <button onclick="closeLoginModal(false)" class="flex-1 py-3 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300 transition">取消</button>
-                <button onclick="closeLoginModal(true)" class="flex-1 py-3 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 transition shadow-md">確認更新</button>
+                <button onclick="submitAuth()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3 rounded-lg mt-4 shadow-md transition active:scale-95">登入系統</button>
             </div>
         </div>
     </div>
 
-    <div class="max-w-6xl w-full" id="mainContent" style="display: none;">
-        
-        <div class="text-center mb-8 relative">
-            <h1 class="text-3xl md:text-4xl font-bold text-slate-800 mb-2">杰運汽車新竹店阿鍇專用 - 內部系統</h1>
-            <p class="text-slate-500 font-bold mb-4">請選擇您要使用的工具</p>
-            
-            <div class="flex items-center justify-center gap-3 mt-2">
-                <div id="userBadge" class="inline-flex items-center justify-center gap-2 text-sm bg-white border border-gray-200 text-slate-700 px-4 py-1.5 rounded-full shadow-sm font-bold">
-                    <span class="relative flex h-3 w-3">
-                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                      <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                    </span>
-                    驗證中...
-                </div>
-                <button onclick="liffLogout()" class="text-xs bg-slate-200 text-slate-600 px-4 py-1.5 rounded-full hover:bg-slate-300 transition shadow-sm font-bold active:scale-95">登出</button>
+    <!-- 載入中遮罩 -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-white z-40 flex flex-col items-center justify-center font-bold text-blue-600 text-xl hidden">
+        <div class="animate-spin text-4xl mb-4">🔄</div>
+        正在與後台核對權限，請稍候...
+    </div>
+
+    <div id="mainContent" class="hidden flex-1 overflow-y-auto">
+        <header class="bg-slate-800 text-white p-4 shadow-lg flex justify-between items-center sticky top-0 z-20">
+            <h1 class="text-xl font-bold tracking-wider">杰運汽車內部系統 <span class="text-sm font-normal text-blue-300">v2.1</span></h1>
+            <div id="userBadge" class="bg-slate-700 px-3 py-1 rounded-full text-sm font-bold border border-slate-600 shadow-inner">
+                👤 未登入
             </div>
-        </div>
-        
-        <div class="grid md:grid-cols-3 gap-6">
-            <a onclick="goToPage(event, '/cars', 'E車源看板')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
-                <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">🔍</div>
-                <h2 class="text-xl font-bold text-slate-800 mb-2">E車源分析系統</h2>
-                <p class="text-gray-500 text-xs">查詢車輛庫存、價格篩選</p>
-            </a>
+        </header>
+
+        <main class="p-4 sm:p-6 max-w-4xl mx-auto pb-20">
             
-            <a onclick="goToPage(event, '/deal', '成交系統')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
-                <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">🤝</div>
-                <h2 class="text-xl font-bold text-slate-800 mb-2">恭喜成交系統</h2>
-                <p class="text-gray-500 text-xs">一鍵生成三區合約文字模板</p>
-            </a>
+            <div class="mb-6 flex justify-between items-end">
+                <div>
+                    <h2 class="text-2xl font-black text-gray-800">歡迎使用 👏</h2>
+                    <p class="text-gray-500 font-bold mt-1 text-sm">請點擊下方按鈕開始您的工作</p>
+                </div>
+                <button onclick="logout()" class="text-sm text-red-500 font-bold hover:bg-red-50 px-3 py-1 rounded transition border border-red-100 bg-white">登出</button>
+            </div>
 
-            <a onclick="goToPage(event, '/dispatch', '調度系統')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
-                <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">🚚</div>
-                <h2 class="text-xl font-bold text-slate-800 mb-2">車輛調度系統</h2>
-                <p class="text-gray-500 text-xs">自動計算費用、生成內部回報</p>
-            </a>
-            
-            <a onclick="goToPage(event, '/loan', '分期試算')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
-                <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">📈</div>
-                <h2 class="text-xl font-bold text-slate-800 mb-2">分期試算工具</h2>
-                <p class="text-gray-500 text-xs">計算月付、總利息與加價表</p>
-            </a>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
+                
+                <a href="cars" id="btn-cars" class="locked grid-button bg-gradient-to-br from-blue-500 to-blue-700 rounded-xl p-4 sm:p-6 text-white shadow-lg flex flex-col items-center justify-center text-center group border border-blue-400">
+                    <span class="text-3xl sm:text-4xl mb-2 sm:mb-3 group-hover:scale-110 transition-transform">🚗</span>
+                    <span class="font-bold text-sm sm:text-base">E車源看板</span>
+                    <span class="text-xs text-blue-200 mt-1 hidden sm:block">即時查車與價錢</span>
+                </a>
 
-            <a onclick="goToPage(event, '/simple', '新竹看板')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border border-gray-200 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
-                <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">📊</div>
-                <h2 class="text-xl font-bold text-slate-800 mb-2">新竹車源即時看板</h2>
-                <p class="text-gray-500 text-xs">新竹車源即時過濾與計算看板</p>
-            </a>
+                <a href="dispatch" id="btn-dispatch" class="locked grid-button bg-gradient-to-br from-cyan-500 to-cyan-700 rounded-xl p-4 sm:p-6 text-white shadow-lg flex flex-col items-center justify-center text-center group border border-cyan-400">
+                    <span class="text-3xl sm:text-4xl mb-2 sm:mb-3 group-hover:scale-110 transition-transform">🚚</span>
+                    <span class="font-bold text-sm sm:text-base">調度系統</span>
+                    <span class="text-xs text-cyan-200 mt-1 hidden sm:block">生成話術與報備</span>
+                </a>
 
-            <a onclick="goToPage(event, '/tax', '稅金計算')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border-rose-200 border-2 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
-                <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">💰</div>
-                <h2 class="text-xl font-bold text-rose-800 mb-2">稅金計算小幫手</h2>
-                <p class="text-gray-500 text-xs">依比例計算過戶當日剩餘稅額</p>
-            </a>
+                <a href="reply" id="btn-reply" class="locked grid-button bg-gradient-to-br from-fuchsia-500 to-fuchsia-700 rounded-xl p-4 sm:p-6 text-white shadow-lg flex flex-col items-center justify-center text-center group border border-fuchsia-400">
+                    <span class="text-3xl sm:text-4xl mb-2 sm:mb-3 group-hover:scale-110 transition-transform">📋</span>
+                    <span class="font-bold text-sm sm:text-base">快捷回覆</span>
+                    <span class="text-xs text-fuchsia-200 mt-1 hidden sm:block">匯款刷卡常用連結</span>
+                </a>
+                
+                <a href="ad" id="btn-ad" class="locked grid-button bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl p-4 sm:p-6 text-white shadow-lg flex flex-col items-center justify-center text-center group border border-emerald-400">
+                    <span class="text-3xl sm:text-4xl mb-2 sm:mb-3 group-hover:scale-110 transition-transform">📝</span>
+                    <span class="font-bold text-sm sm:text-base">寫廣告神器</span>
+                    <span class="text-xs text-emerald-200 mt-1 hidden sm:block">一鍵產出吸引文案</span>
+                </a>
 
-            <a onclick="goToPage(event, '/cs', '戰情室')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border-emerald-200 border-2 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
-                <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">📞</div>
-                <h2 class="text-xl font-bold text-emerald-800 mb-2">收車估價戰情室</h2>
-                <p class="text-gray-500 text-xs">分析庫存行情與收購策略</p>
-            </a>
+                <a href="buyback" id="btn-buyback" class="locked grid-button bg-gradient-to-br from-rose-500 to-rose-700 rounded-xl p-4 sm:p-6 text-white shadow-lg flex flex-col items-center justify-center text-center group border border-rose-400">
+                    <span class="text-3xl sm:text-4xl mb-2 sm:mb-3 group-hover:scale-110 transition-transform">🛑</span>
+                    <span class="font-bold text-sm sm:text-base">買回停駛</span>
+                    <span class="text-xs text-rose-200 mt-1 hidden sm:block">合約資料快速查詢</span>
+                </a>
 
-            <a onclick="goToPage(event, '/customer', '客資系統')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border-cyan-200 border-2 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
-                <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">👥</div>
-                <h2 class="text-xl font-bold text-cyan-800 mb-2">客資管理看板 (CRM)</h2>
-                <p class="text-gray-500 text-xs">管理 LINE 紀錄的客戶資料</p>
-            </a>
+                <a href="sales_stats" id="btn-sales_stats" class="locked grid-button bg-gradient-to-br from-amber-500 to-amber-700 rounded-xl p-4 sm:p-6 text-white shadow-lg flex flex-col items-center justify-center text-center group border border-amber-400">
+                    <span class="text-3xl sm:text-4xl mb-2 sm:mb-3 group-hover:scale-110 transition-transform">🏆</span>
+                    <span class="font-bold text-sm sm:text-base">當月成交</span>
+                    <span class="text-xs text-amber-200 mt-1 hidden sm:block">業績戰情排行榜</span>
+                </a>
 
-            <a onclick="goToPage(event, '/copy', '快速回覆')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border-fuchsia-200 border-2 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
-                <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">📋</div>
-                <h2 class="text-xl font-bold text-fuchsia-800 mb-2">快捷回覆工具</h2>
-                <p class="text-gray-500 text-xs">一鍵複製刷卡連結與對客話術</p>
-            </a>
+            </div>
 
-            <a onclick="goToPage(event, '/board', '車前牌製作')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border-orange-200 border-2 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
-                <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">🏷️</div>
-                <h2 class="text-xl font-bold text-orange-700 mb-2">車前牌 & 影片文案生成</h2>
-                <p class="text-gray-500 text-xs">一鍵生成 Excel 展牌與腳本</p>
-            </a>
-
-            <a onclick="goToPage(event, '/buyback', '買回停駛')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border-sky-200 border-2 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
-                <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">🔄</div>
-                <h2 class="text-xl font-bold text-sky-800 mb-2">買回過公司停駛</h2>
-                <p class="text-gray-500 text-xs">搜尋車號生成停駛清單</p>
-            </a>
-
-            <a onclick="goToPage(event, '/sales_stats', '當月成交')" class="bg-white rounded-xl shadow-md hover:shadow-xl transition-all duration-300 p-8 text-center border-amber-200 border-2 group transform hover:-translate-y-1 flex flex-col items-center justify-center cursor-pointer">
-                <div class="text-6xl mb-4 group-hover:scale-110 transition-transform">🏆</div>
-                <h2 class="text-xl font-bold text-amber-800 mb-2">當月成交統計表</h2>
-                <p class="text-gray-500 text-xs">即時統計各業務當月成交台數</p>
-            </a>
-
-            <div id="uploadSection" class="md:col-span-3 mt-2 bg-white rounded-xl shadow-lg border-2 border-indigo-100 p-6 sm:p-8" style="display: none;">
-                <div class="flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div class="text-center md:text-left flex-1">
-                        <h2 class="text-2xl font-bold text-indigo-700 mb-2">📥 系統資料同步中心 (管理員專用)</h2>
-                        <p class="text-gray-600 text-sm leading-relaxed">
-                            您可以自動更新車源表，或手動上傳 Excel/PDF 同步至系統資料庫。<br>
-                            <span class="text-xs text-gray-400">※ 檔名包含 <span class="font-bold text-red-500">"新竹"</span> ➔ 自動寫入「新竹車源」，其餘寫入「E車源」</span>
-                        </p>
-                    </div>
-                    <div class="w-full md:w-auto flex flex-col items-center gap-3 md:min-w-[300px]">
+            <div id="btn-update" class="locked mt-8 bg-white rounded-xl shadow-sm border border-gray-200 p-5 sm:p-6 transition-all">
+                <h3 class="font-black text-gray-800 text-lg mb-3 flex items-center gap-2">⚡ 系統資料更新中心</h3>
+                
+                <div class="space-y-4">
+                    <div class="bg-blue-50 border border-blue-100 rounded-lg p-4">
+                        <button id="syncBtn" onclick="syncBackend()" class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-3 px-4 rounded shadow-sm transition active:scale-95 flex items-center justify-center gap-2 text-sm sm:text-base">
+                            <span>🌐 自動更新車源表 (需等待3-5分鐘)</span>
+                        </button>
                         
-                        <div id="syncActionGroup" class="w-full flex flex-col gap-2" style="display: none;">
-                            <button onclick="syncBackend()" id="syncBtn" class="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition w-full flex items-center justify-center gap-2">
-                                🌐 自動更新車源表
-                            </button>
-                            <button onclick="forceUnlock()" id="unlockBtn" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-8 rounded-lg shadow-md transition w-full items-center justify-center gap-2 hidden" title="當系統卡死超過5分鐘時可點此強制重置">
-                                🛑 強制停止重置
-                            </button>
+                        <!-- 系統進度條 -->
+                        <div id="uploadStatus" class="mt-3 text-sm font-bold text-blue-700 hidden text-center"></div>
+                        <div id="progressContainer" class="w-full bg-gray-200 rounded-full h-2.5 mt-2 hidden overflow-hidden shadow-inner">
+                            <div id="progressBar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
                         </div>
 
-                        <hr id="dividerLine" class="w-full border-indigo-100 my-1" style="display: none;">
-
-                        <div id="fileUploadBlock" class="w-full flex flex-col gap-3" style="display: none;">
-                            <label class="block w-full text-center bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg py-3 px-4 cursor-pointer hover:bg-indigo-100 transition font-bold">
-                                📂 選擇 Excel 檔案
-                                <input type="file" id="excelFile" accept=".xlsx,.pdf" class="hidden" onchange="document.getElementById('fileName').textContent = this.files[0]?.name || '未選擇檔案'">
-                            </label>
-                            <div id="fileName" class="text-xs text-gray-500 truncate w-full text-center">未選擇檔案</div>
-                            <button onclick="uploadExcel()" id="uploadBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-lg shadow-md transition w-full">
-                                🚀 上傳並同步資料
-                            </button>
+                        <!-- 💡 雲端自動定時更新設定區塊 -->
+                        <div class="bg-indigo-50 rounded-lg p-3 mt-4 border border-indigo-100 flex flex-col gap-2">
+                            <div class="flex items-center justify-between">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="autoUpdateToggle" onchange="handleAutoUpdateToggle()" class="w-4 h-4 text-indigo-600 rounded cursor-pointer">
+                                    <span class="text-sm font-bold text-indigo-800">開啟雲端定時更新</span>
+                                </label>
+                                <select id="autoUpdateInterval" onchange="handleIntervalChange()" class="text-xs border border-indigo-200 rounded p-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 text-indigo-700 font-bold cursor-pointer" disabled>
+                                    <option value="5">每 5 分鐘</option>
+                                    <option value="15" selected>每 15 分鐘</option>
+                                    <option value="30">每 30 分鐘</option>
+                                    <option value="60">每 1 小時</option>
+                                </select>
+                            </div>
+                            <div id="autoUpdateCountdown" class="text-xs text-indigo-600 font-bold text-center hidden bg-white py-1.5 rounded border border-indigo-100">
+                                ☁️ 雲端排程已生效！關閉網頁也會自動執行。
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div id="progressContainer" class="w-full bg-gray-200 rounded-full h-3 mt-5 hidden overflow-hidden shadow-inner border border-gray-300">
-                    <div id="progressBar" class="bg-blue-500 h-3 rounded-full transition-all duration-300 relative progress-bar-stripes" style="width: 0%"></div>
-                </div>
+                    <hr id="dividerLine" class="w-full border-indigo-100 my-1" style="display: none;">
 
-                <div id="uploadStatus" class="mt-3 text-center font-bold text-sm hidden p-3 rounded-lg whitespace-pre-wrap leading-relaxed"></div>
+                    <div id="credentialInputs" class="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3 hidden">
+                        <p class="text-sm font-bold text-red-600 mb-2">⚠️ 系統無法登入杰運後台，請手動輸入最新密碼</p>
+                        <input type="text" id="sysUser" placeholder="後台帳號 (例: Admin02)" class="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none font-bold">
+                        <input type="password" id="sysPwd" placeholder="後台密碼" class="w-full border border-gray-300 rounded p-2 text-sm focus:ring-2 focus:ring-blue-400 focus:outline-none font-bold">
+                        <button onclick="retrySyncBackend()" class="w-full bg-gray-800 hover:bg-gray-900 text-white font-bold py-2 rounded shadow-sm transition active:scale-95 text-sm">
+                            用新密碼重新啟動更新
+                        </button>
+                    </div>
+
+                    <button id="unlockBtn" onclick="forceUnlock()" class="w-full mt-2 text-xs text-gray-400 hover:text-red-500 underline font-bold transition">
+                        🛑 強制停止重置 (僅系統卡死時使用)
+                    </button>
+                </div>
             </div>
-        </div>
+
+            <!-- 客資專區 -->
+            <div id="btn-crm" class="locked mt-4 bg-white rounded-xl shadow-sm border border-gray-200 p-5 transition-all">
+                <h3 class="font-black text-gray-800 text-lg mb-3 flex items-center gap-2">👥 客資管理區</h3>
+                <div class="bg-gray-50 border border-gray-100 rounded-lg p-4">
+                    <label class="w-full cursor-pointer bg-slate-700 hover:bg-slate-800 text-white font-bold py-3 px-4 rounded shadow-sm transition active:scale-95 flex items-center justify-center gap-2 text-sm sm:text-base border border-slate-600">
+                        <span>📤 上傳客資 Excel (或傳至LINE)</span>
+                        <input type="file" id="crmUploadInput" accept=".xlsx" class="hidden" onchange="uploadCrmFile()">
+                    </label>
+                    <div id="crmUploadStatus" class="mt-3 text-sm font-bold text-slate-700 hidden text-center"></div>
+                </div>
+            </div>
+
+            <!-- 上傳查定表/庫存 -->
+            <div id="btn-upload" class="locked mt-4 bg-white rounded-xl shadow-sm border border-gray-200 p-5 transition-all">
+                <h3 class="font-black text-gray-800 text-lg mb-3 flex items-center gap-2">📤 上傳總表 (不建議手動)</h3>
+                <div class="bg-gray-50 border border-gray-100 rounded-lg p-4">
+                    <label class="w-full cursor-pointer bg-white hover:bg-gray-100 text-gray-700 font-bold py-3 px-4 rounded shadow-sm transition active:scale-95 flex items-center justify-center gap-2 text-sm sm:text-base border border-gray-300">
+                        <span>📤 上傳 E車源 或 新竹車源 Excel</span>
+                        <input type="file" id="fileInput" accept=".xlsx" class="hidden" onchange="uploadFile()">
+                    </label>
+                    <div id="fileUploadStatus" class="mt-3 text-sm font-bold text-gray-700 hidden text-center"></div>
+                </div>
+            </div>
+
+        </main>
     </div>
 
     <script>
@@ -203,213 +190,158 @@
                 const res = await fetch('/api/sync_progress');
                 const data = await res.json();
                 
-                const statusDiv = document.getElementById('uploadStatus');
                 const syncBtn = document.getElementById('syncBtn');
-                const unlockBtn = document.getElementById('unlockBtn');
-                const pContainer = document.getElementById('progressContainer');
-                const pBar = document.getElementById('progressBar');
-                const uploadBtn = document.getElementById('uploadBtn');
+                const statusDiv = document.getElementById('uploadStatus');
+                const progressContainer = document.getElementById('progressContainer');
+                const progressBar = document.getElementById('progressBar');
+                const credsDiv = document.getElementById('credentialInputs');
+                const divider = document.getElementById('dividerLine');
 
-                if (data.is_running) {
-                    isSystemSyncing = true;
-                    pContainer.classList.remove('hidden');
-                    pBar.style.width = data.progress + '%';
-                    pBar.className = "h-3 rounded-full transition-all duration-300 relative progress-bar-stripes bg-blue-500";
+                isSystemSyncing = data.is_running;
+
+                if (isSystemSyncing) {
+                    syncBtn.disabled = true;
+                    syncBtn.classList.replace('bg-blue-600', 'bg-gray-400');
+                    syncBtn.innerHTML = "⏳ 系統背景更新中...";
                     
+                    statusDiv.textContent = data.message || "更新中...";
                     statusDiv.style.display = "block";
-                    statusDiv.className = "mt-3 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
-                    statusDiv.textContent = "⏳ " + data.message;
+                    statusDiv.classList.replace('text-green-600', 'text-blue-700');
+                    statusDiv.classList.replace('text-red-600', 'text-blue-700');
                     
-                    if(syncBtn) {
-                        syncBtn.disabled = true;
-                        syncBtn.classList.add("opacity-50", "cursor-not-allowed");
-                        syncBtn.innerHTML = "⏳ 系統背景更新中...";
-                    }
-                    if(unlockBtn) {
-                        unlockBtn.classList.remove("hidden");
-                        unlockBtn.classList.add("flex");
-                    }
-                    if(uploadBtn) {
-                        uploadBtn.disabled = true;
-                        uploadBtn.classList.add("opacity-50", "cursor-not-allowed");
-                    }
-                } else if (isSystemSyncing) {
-                    // 從「執行中」瞬間變成「停止」的捕捉
-                    isSystemSyncing = false;
-                    pBar.style.width = '100%';
-                    pBar.classList.remove('progress-bar-stripes', 'bg-blue-500');
-                    pBar.classList.add('bg-green-500');
+                    progressContainer.style.display = "block";
+                    progressBar.style.width = (data.progress || 1) + "%";
+
+                    credsDiv.classList.add('hidden');
+                    divider.style.display = 'none';
+
+                } else {
+                    syncBtn.disabled = false;
+                    syncBtn.classList.replace('bg-gray-400', 'bg-blue-600');
+                    syncBtn.innerHTML = "🌐 自動更新車源表 (需等待3-5分鐘)";
                     
-                    statusDiv.className = "mt-3 text-left md:text-center font-bold text-sm bg-green-50 text-green-700 p-4 rounded-lg block whitespace-pre-wrap leading-relaxed";
-                    statusDiv.textContent = "✅ " + data.message;
-                    
-                    if(syncBtn) {
-                        syncBtn.disabled = false;
-                        syncBtn.classList.remove("opacity-50", "cursor-not-allowed");
-                        syncBtn.innerHTML = "🌐 自動更新車源表";
-                    }
-                    if(unlockBtn) {
-                        unlockBtn.classList.add("hidden");
-                        unlockBtn.classList.remove("flex");
-                        unlockBtn.innerHTML = "🛑 強制停止重置";
-                    }
-                    if(uploadBtn) {
-                        uploadBtn.disabled = false;
-                        uploadBtn.classList.remove("opacity-50", "cursor-not-allowed");
-                    }
-                    
-                    // 💡 只有在「不是手動強制重置」的狀況下，才彈出結算跳窗 (新車列表)
-                    if (data.message && !data.message.includes("強制重置")) {
-                        alert(data.message);
+                    if (data.progress === 100) {
+                        statusDiv.textContent = data.message;
+                        statusDiv.classList.replace('text-blue-700', 'text-green-600');
+                        statusDiv.style.display = "block";
+                        progressBar.style.width = "100%";
+                        setTimeout(() => { 
+                            statusDiv.style.display = "none";
+                            progressContainer.style.display = "none";
+                            progressBar.style.width = "0%";
+                        }, 5000);
+                    } else if (data.message && data.message.includes("密碼") || data.message.includes("Login Failed")) {
+                        statusDiv.style.display = "none";
+                        progressContainer.style.display = "none";
+                        credsDiv.classList.remove('hidden');
+                        divider.style.display = 'block';
+                    } else if (data.progress === 0 && data.message !== "系統準備就緒") {
+                        statusDiv.textContent = data.message;
+                        statusDiv.classList.replace('text-blue-700', 'text-red-600');
+                        statusDiv.style.display = "block";
+                        progressContainer.style.display = "none";
+                        setTimeout(() => { statusDiv.style.display = "none"; }, 5000);
                     }
                 }
+
+                // 不斷輪詢
+                clearTimeout(autoPollTimer);
+                autoPollTimer = setTimeout(pollSystemSync, 1500);
+
             } catch (e) {
-                // 網路中斷不報錯，繼續默默輪詢
-            }
-        }
-        
-        // 啟動背景自動輪詢雷達
-        autoPollTimer = setInterval(pollSystemSync, 1500);
-
-        function startProgress(isFake = true) {
-            const pContainer = document.getElementById('progressContainer');
-            const pBar = document.getElementById('progressBar');
-            pContainer.classList.remove('hidden');
-            
-            pBar.style.width = '0%';
-            pBar.className = "h-3 rounded-full transition-all duration-300 relative progress-bar-stripes bg-blue-500";
-            
-            if (progressInterval) clearInterval(progressInterval);
-
-            if (isFake) {
-                let width = 0;
-                progressInterval = setInterval(() => {
-                    if (width >= 90) {
-                        clearInterval(progressInterval);
-                    } else {
-                        width += Math.random() * 4; 
-                        if (width > 90) width = 90;
-                        pBar.style.width = width + '%';
-                    }
-                }, 800);
+                clearTimeout(autoPollTimer);
+                autoPollTimer = setTimeout(pollSystemSync, 3000);
             }
         }
 
-        function finishProgress(isSuccess) {
-            if (progressInterval) clearInterval(progressInterval);
-            const pBar = document.getElementById('progressBar');
-            
-            pBar.style.width = '100%';
-            pBar.classList.remove('progress-bar-stripes', 'bg-blue-500');
-            
-            if (isSuccess) {
-                pBar.classList.add('bg-green-500');
-            } else {
-                pBar.classList.add('bg-red-500');
-            }
+        async function showLoginModal() {
+            document.getElementById('authModal').classList.remove('hidden');
+            return new Promise(resolve => { loginModalResolve = resolve; });
         }
 
-        function hideProgress() {
-            if (progressInterval) clearInterval(progressInterval);
-            document.getElementById('progressContainer').classList.add('hidden');
+        function submitAuth() {
+            const userName = document.getElementById('userNameInput').value.trim();
+            const userId = document.getElementById('userIdInput').value.trim();
+            if (!userName || !userId) { alert("請完整填寫姓名與 LINE ID"); return; }
+            document.getElementById('authModal').classList.add('hidden');
+            if (loginModalResolve) loginModalResolve({ userName, userId });
         }
 
-        function openLoginModal(message) {
-            return new Promise((resolve) => {
-                document.getElementById('loginModalMsg').innerText = message;
-                document.getElementById('modalUser').value = "";
-                document.getElementById('modalPwd').value = "";
-                document.getElementById('loginModal').classList.remove('hidden');
-                loginModalResolve = resolve;
-            });
+        function logout() {
+            localStorage.removeItem('jw_user_id');
+            localStorage.removeItem('jw_user_name');
+            localStorage.removeItem('jw_permissions');
+            window.location.reload();
         }
 
-        function closeLoginModal(isConfirm) {
-            if (!loginModalResolve) return;
-            if (isConfirm) {
-                const u = document.getElementById('modalUser').value.trim();
-                const p = document.getElementById('modalPwd').value.trim();
-                if (!u || !p) { alert("⚠️ 帳號與密碼不得為空！"); return; }
-                document.getElementById('loginModal').classList.add('hidden');
-                loginModalResolve({ u, p });
-            } else {
-                document.getElementById('loginModal').classList.add('hidden');
-                loginModalResolve(null);
-            }
-            loginModalResolve = null;
-        }
-
-        function updateUserBadge(perms, fallbackName) {
-            const name = perms['姓名'] || fallbackName || '已登入';
-            document.getElementById('userBadge').innerHTML = `
-                <span class="relative flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span></span>
-                ${name} <span class="text-xs font-normal text-gray-400 ml-1">在線</span>`;
-            
+        function updateUserBadge(perms, name) {
             const isSuper = String(perms['最高管理員'] || '').toUpperCase() === 'V';
-            const canUpload = String(perms['上傳檔案'] || '').toUpperCase() === 'V';
-            const canSync = String(perms['更新車源'] || '').toUpperCase() === 'V';
-            
-            document.getElementById('uploadSection').style.display = (isSuper || canUpload || canSync) ? 'block' : 'none';
-            document.getElementById('syncActionGroup').style.display = (isSuper || canSync) ? 'flex' : 'none';
-            document.getElementById('fileUploadBlock').style.display = (isSuper || canUpload) ? 'flex' : 'none';
-            document.getElementById('dividerLine').style.display = ((isSuper || canSync) && (isSuper || canUpload)) ? 'block' : 'none';
+            const exp = perms['到期日'] || '無期限';
+            document.getElementById('userBadge').innerHTML = isSuper ? 
+                `👑 最高權限 (${name})` : `👤 ${name} <span class="text-xs opacity-75">(${exp})</span>`;
+            document.getElementById('userBadge').classList.toggle('bg-yellow-600', isSuper);
+            document.getElementById('userBadge').classList.toggle('border-yellow-500', isSuper);
         }
 
         async function initAuth() {
+            document.getElementById('loadingOverlay').style.display = 'flex';
+            
+            let userId = localStorage.getItem('jw_user_id');
+            let userName = localStorage.getItem('jw_user_name');
+
+            if (!userId || !userName) {
+                document.getElementById('loadingOverlay').style.display = 'none';
+                const credentials = await showLoginModal();
+                userId = credentials.userId;
+                userName = credentials.userName;
+                document.getElementById('loadingOverlay').style.display = 'flex';
+            }
+
             try {
-                await liff.init({ liffId: "2009888743-q1JdQOEa" });
-                
-                if (!liff.isLoggedIn()) {
-                    liff.login({ redirectUri: window.location.href });
-                    return;
-                }
-                
-                const profile = await liff.getProfile();
-                const userId = profile.userId;
-                const userName = profile.displayName;
-                
-                const res = await fetch(`/api/my_permissions?user_id=${userId}&user_name=${encodeURIComponent(userName)}`);
+                const res = await fetch(`/api/my_permissions?user_id=${encodeURIComponent(userId)}&user_name=${encodeURIComponent(userName)}`);
                 const data = await res.json();
                 
-                if (data.status === "success") {
-                    myPermissions = data.permissions;
-                    localStorage.setItem('jw_user_id', userId);
-                    localStorage.setItem('jw_permissions', JSON.stringify(myPermissions));
-                    
-                    if (data.is_new) {
-                        alert(`👋 歡迎 ${userName}！\n\n系統已自動登記囉！\n請連繫阿鍇幫您開通權限。`);
-                    }
+                if (data.status !== "success") {
+                    alert("連線失敗：" + data.message);
+                    logout(); return;
                 }
+
+                if (data.is_new) {
+                    alert("✅ 您的帳號已提交建檔！請通知阿鍇為您開通權限後，再重新整理本頁面。");
+                    document.getElementById('loadingOverlay').innerHTML = "請等待開通權限後重新整理";
+                    return;
+                }
+
+                myPermissions = data.permissions;
+                localStorage.setItem('jw_user_id', userId);
+                localStorage.setItem('jw_user_name', userName);
+                localStorage.setItem('jw_permissions', JSON.stringify(myPermissions));
+
+                const isSuper = String(myPermissions['最高管理員']).toUpperCase() === 'V';
                 
+                // 開通首頁按鈕權限
+                if (isSuper || String(myPermissions['E車源看板']).toUpperCase() === 'V') document.getElementById('btn-cars').classList.remove('locked');
+                if (isSuper || String(myPermissions['調度系統']).toUpperCase() === 'V') document.getElementById('btn-dispatch').classList.remove('locked');
+                if (isSuper || String(myPermissions['快速回覆']).toUpperCase() === 'V') document.getElementById('btn-reply').classList.remove('locked');
+                if (isSuper || String(myPermissions['寫廣告神器']).toUpperCase() === 'V') document.getElementById('btn-ad').classList.remove('locked');
+                if (isSuper || String(myPermissions['更新車源']).toUpperCase() === 'V') document.getElementById('btn-update').classList.remove('locked');
+                if (isSuper || String(myPermissions['買回停駛']).toUpperCase() === 'V') document.getElementById('btn-buyback').classList.remove('locked');
+                if (isSuper || String(myPermissions['客資系統']).toUpperCase() === 'V') document.getElementById('btn-crm').classList.remove('locked');
+                if (isSuper || String(myPermissions['當月成交']).toUpperCase() === 'V') document.getElementById('btn-sales_stats').classList.remove('locked');
+                if (isSuper || String(myPermissions['上傳檔案']).toUpperCase() === 'V') document.getElementById('btn-upload').classList.remove('locked');
+
                 document.getElementById('loadingOverlay').style.display = 'none';
                 document.getElementById('mainContent').style.display = 'block';
                 updateUserBadge(myPermissions, userName);
                 
                 // 💡 登入成功後立刻觸發一次雷達，看有沒有人在更新
                 pollSystemSync();
+                loadServerTimer(); // 💡 載入雲端排程狀態
                 
             } catch (err) { 
                 console.error(err);
                 document.getElementById('loadingOverlay').innerHTML = "❌ 系統連線異常，請重新整理";
             }
-        }
-
-        function goToPage(event, url, actionName) {
-            event.preventDefault(); 
-            const isSuperAdmin = String(myPermissions['最高管理員'] || '').toUpperCase() === 'V';
-            const hasAuth = String(myPermissions[actionName] || '').toUpperCase() === 'V';
-            
-            if (isSuperAdmin || hasAuth) {
-                window.location.href = url;
-            } else {
-                alert(`⛔ 存取被拒絕！\n\n抱歉，您的帳號尚未開通【${actionName}】的權限。\n請聯繫阿鍇為您開通。`);
-            }
-        }
-
-        function liffLogout() {
-            localStorage.clear();
-            try { liff.logout(); } catch(e) {}
-            window.location.reload();
         }
 
         // 💡 升級版背景觸發器 (一按就丟給背景跑，網頁立刻釋放)
@@ -420,102 +352,102 @@
             // 先在畫面做樂觀顯示，讓使用者知道有點到按鈕
             statusDiv.textContent = "🚀 正在發送更新請求至背景...";
             statusDiv.style.display = "block";
-            statusDiv.className = "mt-3 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
-            
+            statusDiv.className = "mt-3 text-sm font-bold text-blue-700 text-center";
             syncBtn.disabled = true;
-            syncBtn.classList.add("opacity-50", "cursor-not-allowed");
-            
+
             try {
                 const curUserId = localStorage.getItem('jw_user_id') || "";
-                let url = `/api/sync_car_source?user_id=${encodeURIComponent(curUserId)}`; 
-                
+                let url = `/api/sync_car_source?user_id=${encodeURIComponent(curUserId)}`;
                 if (retryUser && retryPwd) {
                     url += `&u=${encodeURIComponent(retryUser)}&p=${encodeURIComponent(retryPwd)}`;
                 }
-                
-                // 🚀 發送請求，後端會在 0.1 秒內回答 "任務已啟動"
+
                 const res = await fetch(url);
                 const data = await res.json();
                 
-                if (data.status === 'need_login') {
-                    statusDiv.style.display = "none";
-                    const creds = await openLoginModal(data.message);
-                    if (!creds) {
-                        statusDiv.textContent = "⚠️ 更新已取消";
-                        statusDiv.className = "mt-3 text-center font-bold text-sm bg-gray-100 text-gray-500 p-3 rounded-lg block";
-                        statusDiv.style.display = "block";
-                        
-                        syncBtn.disabled = false;
-                        syncBtn.classList.remove("opacity-50", "cursor-not-allowed");
-                        return;
-                    }
-                    await syncBackend(creds.u, creds.p);
-                } else if (data.status === 'error') {
-                    statusDiv.textContent = "❌ " + data.message;
-                    statusDiv.className = "mt-3 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
-                    
-                    syncBtn.disabled = false;
-                    syncBtn.classList.remove("opacity-50", "cursor-not-allowed");
+                if (data.status === "error") {
                     alert(data.message);
-                } else {
-                    // data.status === 'started' 或 'running'
-                    // 手動強制呼叫一次雷達掃描，讓畫面立刻接管進度條，取消多餘跳窗
-                    pollSystemSync();
+                    statusDiv.style.display = "none";
+                    syncBtn.disabled = false;
+                } else if (data.status === "need_login") {
+                    statusDiv.style.display = "none";
+                    document.getElementById('credentialInputs').classList.remove('hidden');
+                    document.getElementById('dividerLine').style.display = 'block';
                 }
-            } catch (e) { 
-                statusDiv.textContent = "❌ 請求發送失敗，請檢查網路狀態。";
-                statusDiv.className = "mt-3 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
+                // 如果是 running 或 started，不用特別處理，交給雷達去掃描更新 UI
                 
-                syncBtn.disabled = false;
-                syncBtn.classList.remove("opacity-50", "cursor-not-allowed");
+            } catch (e) {
+                statusDiv.textContent = "❌ 請求發送失敗，請檢查網路！";
+                statusDiv.classList.replace('text-blue-700', 'text-red-600');
+                setTimeout(() => { statusDiv.style.display = "none"; syncBtn.disabled = false; }, 3000);
             }
         }
 
-        async function uploadExcel() {
-            const fileInput = document.getElementById('excelFile');
-            const statusDiv = document.getElementById('uploadStatus');
-            const btn = document.getElementById('uploadBtn');
+        function retrySyncBackend() {
+            const u = document.getElementById('sysUser').value.trim();
+            const p = document.getElementById('sysPwd').value.trim();
+            if (!u || !p) { alert("請填寫帳號密碼！"); return; }
+            syncBackend(u, p);
+        }
 
-            if (!fileInput.files[0]) { 
-                alert("請先選擇 Excel 或 PDF 檔案"); 
-                return; 
-            }
-            
-            const formData = new FormData();
-            formData.append("file", fileInput.files[0]);
-            
-            startProgress(true);
-            statusDiv.textContent = "⏳ 資料上傳處理中...系統正在分析檔名與內容，請稍候...";
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const statusDiv = document.getElementById('fileUploadStatus');
             statusDiv.style.display = "block";
-            statusDiv.className = "mt-3 text-center font-bold text-sm bg-blue-50 text-blue-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
-            
-            btn.disabled = true;
-            btn.classList.add("opacity-50", "cursor-not-allowed");
+            statusDiv.className = "mt-3 text-sm font-bold text-blue-600 text-center";
+            statusDiv.textContent = "⏳ 檔案上傳解析中...";
+
+            const formData = new FormData();
+            formData.append('file', file);
 
             try {
                 const response = await fetch('/api/upload_excel', { method: 'POST', body: formData });
                 const result = await response.json();
-                
-                if (result.status === "success") {
-                    finishProgress(true);
-                    statusDiv.textContent = "✅ " + result.message;
-                    statusDiv.className = "mt-3 text-left md:text-center font-bold text-sm bg-green-50 text-green-700 p-4 rounded-lg block whitespace-pre-wrap leading-relaxed";
-                    fileInput.value = ""; 
-                    document.getElementById('fileName').textContent = '未選擇檔案';
-                    alert(result.message);
+                if (result.status === 'success') {
+                    statusDiv.className = "mt-3 text-sm font-bold text-green-600 text-center";
+                    statusDiv.innerHTML = result.message.replace(/\n/g, '<br>');
                 } else {
-                    finishProgress(false);
+                    statusDiv.className = "mt-3 text-sm font-bold text-red-600 text-center";
                     statusDiv.textContent = "❌ " + result.message;
-                    statusDiv.className = "mt-3 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block whitespace-pre-wrap leading-relaxed";
                 }
-            } catch (error) { 
-                finishProgress(false);
-                statusDiv.textContent = "❌ 網路連線失敗或處理逾時。";
-                statusDiv.className = "mt-3 text-center font-bold text-sm bg-red-50 text-red-600 p-3 rounded-lg block";
+            } catch (error) {
+                statusDiv.className = "mt-3 text-sm font-bold text-red-600 text-center";
+                statusDiv.textContent = "❌ 上傳失敗，請檢查網路連線";
             } finally {
-                btn.disabled = false;
-                btn.classList.remove("opacity-50", "cursor-not-allowed");
+                fileInput.value = "";
             }
+        }
+
+        async function uploadCrmFile() {
+            const fileInput = document.getElementById('crmUploadInput');
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const statusDiv = document.getElementById('crmUploadStatus');
+            statusDiv.style.display = "block";
+            statusDiv.className = "mt-3 text-sm font-bold text-slate-600 text-center";
+            statusDiv.textContent = "⏳ 處理客資中...";
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/api/upload_excel', { method: 'POST', body: formData });
+                const result = await response.json();
+                if (result.status === 'success') {
+                    statusDiv.className = "mt-3 text-sm font-bold text-emerald-600 text-center";
+                    statusDiv.innerHTML = result.message.replace(/\n/g, '<br>');
+                } else {
+                    statusDiv.className = "mt-3 text-sm font-bold text-red-600 text-center";
+                    statusDiv.textContent = "❌ " + result.message;
+                }
+            } catch (error) {
+                statusDiv.className = "mt-3 text-sm font-bold text-red-600 text-center";
+                statusDiv.textContent = "❌ 上傳失敗";
+            } finally { fileInput.value = ""; }
         }
 
         async function forceUnlock() {
@@ -531,6 +463,52 @@
             } catch (e) {
                 alert("❌ 網路異常，無法發送中斷訊號。");
                 if (unlockBtn) unlockBtn.innerHTML = "🛑 強制停止重置";
+            }
+        }
+
+        // 💡 雲端自動更新的邏輯函式
+        async function loadServerTimer() {
+            try {
+                const res = await fetch('/api/server_timer');
+                const data = await res.json();
+                
+                const toggle = document.getElementById('autoUpdateToggle');
+                const intervalSelect = document.getElementById('autoUpdateInterval');
+                const msgDiv = document.getElementById('autoUpdateCountdown');
+
+                if (toggle) toggle.checked = data.enabled;
+                if (intervalSelect) {
+                    intervalSelect.value = data.interval;
+                    intervalSelect.disabled = !data.enabled;
+                }
+                if (msgDiv) {
+                    if (data.enabled) msgDiv.classList.remove('hidden');
+                    else msgDiv.classList.add('hidden');
+                }
+            } catch (e) { console.error("無法讀取雲端排程", e); }
+        }
+
+        async function handleAutoUpdateToggle() {
+            const enabled = document.getElementById('autoUpdateToggle').checked;
+            const interval = document.getElementById('autoUpdateInterval').value;
+            document.getElementById('autoUpdateInterval').disabled = !enabled;
+            
+            const msgDiv = document.getElementById('autoUpdateCountdown');
+            if (enabled) msgDiv.classList.remove('hidden');
+            else msgDiv.classList.add('hidden');
+            
+            try {
+                await fetch('/api/server_timer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: enabled, interval: parseInt(interval) })
+                });
+            } catch (e) { alert("❌ 雲端排程設定失敗"); }
+        }
+
+        async function handleIntervalChange() {
+            if (document.getElementById('autoUpdateToggle').checked) {
+                await handleAutoUpdateToggle();
             }
         }
 

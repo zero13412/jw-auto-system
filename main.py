@@ -58,6 +58,13 @@ global_sync_status = {
 }
 sync_lock = threading.Lock()
 
+# 💡 雲端全自動排程設定
+server_timer_config = {
+    "enabled": False,
+    "interval": 15,
+    "last_run": 0
+}
+
 # 💡 核心引擎：60秒極速快取
 class TTLCache:
     def __init__(self, ttl=60):
@@ -1206,6 +1213,20 @@ def view_inspection(PKey: str = ""):
 async def api_sync_progress():
     return global_sync_status
 
+@app.get("/api/server_timer")
+def get_server_timer():
+    return server_timer_config
+
+@app.post("/api/server_timer")
+async def set_server_timer(request: Request):
+    data = await request.json()
+    server_timer_config["enabled"] = bool(data.get("enabled", False))
+    server_timer_config["interval"] = int(data.get("interval", 15))
+    # 當開啟開關時，將 last_run 往前提，讓他可以立刻啟動第一次
+    if server_timer_config["enabled"]:
+        server_timer_config["last_run"] = time.time() - (server_timer_config["interval"] * 60)
+    return {"status": "success"}
+
 @app.get("/api/force_unlock")
 def api_force_unlock(user_id: str = ""):
     if not check_permission(user_id, "更新車源") and not check_permission(user_id, "最高管理員"):
@@ -1777,3 +1798,35 @@ def serve_pages(path: str):
     if os.path.exists(f"{path}.html"): 
         return FileResponse(f"{path}.html")
     return FileResponse("index.html")
+
+# 💡 伺服器啟動時，背景啟動「雲端自動更新計時器」
+def cloud_timer_loop():
+    while True:
+        time.sleep(10)
+        if server_timer_config["enabled"]:
+            now = time.time()
+            if now - server_timer_config["last_run"] >= server_timer_config["interval"] * 60:
+                with sync_lock:
+                    if global_sync_status.get("is_running"):
+                        continue
+                    server_timer_config["last_run"] = now
+                    global_sync_status["is_running"] = True
+                    global_sync_status["message"] = "☁️ 雲端全自動排程執行中..."
+                    global_sync_status["progress"] = 1
+                    
+                def run_cloud_sync():
+                    try:
+                        u, p = get_valid_credentials()
+                        if u:
+                            core_sync_car_source("Cloud-Timer", u, p)
+                    except Exception as e:
+                        pass
+                    finally:
+                        with sync_lock:
+                            global_sync_status["is_running"] = False
+                
+                threading.Thread(target=run_cloud_sync).start()
+
+@app.on_event("startup")
+def startup_event():
+    threading.Thread(target=cloud_timer_loop, daemon=True).start()

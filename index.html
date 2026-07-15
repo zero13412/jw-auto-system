@@ -163,6 +163,26 @@
                             <button onclick="forceUnlock()" id="unlockBtn" class="bg-slate-700 hover:bg-slate-800 text-white font-bold py-2 px-8 rounded-lg shadow-md transition w-full items-center justify-center gap-2 hidden" title="當系統卡死超過5分鐘時可點此強制重置">
                                 🛑 強制停止重置
                             </button>
+
+                            <!-- 💡 雲端自動定時更新設定區塊 -->
+                            <div class="bg-indigo-50 rounded-lg p-3 mt-2 border border-indigo-100 flex flex-col gap-2 w-full text-left">
+                                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" id="autoUpdateToggle" onchange="handleAutoUpdateToggle()" class="w-4 h-4 text-indigo-600 rounded cursor-pointer">
+                                        <span class="text-sm font-bold text-indigo-800">雲端定時更新</span>
+                                    </label>
+                                    <select id="autoUpdateInterval" onchange="handleIntervalChange()" class="text-xs border border-indigo-200 rounded p-1.5 bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 text-indigo-700 font-bold cursor-pointer w-full sm:w-auto" disabled>
+                                        <option value="5">每 5 分鐘</option>
+                                        <option value="10">每 10 分鐘</option>
+                                        <option value="15" selected>每 15 分鐘</option>
+                                        <option value="30">每 30 分鐘</option>
+                                        <option value="60">每 1 小時</option>
+                                    </select>
+                                </div>
+                                <div id="autoUpdateCountdown" class="text-xs text-indigo-600 font-bold text-center hidden bg-white py-1.5 rounded border border-indigo-100 mt-1">
+                                    ☁️ 雲端排程已生效！
+                                </div>
+                            </div>
                         </div>
 
                         <hr id="dividerLine" class="w-full border-indigo-100 my-1" style="display: none;">
@@ -197,7 +217,6 @@
         let isSystemSyncing = false;
         let autoPollTimer = null;
 
-        // 💡 全新的獨立背景雷達掃描器 (每1.5秒檢查一次背景任務狀態)
         async function pollSystemSync() {
             try {
                 const res = await fetch('/api/sync_progress');
@@ -258,7 +277,7 @@
                         uploadBtn.classList.remove("opacity-50", "cursor-not-allowed");
                     }
                     
-                    // 💡 只有在「不是手動強制重置」的狀況下，才彈出結算跳窗 (新車列表)
+                    // 只有在「不是手動強制重置」的狀況下，才彈出結算跳窗 (新車列表)
                     if (data.message && !data.message.includes("強制重置")) {
                         alert(data.message);
                     }
@@ -385,8 +404,8 @@
                 document.getElementById('mainContent').style.display = 'block';
                 updateUserBadge(myPermissions, userName);
                 
-                // 💡 登入成功後立刻觸發一次雷達，看有沒有人在更新
                 pollSystemSync();
+                loadServerTimer(); // 💡 載入雲端排程狀態
                 
             } catch (err) { 
                 console.error(err);
@@ -412,7 +431,6 @@
             window.location.reload();
         }
 
-        // 💡 升級版背景觸發器 (一按就丟給背景跑，網頁立刻釋放)
         async function syncBackend(retryUser = null, retryPwd = null) {
             const statusDiv = document.getElementById('uploadStatus');
             const syncBtn = document.getElementById('syncBtn');
@@ -531,6 +549,52 @@
             } catch (e) {
                 alert("❌ 網路異常，無法發送中斷訊號。");
                 if (unlockBtn) unlockBtn.innerHTML = "🛑 強制停止重置";
+            }
+        }
+
+        // 💡 雲端自動更新的邏輯函式
+        async function loadServerTimer() {
+            try {
+                const res = await fetch('/api/server_timer');
+                const data = await res.json();
+                
+                const toggle = document.getElementById('autoUpdateToggle');
+                const intervalSelect = document.getElementById('autoUpdateInterval');
+                const msgDiv = document.getElementById('autoUpdateCountdown');
+
+                if (toggle) toggle.checked = data.enabled;
+                if (intervalSelect) {
+                    intervalSelect.value = data.interval;
+                    intervalSelect.disabled = !data.enabled;
+                }
+                if (msgDiv) {
+                    if (data.enabled) msgDiv.classList.remove('hidden');
+                    else msgDiv.classList.add('hidden');
+                }
+            } catch (e) { console.error("無法讀取雲端排程", e); }
+        }
+
+        async function handleAutoUpdateToggle() {
+            const enabled = document.getElementById('autoUpdateToggle').checked;
+            const interval = document.getElementById('autoUpdateInterval').value;
+            document.getElementById('autoUpdateInterval').disabled = !enabled;
+            
+            const msgDiv = document.getElementById('autoUpdateCountdown');
+            if (enabled) msgDiv.classList.remove('hidden');
+            else msgDiv.classList.add('hidden');
+            
+            try {
+                await fetch('/api/server_timer', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: enabled, interval: parseInt(interval) })
+                });
+            } catch (e) { alert("❌ 雲端排程設定失敗"); }
+        }
+
+        async function handleIntervalChange() {
+            if (document.getElementById('autoUpdateToggle').checked) {
+                await handleAutoUpdateToggle();
             }
         }
 

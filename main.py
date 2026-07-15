@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Query, UploadFile, File, Request, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel  # 💡 增加排程設定用的資料模型
 import pandas as pd
 import openpyxl
 from openpyxl.styles import Alignment, Font, Border, Side, PatternFill
@@ -57,6 +58,53 @@ global_sync_status = {
     "progress": 0
 }
 sync_lock = threading.Lock()
+
+# 💡 雲端自動定時更新排程狀態與執行迴圈
+server_timer_state = {
+    "enabled": False,
+    "interval": 15,
+    "last_run": None
+}
+
+class TimerConfig(BaseModel):
+    enabled: bool
+    interval: int
+
+def run_core_sync_from_timer():
+    global global_sync_status
+    try:
+        valid_u, valid_p = get_valid_credentials()
+        if valid_u:
+            core_sync_car_source("system_timer", valid_u, valid_p)
+        else:
+            with sync_lock:
+                global_sync_status["is_running"] = False
+                global_sync_status["message"] = "❌ 雲端排程登入失敗，請手動登入更新密碼"
+    except Exception as e:
+        with sync_lock:
+            global_sync_status["is_running"] = False
+            global_sync_status["message"] = f"❌ 雲端排程異常：{str(e)}"
+
+def auto_sync_loop():
+    global server_timer_state, global_sync_status
+    while True:
+        time.sleep(60) # 每分鐘檢查一次排程
+        if server_timer_state["enabled"]:
+            now = datetime.now()
+            last_run = server_timer_state["last_run"]
+            interval = server_timer_state["interval"]
+            if last_run is None or (now - last_run).total_seconds() >= interval * 60:
+                with sync_lock:
+                    if not global_sync_status.get("is_running"):
+                        global_sync_status["is_running"] = True
+                        global_sync_status["message"] = f"☁️ 雲端排程自動觸發更新 ({interval}分鐘)..."
+                        global_sync_status["progress"] = 1
+                        server_timer_state["last_run"] = now
+                        threading.Thread(target=run_core_sync_from_timer).start()
+
+# 啟動背景計時器線程
+threading.Thread(target=auto_sync_loop, daemon=True).start()
+
 
 # 💡 核心引擎：60秒極速快取
 class TTLCache:
@@ -1250,6 +1298,24 @@ def api_sync_car_source(background_tasks: BackgroundTasks, user_id: str = "", u:
             
     background_tasks.add_task(bg_task)
     return {"status": "started", "message": "✅ 更新任務已在背景啟動！您可以放心關閉網頁或繼續操作，系統會自動跑完。"}
+
+# 💡 雲端自動定時更新相關 API
+@app.get("/api/server_timer")
+def get_server_timer():
+    global server_timer_state
+    return {
+        "enabled": server_timer_state["enabled"],
+        "interval": server_timer_state["interval"]
+    }
+
+@app.post("/api/server_timer")
+def set_server_timer(config: TimerConfig):
+    global server_timer_state
+    server_timer_state["enabled"] = config.enabled
+    server_timer_state["interval"] = config.interval
+    if config.enabled:
+        server_timer_state["last_run"] = datetime.now() # 開啟時立刻重置計時
+    return {"status": "success"}
 
 @app.post("/api/parse_ad")
 async def parse_ad(request: Request):

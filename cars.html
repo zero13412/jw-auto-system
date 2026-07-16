@@ -133,9 +133,9 @@
                                 <span class="text-sm font-bold text-gray-800">⛔ 隱藏「已售」車輛</span>
                             </label>
 
-                            <label class="flex items-center gap-2 cursor-pointer bg-gray-200 border border-gray-300 px-3 py-2 rounded-lg w-full hover:bg-gray-300 transition shadow-sm">
-                                <input v-model="filters.hide_cert" @change="searchCars" type="checkbox" class="w-5 h-5 text-gray-800 rounded">
-                                <span class="text-sm font-bold text-gray-800">📜 隱藏「取證」車輛</span>
+                            <label class="flex items-center gap-2 cursor-pointer bg-indigo-50 border border-indigo-200 px-3 py-2 rounded-lg w-full hover:bg-indigo-100 transition shadow-sm">
+                                <input v-model="filters.hide_contract" @change="searchCars" type="checkbox" class="w-5 h-5 text-indigo-600 rounded">
+                                <span class="text-sm font-bold text-indigo-800">📝 隱藏「已建立銷售合約」</span>
                             </label>
                         </div>
                     </div>
@@ -291,7 +291,7 @@
                 const filters = reactive({
                     brand: "全部", location: "全部", prop: "全部",
                     model: "", plate: "", person: "", min_price: "", max_price: "",
-                    sort_by: "最新入庫", hide_no_price: false, hide_sold: true, hide_cert: true, hide_reserved: false
+                    sort_by: "最新入庫", hide_no_price: false, hide_sold: true, hide_contract: false, hide_reserved: false
                 });
 
                 // 💡 強大的防呆檢查：不管您 Google Sheet 欄位命名成什麼，有「合約」而且填 V 就抓得到！
@@ -322,13 +322,19 @@
                     try {
                         const params = new URLSearchParams();
                         for (let key in filters) {
+                            if (key === 'hide_contract') continue;
                             if (filters[key] !== "" && filters[key] !== false) params.append(key, filters[key]);
                         }
                         if (!filters.max_price) params.set('max_price', 99999);
                         const res = await fetch(`${API_URL}/cars?${params.toString()}`);
                         const data = await res.json();
-                        cars.value = data.data;
-                        statusMessage.value = `查詢成功，共 ${data.total} 筆`;
+                        
+                        let resultCars = data.data;
+                        if (filters.hide_contract) {
+                            resultCars = resultCars.filter(car => !hasSalesContract(car));
+                        }
+                        cars.value = resultCars;
+                        statusMessage.value = `查詢成功，共 ${resultCars.length} 筆`;
                     } catch (e) { statusMessage.value = "連線失敗"; }
                     finally { loading.value = false; }
                 };
@@ -352,7 +358,7 @@
                     Object.assign(filters, {
                         brand: "全部", location: "全部", prop: "全部",
                         model: "", plate: "", person: "", min_price: "", max_price: "", 
-                        sort_by: "最新入庫", hide_no_price: false, hide_sold: true, hide_cert: true, hide_reserved: false
+                        sort_by: "最新入庫", hide_no_price: false, hide_sold: true, hide_contract: false, hide_reserved: false
                     });
                     searchCarsMobile();
                 };
